@@ -4,10 +4,14 @@
 # tests/test_*.c, and reserve a bench target. Strict flags per CLAUDE.md
 # §"Build & test" (mirrors ../su2-fft); -Wshadow is kept deliberately.
 #
-# Link policy (beads aic-5ty): ONLY -lflint. FLINT 3.0.1 bundles arb/acb here,
-# so <flint/acb_mat.h> + -lflint is the whole foundation. LAPACK has no dev
-# symlink on this box; the double/fast path is a deferred audition. Do NOT add
-# -llapack/-lblas/-llapacke — it breaks the build.
+# Link policy (beads aic-5ty, updated aic-w4o.5): -lflint for the CERTIFIED
+# arb/acb path (FLINT 3.0.1 bundles arb/acb, so <flint/acb_mat.h> + -lflint is
+# the foundation) PLUS -llapacke -llapack -lblas for the FAST, UNCERTIFIED
+# double path (module latd: include/aic_latd.h, src/aic_latd*.c). LAPACKE is now
+# present and links/runs on this box (verified). The LAPACK libs are linked into
+# EVERY target — harmless for targets that do not call them — so the
+# auto-discovered tests/benches need no per-target link tweaks. -lm is added for
+# the C99 complex/real math (cabs/fabs/conj) the double-path tests use.
 #
 # Harness include paths (beads aic-73v): tests use tests/aic_test.h, benchmarks
 # use bench/aic_bench.h; both are header-only. -Itests/-Ibench are added per
@@ -17,7 +21,7 @@
 
 CC ?= cc
 CFLAGS = -Wall -Wextra -Wpedantic -Wshadow -Wstrict-prototypes -O2 -g -std=c11 -Iinclude
-LIBS = -lflint
+LIBS = -lflint -llapacke -llapack -lblas -lm
 
 BUILD := build
 SRC := $(wildcard src/*.c)

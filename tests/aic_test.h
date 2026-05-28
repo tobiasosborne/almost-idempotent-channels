@@ -8,23 +8,23 @@
  * AIC_CHECK_* assert a value/bound, and AIC_CHECKS counts them so a test reports
  * how many invariants it actually exercised.
  *
- * The cross-check ladder, temporarily collapsed (beads aic-5ty).
+ * The cross-check ladder (beads aic-5ty; rung 2 RESTORED by aic-w4o.5).
  *   CLAUDE.md §"cross-check ladder" wants, weakest→strongest:
  *     (1) double-path internal sanity,
  *     (2) double vs arb@prec=53 agreement (~1e-12),
  *     (3) eta=0 exact-idempotent oracle (zero C*-defect),
  *     (4) arb bound certification at the hypothesis boundary.
- *   Rung (2) and the eta=0 oracle are DEFERRED here:
- *     - Rung (2) needs a double/LAPACK fast path. LAPACK has no dev lib/headers
- *       on this box (beads aic-5ty), so there is no double path to compare
- *       against. Until one exists the temporary ladder is acb@53 vs
- *       acb@high-prec: run the same arb routine at prec=53 and at a high prec,
- *       and require the two error balls to agree within an explicit tol. That is
- *       exactly what aic_acb_close / aic_acb_mat_close certify.
- *     - The eta=0 oracle (rung 3) needs the funcalc/ucp/idemp_structure modules
- *       (MODULE_PLAN.md "Suggested first vertical slice"); none exist yet. It is
- *       deferred to those beads, not implemented here.
- *   This header builds the REUSABLE checkers only; no oracle, no LAPACK gate.
+ *   Rung (2) is NOW ACTIVE: the LAPACK double path (module latd,
+ *   include/aic_latd.h) exists, so we can compare a double-path result against
+ *   an arb@prec=53 result within a 53-bit tol (~1e-12). The helpers for that are
+ *   aic_double_close (a double scalar vs an arb ball) and aic_eigset_close (a
+ *   double eigenvalue/singular-value SET vs an arb SET, compared SORTED — since
+ *   the two solvers may order/phase differently). The pre-existing acb@53 vs
+ *   acb@high-prec ladder (aic_acb_close / aic_acb_mat_close) remains: it is the
+ *   precision-self-consistency check, orthogonal to the double-vs-arb check.
+ *   The eta=0 oracle (rung 3) still needs the funcalc/ucp/idemp_structure
+ *   modules (MODULE_PLAN.md "Suggested first vertical slice") and is deferred to
+ *   those beads. This header builds the REUSABLE checkers only; no oracle.
  *
  * Agreement predicate (rigorous). aic_acb_close(a,b,tol) returns 1 iff the ball
  * |a-b| is CERTAINLY <= tol: it forms a-b (acb_sub), takes its magnitude as an
@@ -46,6 +46,7 @@
 #include <flint/acb.h>
 #include <flint/acb_mat.h>
 #include <flint/arb.h>
+#include <flint/arf.h>
 
 /* Count of checks exercised in the current binary (Rule 5: report how many
  * invariants ran, not just that nothing crashed). */
@@ -92,6 +93,33 @@ static long aic_test_checks = 0;
         if (!aic_acb_mat_close((A), (B), (tol), &_ai, &_aj))                   \
             AIC_FAIL("acb_mat entries not within tol (first at %ld,%ld)",      \
                      (long) _ai, (long) _aj);                                  \
+    } while (0)
+
+/* Assert a double-path scalar `x` agrees with an arb ball `ref` within tol (the
+ * RESTORED rung-2 check: double(LAPACK) vs arb@prec=53). Forms |x - ref| as an
+ * arb ball that encloses the difference (x enters as a zero-radius arb, ref
+ * keeps its computed radius), and requires |x-ref| <= tol. Aborts on failure. */
+#define AIC_CHECK_DOUBLE_CLOSE(x, ref, tol)                                    \
+    do {                                                                       \
+        aic_test_checks++;                                                     \
+        if (!aic_double_close((x), (ref), (tol)))                              \
+            AIC_FAIL("double %.17g not within tol of arb ref", (double) (x));  \
+    } while (0)
+
+/* Assert two value SETS agree as sorted sets within tol: `d` is a double[n]
+ * (double path), `a` is an arb_ptr of n entries (arb path). Both are read
+ * sorted ascending (NEITHER input is mutated — d is sorted in a private copy, a
+ * via an index permutation) and compared elementwise. This is the correct
+ * comparison for EIGENVALUES / SINGULAR VALUES, where the two solvers may return
+ * different orderings (CLAUDE.md Rule 6: compare as sets, not by position).
+ * Aborts on the first out-of-tol pair. */
+#define AIC_CHECK_EIGSET_CLOSE(d, a, n, tol)                                   \
+    do {                                                                       \
+        aic_test_checks++;                                                     \
+        slong _ek = -1;                                                        \
+        if (!aic_eigset_close((d), (a), (n), (tol), &_ek))                     \
+            AIC_FAIL("eigenvalue/singular-value set differs at sorted index %ld",\
+                     (long) _ek);                                              \
     } while (0)
 
 /* Print the check count; call at end of main() (greppable, machine-readable). */
@@ -152,6 +180,87 @@ static inline int aic_acb_mat_close(const acb_mat_t A, const acb_mat_t B,
         }
     }
     return 1;
+}
+
+/* Return 1 iff the double `x` is within tol of the arb ball `ref`: x enters as
+ * a zero-radius arb, |x - ref| keeps ref's radius, and we require it <= tol
+ * (arb_le, rigorous: nonzero only when the whole |x-ref| ball is <= tol). */
+static inline int aic_double_close(double x, const arb_t ref, const arb_t tol)
+{
+    const slong prec = 64; /* tol comparison only; ref carries its own radius */
+    arb_t xb, diff;
+    int ok;
+
+    arb_init(xb);
+    arb_init(diff);
+    arb_set_d(xb, x);          /* zero-radius arb (x is exact as given)        */
+    arb_sub(diff, xb, ref, prec);
+    arb_abs(diff, diff);       /* ball enclosing |x - ref|                     */
+    ok = arb_le(diff, tol);
+
+    arb_clear(diff);
+    arb_clear(xb);
+    return ok;
+}
+
+/* qsort comparator for ascending doubles (used to sort the double set in place). */
+static inline int aic_dbl_cmp(const void *p, const void *q)
+{
+    double a = *(const double *) p, b = *(const double *) q;
+    return (a > b) - (a < b);
+}
+
+/* Return 1 iff the double set `d[0..n)` matches the arb set `a[0..n)` within tol,
+ * compared SORTED ASCENDING (the correct comparison for eigenvalues / singular
+ * values, whose ordering is solver-dependent). NEITHER input is mutated: `d` is
+ * copied and the copy sorted (so a caller's U/Sigma/Vt ordering is preserved);
+ * `a` is read via a sorted index permutation (by midpoint) so its balls are
+ * untouched. On the first out-of-tol pair returns 0 and writes the sorted index
+ * to *fk. */
+static inline int aic_eigset_close(const double *d, arb_srcptr a, slong n,
+                                   const arb_t tol, slong *fk)
+{
+    const slong prec = 64;
+    double *ds = (double *) malloc((size_t) n * sizeof(double));
+    if (ds == NULL) { fprintf(stderr, "aic_eigset_close: OOM\n"); abort(); }
+    for (slong k = 0; k < n; k++) ds[k] = d[k];
+    qsort(ds, (size_t) n, sizeof(double), aic_dbl_cmp);
+
+    /* index permutation sorting `a` ascending by midpoint (insertion sort; n is
+     * small here). The arb balls themselves are not modified. */
+    slong *perm = (slong *) malloc((size_t) n * sizeof(slong));
+    if (perm == NULL) { fprintf(stderr, "aic_eigset_close: OOM\n"); abort(); }
+    for (slong k = 0; k < n; k++) perm[k] = k;
+    for (slong i = 1; i < n; i++) {
+        slong p = perm[i];
+        slong j = i - 1;
+        while (j >= 0 &&
+               arf_cmp(arb_midref(a + perm[j]), arb_midref(a + p)) > 0) {
+            perm[j + 1] = perm[j];
+            j--;
+        }
+        perm[j + 1] = p;
+    }
+
+    int ok = 1;
+    arb_t xb, diff;
+    arb_init(xb);
+    arb_init(diff);
+    for (slong k = 0; k < n; k++) {
+        arb_set_d(xb, ds[k]);
+        arb_sub(diff, xb, a + perm[k], prec);
+        arb_abs(diff, diff);
+        if (!arb_le(diff, tol)) {
+            if (fk) *fk = k;
+            ok = 0;
+            break;
+        }
+    }
+    arb_clear(diff);
+    arb_clear(xb);
+    free(perm);
+    free(ds);
+    return ok;
 }
 
 #endif /* AIC_TEST_H */

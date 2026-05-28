@@ -5,7 +5,7 @@
 > Correct behavior on an evil input = the certified bound provably holds, OR the
 > routine fails loud (asserts/refuses) — never a plausible-but-wrong answer.
 
-Bead track: epic `aic-dbo`. Feeds the shared benchmark corpus (`aic-w4o.5`).
+Bead track: epic `aic-dbo`. Feeds the shared benchmark corpus (`aic-f9u.1`).
 
 ## Catalogs
 - [`nla.md`](nla.md) — general numerical-linear-algebra evil (8 families):
