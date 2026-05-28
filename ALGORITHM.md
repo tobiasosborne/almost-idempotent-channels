@@ -185,3 +185,142 @@ here.
   A Cholesky-based eig-free extraction (arb-friendly) was NOT implemented this
   session — deferred as an audition follow-up (Law 4).
 - `||Phi^2-Phi||_cb` diamond-norm SDP: bead aic-d24 (out of scope).
+
+---
+
+## Module `idemp_structure` — structure of exactly-idempotent UCP maps (bead aic-wuh)
+
+Realizes `th_idemp_structure` (`.tex:318` statement, `.tex:2055` proof), the
+eta=0 oracle (milestone aic-9kk) — the cleanest ground truth in the project. The
+proof IS the algorithm. Supporting: `lem_idemp` (`.tex:1916`), `lem_carrier`
+(`.tex:1724`), `PhiX_M` (`.tex:1740`), `prop_Gamma` (`.tex:2106`, deferred).
+
+Files: `include/aic_idemp.h`, `src/aic_idemp_internal.h`, plus six cores
+(carrier/image on the double path, the rest arb): `aic_idemp_carrier.c` (118),
+`aic_idemp_image.c` (108), `aic_idemp_maps.c` (the orchestrator),
+`aic_idemp_build.c` (steps 5-7), `aic_idemp_verify.c`
+(GCD/DGC), `aic_idemp_verify2.c` (w-hom/block-diag), `aic_idemp_cp.c`
+(Gamma-unital + Psi-Choi + the w-Gamma=C_M-Lambda tie-check). Tests:
+`tests/test_idemp.c` (channels in `tests/test_idemp.h`).
+
+### The theorem and the construction (the proof is the algorithm, `.tex:2055-2091`)
+
+Given an idempotent UCP self-map `Phi : B(H) -> B(H)` (`dim H = n`):
+
+1. **Carrier `M = range(Q)`**, `Q = sum_a K_a K_a^dag` (`lem_carrier .tex:1724`;
+   reuses `aic_ucp_carrier_Q`). `J_M` = eigenvectors of `Q` with eigenvalue
+   `> thr = n*eps_mach*||Q||_F` (`n x dim_M` isometry), `J_Mperp` = the rest,
+   `Pi_M = J_M J_M^dag`. **`M = H` iff `Phi` is trace-preserving** (`Q = 1`); `M`
+   can be a PROPER subspace when `Phi` is unital but not TP (the `compress_idemp`
+   oracle, `dim_M = 2 < n = 4`). Double path (`LAPACKE_zheev`): `Q`'s spectrum is
+   degenerate. Fails loud on a non-PSD `Q` or an eigenvalue straddling `thr`.
+
+2. **`A = Img Phi`** via the COLUMN-IMAGE SVD (not the `n^2 x n^2` superoperator
+   — that risks a vec-convention bug): apply the tested `aic_ucp_apply` to each
+   matrix unit `E_ij`, stack `vec(Phi(E_ij))` (row-major, `vec(Y)[a*n+b]=Y[a,b]`)
+   as columns of `P` (`n^2 x n^2`), SVD, keep the left singular vectors with
+   `sigma > thr`. `dim_A` = numerical rank; `B_k` = reshape of `u_k`. `Phi(B_k) =
+   B_k` (asserted — fixed points). Double path (`LAPACKE_zgesvd`; degenerate
+   singular spectrum).
+
+3. **`Delta : A -> B(H)`** = inclusion = `[vec B_1|...|vec B_d]` (`n^2 x dim_A`),
+   ORTHONORMAL columns (`Delta^dag Delta = 1_A`), so `Im Delta = Img Phi`.
+
+4. **`C_M : X |-> J_M^dag X J_M`** (compression).
+
+5. **`Lambda : B(M) -> B(H)`**, `Lambda(Y) = Phi(J_M Y J_M^dag)` (`.tex:2061`); CP
+   + unital. Stored as `Lambda_mat` (`n^2 x dim_M^2`).
+
+6. **`Gamma : B(M) -> A`** via `Lambda = Delta Gamma` (`.tex:2065`). Since
+   `Delta^dag Delta = 1_A`, `Gamma_mat = Delta^dag Lambda_mat` (NO pseudoinverse;
+   the paper guarantees this `Gamma` is UCP, `.tex:2088`).
+
+7. **`w = C_M Delta`** (`.tex:2084`), `w_mat` column `k = vec(J_M^dag B_k J_M)`; a
+   `*`-homomorphism (`lem_idemp`).
+
+Maps are stored as their matrix in the row-major vec convention; a map
+`B(C^p)->B(C^q)` is a `(q*q)x(p*p)` matrix.
+
+### Constructivization note (Law 3)
+
+The paper's proof is already constructive in finite dimensions: `M` is the
+support of `Phi^*(rho_0)` (an existence statement, but `= range(Q)` computably),
+and `A`, `Delta`, `Gamma`, `w` are the explicit maps above. The only
+non-elementary step is the rank-revealing eig/SVD, handled by the degeneracy-
+robust LAPACK double path (certified degenerate eig/SVD is blocked on aic-w4o.1;
+the arb path here CERTIFIES the relations given the double-path subspaces, it does
+not re-extract).
+
+### Verification — the eta=0 oracle (`.tex:2080-2090`)
+
+Certified arb defects, each `== 0` for an exact idempotent; maps are applied to
+matrix units / basis coords and compared via `aic_mat_opnorm` (the `n^2 x n^2`
+superoperator is NEVER formed — convention-safe). Coordinate maps use that
+`Delta` has orthonormal columns: the `A`-coordinates of `Z in A` are
+`Delta^dag vec(Z)`.
+
+- `||Gamma C_M Delta - 1_A||_op` (`.tex:2081`),
+- `max_ij ||Delta Gamma C_M(E_ij) - Phi(E_ij)||_op` (`.tex:2072`, `= Phi`),
+- `max_jk ||w(B_j star B_k) - w(B_j)w(B_k)||_op`, `star = Phi(B_j B_k)` the
+  Choi-Effros product (`lem_idemp`: `w` is a `*`-homomorphism),
+- `max_k (||(1-Pi_M)B_k Pi_M|| + ||Pi_M B_k(1-Pi_M)||)` (block-diagonal, `.tex:2090`),
+- `||Delta Gamma(1_M) - 1_H||_op` (Gamma unital).
+- **Gamma CP — a PAIR of certificates** (`.tex:2084`, `.tex:2088`). The earlier
+  single Choi check was VACUOUS for the stored `Gamma`: `Psi = C_M Lambda` is a
+  composition of manifestly-CP maps, so its Choi is PSD by construction from
+  `Lambda`, `J_M` alone — it never reads `Gamma` (zeroing `Gamma` left it green).
+  We now certify two things:
+  (i) the `C_M o Lambda` FACTORIZATION is CP — the abstract algebra `A`'s
+      Choi-Effros product is CP — via the Choi matrix of `Psi : B(M)->B(M)` PSD
+      (`aic_idemp_psi_choi` + `aic_ucp_is_cp_choi`), and
+  (ii) the STORED `Gamma` is tied to that CP object:
+      `||w Gamma - C_M Lambda||_op = 0` (`aic_idemp_defect_wG_eq_CML`, reads BOTH
+      `w` and `Gamma`). Since `w` is an injective `*`-monomorphism (completely
+      isometric, `.tex:2088`) and `Psi = w Gamma` is CP, `Gamma` is CP. A corrupt
+      `Gamma` (scaled by 2, or a column zeroed) makes defect (ii) `O(1)` — RED.
+      Working through `Psi` on `B(M)` is gauge-invariant.
+
+Measured at `prec=53`, all five defects are `<= 5.96e-16` across all six oracle
+channels (most exactly 0): block_cond_exp(5,2) `(dim_M,dim_A)=(5,13)`,
+trace_replace(3) `(3,1)`, noiseless_subsystem(2,2) `(4,4)`, identity(3) `(3,9)`,
+dephasing(4) `(4,4)`, compress_idemp(4,2) `(2,4)` [M proper]. Dim counts all match
+the closed-form structure.
+
+### Gauge freedom (load-bearing for cross-checks)
+
+The `A`-basis `{B_k}` is unique only up to a unitary on `C^{dim_A}`. Double-vs-arb
+/ cross-run comparisons compare the SUBSPACE via `Pi_A = Delta Delta^dag`, never
+basis vectors. The five relations are gauge-invariant and asserted directly.
+
+### Mutation proofs (Rule 7)
+
+Three source mutations each turned a relation RED (then restored): (i) zeroing
+`Lambda` -> GCD fails; (ii) scaling `Gamma` by 2 -> GCD fails; (iii) taking `J_M`
+from the dropped (small-eigenvalue) `Q` block -> GCD fails on the M-proper case
+(when `M = H` the block choice is immaterial — only the proper-carrier instance
+catches a wrong carrier). The in-suite teeth test confirms a non-idempotent
+`Phi` (`0.5 X + 0.5 diag(X)`) aborts at the entry guard.
+
+### Cross-check ladder coverage (Rule 6)
+
+1. Internal sanity: `J_M^dag J_M = 1_M`, `Delta^dag Delta = 1_A`, `Pi_M^2 = Pi_M`,
+   `Phi(B_k) = B_k`.
+2. acb@53 vs acb@256: `Pi_A` and the relation defects agree (the extraction is
+   double-path regardless of prec, so this is the precision-self-consistency rung).
+3. eta=0 oracle: the five relations `== 0` to `~1e-15`.
+4. dim counts vs the known closed-form structure for each oracle channel.
+
+### Precision
+
+The relations are differences of `O(1)` quantities, so `prec=53` resolves them to
+`~1e-15`. No near-singular inversion arises here (the `eta>0` machinery's
+`(L+R)^{-1}` and the `O(eps)` cancellations belong to the §12 modules). The entry
+guard rejects any `Phi` with `max_ij ||Phi^2(E_ij)-Phi(E_ij)||_op > 1e-9`.
+
+### Deferred (beaded)
+
+- Artin-Wedderburn block decomposition of `A`, `prop_Gamma`'s explicit `Tr_{E_j}`
+  conditional-expectation form, and Kraus reps of `Delta`/`Gamma` -> bead aic-ynu.
+- Certified degenerate eig/SVD for the extraction -> bead aic-w4o.1.
+- `eta > 0` (almost-idempotent, via `Phi_tilde`) is `assoc_ecsa`'s job (the entry
+  guard rejects it here).
