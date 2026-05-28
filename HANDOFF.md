@@ -53,6 +53,17 @@ Deps: gcc/C11, FLINT 3.0.1 (arb/acb bundled), LAPACK+LAPACKE+BLAS (installed
 - **`latd`** (`aic_latd_*`, LAPACK double path): `LAPACKE_zheev` (Hermitian eig,
   **handles degenerate spectra**), `LAPACKE_zgesvd` (opnorm/SVD). 45 adversarial
   cross-checks; double-vs-arb@53 restored. 30×–370× faster than arb.
+- **`ucp`** (`aic_ucp_*`, `aic-c7n`): UCP maps Φ:B(K)→B(H) as Kraus ops (Heisenberg
+  `Φ(X)=ΣK_a†XK_a`); Kraus↔Choi (Convention A, `C=ΣE_ij⊗Φ(E_ij)`, K-major)↔
+  Stinespring; CP cert via degeneracy-robust `herm_max_eig(−C)`; unital (two ways);
+  carrier `Q=ΣK_aK_a†` + cor_carrier + PhiX_M; cb-norm CLOSED FORM `‖Φ(1)‖` (=1 UCP).
+  373 checks. A hostile review caught a Choi-conjugation convention bug (now pinned
+  by a `C[i,j]==Φ(E_ij)` oracle test). `‖Φ²−Φ‖_cb` is NOT here → `aic-d24` (SDP).
+- **`idemp`** (`aic_idemp_*`, `aic-wuh`): `th_idemp_structure` for EXACT idempotent Φ
+  (the η=0 oracle, tex:2055–2091). Double path extracts M=range(Q), A=ImgΦ (column-
+  image SVD); arb path certifies the 5 relations (ΓC_MΔ=1_A, ΔΓC_M=Φ, w *-hom,
+  block-diag, Γ-CP) machine-zero across 6 channels incl. M⊊H. 76 checks.
+  **Milestone `aic-9kk` (η=0 vertical slice) ACHIEVED.**
 
 ## Key decisions & findings (the non-obvious stuff — don't relearn the hard way)
 
@@ -89,19 +100,28 @@ Deps: gcc/C11, FLINT 3.0.1 (arb/acb bundled), LAPACK+LAPACKE+BLAS (installed
 ## What's next (ready work — `bd ready`)
 
 Issue tracker is **beads**, prefix `aic` (persistent across sessions; JSONL at
-`.beads/issues.jsonl` is committed). 45 issues, 9 closed.
+`.beads/issues.jsonl` is committed). `bd ready` for the live list. `aic-c7n` (ucp),
+`aic-wuh` (idemp), `aic-9kk` (η=0 milestone) all CLOSED this session.
 
-- **`T-ucp` (`aic-c7n`, P1)** — the next module; completes E1-foundations. UCP map
-  representations (Choi/Stinespring/Kraus) + conversions + cb-norm + carrier
-  (shard G). Kraus extraction = eig of the (degenerate-prone) Choi matrix → use
-  the `latd` double path / certify later.
-- **`aic-w4o.1` (P1)** — certified degenerate Hermitian eig (arb).
-- **`aic-dbo.2` (P1)** — implement the adversarial instance generators (the
-  evil-matrix corpus; unify with `aic-f9u.1`).
-- Then **E2-eps** (`aic-vs9`): `ecstar`, `unitfix`, `unitary`, `projection`
-  (blocked by `aic-w4o.1`), `corner`; **E3-mainthm**; **E4-headline**;
-  **E5-julia**; **E6-research** (`aic-1bc` c_0, `aic-1sk` factorization closure,
-  etc.); **E7 = `aic-dbo`** (adversarial suite).
+- **`aic-w4o.1` (P1)** — certified degenerate Hermitian eig (arb). Now the main
+  certified-path debt: gates the certified extraction in BOTH `ucp` (Kraus extract)
+  and `idemp` (M, A subspaces), and `projection`. Tooling found: `acb_mat_eig_
+  multiple_rump` (cluster enclosures), `acb_mat_eig_global_enclosure`; audition vs
+  an eig-free Cholesky route (see the bead notes).
+- **`aic-d24` (P1, NEW)** — `‖Φ²−Φ‖_cb` (the η-defect) via the Watrous diamond-norm
+  SDP + MOSEK golden master. Φ²−Φ is NOT CP so no closed form; needs an SDP. The
+  ampliation truncation `N=dim(input)` is RIGOROUS (resolves the old cb-norm-N
+  escalation). BLOCKS `assoc_ecsa` (`aic-92f`) — the almost-idempotent path needs η.
+- **E2-eps** (`aic-vs9`): `ecstar`, `unitfix`, `unitary`, `projection` (blocked by
+  `aic-w4o.1`), `corner`. **`aic-92f`** (`assoc_ecsa`, almost-idempotent ε-C* via
+  Φ̃=θ(2Φ−1)) — blocked by `aic-d24`. Then **E3-mainthm**, **E4-headline**,
+  **E5-julia**, **E6-research** (`aic-1bc` c_0, `aic-1sk` factorization closure).
+- **`aic-dbo.2` (P1)** — adversarial instance generators (evil-matrix corpus; unify
+  with `aic-f9u.1`).
+- **NEW follow-ups from this session:** `aic-ynu` (P2, Artin–Wedderburn block
+  decomposition + prop_Gamma explicit form + Δ/Γ Kraus reps); `aic-kyj` (P3, idemp
+  test teeth: single-split block-diag channel + genuine double-vs-arb subspace
+  oracle when `aic-w4o.1` lands).
 - Housekeeping: `aic-w4o.4` (split oversized test files: test_mat/funcalc/
   contraction/latd all > 200 LOC); `aic-w4o.2` (full arb SVD); `aic-w4o.3`
   (opnorm power-iteration audition); `aic-f9u.1` (shared corpus); `aic-f9u.2`
