@@ -140,6 +140,16 @@ is a finite-dimensional algorithm meeting the paper's bound, not a literal
 rendering of a non-constructive existence proof. Always record, per result, the
 paper's proof technique *and* the constructive route you implemented.
 
+**Law 4 — Audition, don't presume.** No algorithm is presumed fit for any
+result. The project is exploratory: every algorithm choice (matrix-sign route,
+projection route, polar method, …) is a **candidate auditioned via red-green TDD
+against correctness AND performance benchmarks**, then selected on the evidence.
+The shards and `MODULE_PLAN.md` list candidate routes (e.g. projection Route
+A/B/C); treat them as the audition slate, not a ranked decision, even where a
+subagent wrote "recommended." Keep multiple candidates alive until a benchmark
+retires one. Performance is a first-class gate, not an afterthought (the
+`su2-fft` `PROFILING.md` discipline).
+
 ## The Rules (numbered, non-negotiable)
 
 0. **Laws 1–3 apply.** Always.
@@ -224,12 +234,15 @@ paper's proof technique *and* the constructive route you implemented.
     remote runs across all their projects; do not create `.github/workflows/`,
     do not propose "add CI" tasks.
 
-14. **Persistent tracking = beads, once initialized.** This repo has no
-    `.beads/` yet and is not a git repo. Until then, use `TaskCreate`/`TaskUpdate`
-    for in-session tracking and `MODULE_PLAN.md` for durable structure. Do **not**
-    run `bd init` or `git init` unless the user asks. When beads is initialized,
-    it becomes the only persistent tracker (no markdown TODO lists); `TaskCreate`
-    stays for ephemeral in-session state.
+14. **Persistent tracking = beads (initialized 2026-05-28, prefix `aic`).** `bd`
+    is the only *persistent* cross-session tracker; the full module plan is
+    registered as issues — `bd ready` (entry point: `T-build`), `bd show <id>`,
+    `bd dep tree`. `TaskCreate`/`TaskUpdate` are allowed for *ephemeral
+    in-session* state (user directive 2026-05-28) — **this supersedes the blanket
+    "do NOT use TaskCreate" in the auto-generated Beads block at the bottom of
+    this file.** No markdown TODO lists. The harness auto-memory (the external
+    `memory/` directory) is a separate mechanism and is unaffected by the
+    auto-block's "no MEMORY.md files" rule. Never `bd init --force`.
 
 15. **Don't replace FLINT.** See Law 2. The arb path is the point of the project.
 
@@ -361,12 +374,14 @@ real bugs in the sibling).
 
 ## Session completion ("landing the plane")
 
-This repo is **not yet a git repo** and has no remote. So the deliverable is the
-clean working tree + up-to-date `paper/shards/`, `MODULE_PLAN.md`, and
-`ALGORITHM.md`. Do not `git init` or add a remote unless the user asks. When/if
-the repo goes under version control, adopt the sibling protocol: file follow-up
-work, run the quality gates, commit atomically with `.tex`-line provenance, and
-push — work is not "done" until pushed.
+This repo is **under git + beads** (initialized 2026-05-28) but has **no remote
+configured**. The auto-generated Beads block at the bottom mandates `git push` /
+`bd dolt push`; until a remote exists, that push step is **N/A** — do not invent
+one. Instead, at session end: file/close beads for work surfaced this session,
+run the quality gates (once code exists), commit atomically with `.tex`-line
+provenance, and leave the working tree clean. Cross-session persistence is the
+committed `.beads/` + git history. Do not add a remote unless the user asks; when
+one exists, adopt the sibling push protocol (work is not "done" until pushed).
 
 ## Stop conditions (escalate to the user)
 

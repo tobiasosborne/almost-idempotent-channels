@@ -1,0 +1,122 @@
+\ProvidesPackage{mypaths}
+
+\RequirePackage{tikz}
+
+\newcommand{\mypath@error}[1]{\PackageError{mypaths}{#1}{}}
+\newcommand*{\mypath@reserve}[1]{%
+  \newcommand*{#1}{\mypath@error{Uninitialized command encountered}}%
+}
+
+% Reserving names for global temporary commands
+\newcommand*{\tmp@A}{}%
+\newcommand*{\tmp@B}{}%
+\newcommand*{\tmp@C}{}%
+
+\newcommand*{\defPoint}[2]{%
+  \def\@temp##1{\def#1{##1}}%
+  \tikz@scan@one@point\@temp#2%
+}
+
+\tikzstyle{bridge}= [to path=\bridge@Path,bridge height=#1,ramp factor]
+\tikzstyle{ramp to}= [to path=\ramp@ToPath,ramp factor]
+\tikzstyle{ramp from}= [to path=\ramp@FromPath,ramp factor]
+\tikzoption{bridge height}{\def\bridge@Height{#1}}
+\tikzoption{ramp factor}[1.5]{\def\ramp@Factor{#1}}
+
+\newcommand*{\ramp@ToPath}{%
+  \pgfextra{%
+    \ramp@Controls\controlA\controlB\rampEnd{\tikztostart}{\tikztotarget}%
+  }%
+  .. controls (\controlA) and (\controlB) .. (\rampEnd)
+  --  (\tikztotarget) \tikztonodes%
+}
+
+\newcommand*{\ramp@FromPath}{%
+  \pgfextra{%
+    \ramp@Controls\controlA\controlB\rampEnd{\tikztotarget}{\tikztostart}%
+  }%
+  --  (\rampEnd) \tikztonodes
+  .. controls (\controlB) and (\controlA) .. (\tikztotarget)%
+}
+
+\newcommand*{\bridge@Path}{%
+  \pgfextra{\compute@BridgeControls{\bridge@Height}}%
+  .. controls (\controlAI) and (\controlBI) .. (\MidI)
+  --  (\MidII) \tikztonodes
+  .. controls (\controlBII) and (\controlAII) .. (\tikztotarget)%
+}
+
+\newcommand*{\compute@BridgeControls}[1]{%
+  \defPoint\Start{(\tikztostart)}%
+  \defPoint\End{(\tikztotarget)}%
+  \pgfmathparse{#1}%
+  % Set (\pgf@xa,\pgf@ya) to the start point
+  \Start \pgf@xa=\pgf@x \pgf@ya=\pgf@y
+  % Change it to the midpoint
+  \End
+  \advance\pgf@x by-\pgf@xa
+  \advance\pgf@y by-\pgf@ya
+  \advance\pgf@xa by0.5\pgf@x
+  \advance\pgf@ya by0.5\pgf@y
+  % Raise by the bridge height
+  \pgfmathparse{#1}%
+  \ifpgfmathunitsdeclared
+    \advance\pgf@ya by\pgfmathresult pt%
+  \else
+    \let\tmp@A\pgfmathresult
+    \pgfpointxy{0}{\tmp@A}%
+    \advance\pgf@xa by\pgf@x
+    \advance\pgf@ya by\pgf@y
+  \fi
+  % Calculate the controls
+  \edef\midPoint{\the\pgf@xa,\the\pgf@ya}%
+  \ramp@Controls\controlAI\controlBI\MidI{\tikztostart}{\midPoint}%
+  \ramp@Controls\controlAII\controlBII\MidII{\tikztotarget}{\midPoint}%
+}
+
+\newcommand*{\ramp@Controls}[5]{%
+  \begingroup
+    \defPoint\Start{(#4)}%
+    \defPoint\End{(#5)}%
+    % Set (\pgf@xa,\pgf@ya) to the start point
+    \Start \pgf@xa=\pgf@x \pgf@ya=\pgf@y
+    % Set (\pgf@x,\pgf@y) to the end point
+    \End
+    \ifdim\pgf@x<\pgf@xa
+       \def\anchor{east}%
+    \else
+       \def\anchor{west}%
+    \fi
+    \pgfutil@ifundefined{pgf@sh@ns@#5}{}{\defPoint\End{(#5.\anchor)}\End}%
+    % Set (\pgf@xc,\pgf@yc) to the relative ramp end
+    \pgf@xc=\pgf@x \advance\pgf@xc by-\pgf@xa
+    \pgf@yc=\pgf@y \advance\pgf@yc by-\pgf@ya
+    \ifdim\pgf@yc<0pt
+      \pgf@xb=-\ramp@Factor\pgf@yc
+    \else
+      \pgf@xb=\ramp@Factor\pgf@yc
+    \fi
+    \ifdim\pgf@xc<0pt
+      \pgf@xc=-\pgf@xc
+      \ifdim\pgf@xb<\pgf@xc \pgf@xc=-\pgf@xb \else \pgf@xc=-\pgf@xc \fi
+    \else
+      \ifdim\pgf@xb<\pgf@xc \pgf@xc=\pgf@xb \fi
+    \fi
+    % Set (\pgf@xa,\pgf@ya) and (\pgf@xb,\pgf@yb) to the ramp controls
+    % and (\pgf@x,\pgf@y) to the ramp end
+    \pgf@xb=\pgf@xa
+    \pgf@x=\pgf@xa
+    \advance\pgf@xa by0.25\pgf@xc
+    \advance\pgf@xb by0.75\pgf@xc
+    \advance\pgf@x by\pgf@xc
+    \pgf@ya=\pgf@y
+    \pgf@yb=\pgf@y
+    % Return the three points
+    \xdef\tmp@A{\the\pgf@xa,\the\pgf@ya}%
+    \xdef\tmp@B{\the\pgf@xb,\the\pgf@yb}%
+    \xdef\tmp@C{\the\pgf@x,\the\pgf@y}%
+  \endgroup
+  \let#1\tmp@A
+  \let#2\tmp@B
+  \let#3\tmp@C
+}

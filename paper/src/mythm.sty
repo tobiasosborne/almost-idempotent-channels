@@ -1,0 +1,375 @@
+\ProvidesPackage{mythm}
+
+\RequirePackage{myutil}
+
+%------------------------------------------------------------------------
+\FileLabel{qthm}  %Internal reference to this file
+%------------------------------------------------------------------------
+
+%Theorem environments.
+%A.K. - I can't understand the use of amsbook's \theoremstyle
+%(and I also want to practice TeX coding).
+%So, I will implement theorem styles by modifying
+%the standard LaTeX2e \newtheorem
+
+
+%\newtheorem...
+%\newtheorem*{NAME}{TEXT}
+%\newtheorem[STYLE]...
+%\newtheorem*[STYLE]{NAME}{TEXT}
+%where ... stands for one of the three constructs:
+%{NAME}{TEXT}, {NAME}[OLDNAME]{TEXT} or {NAME}{TEXT}[COUNTER]
+%\newtheorem* defines unnumbered theorems.
+
+%STYLE must be previously defined by issuing a command
+% \newtheoremstyle{STYLE}{DEFINITION}  or
+% \newtheoremstyle{STYLE}[n]{DEFINITION}.
+%
+% DEFINITION may use so-called ``style arguments'' #1...#n.
+% The theorem style will be called on each occurence of \begin{NAME}.
+% The optional argument to the theorem follows the style arguments, i.e.,
+% the call looks like
+%    \begin{NAME}{#1}...{#n}[optional argument] .
+% Here is what actually happens.
+% 1) The \begin{NAME} call saves the style arguments for later use.
+%    Then it reads the optional argument (if present) and
+%    sets \ThmText, \ThmNumber and \ThmOption.
+% 2) Several other parameters (as specified by \theoremDefaultsList)
+%    are set to their default values that are defined in this package,
+%    but may be redefined anywhere before \begin{document}.
+% 3) The associated theorem style is called, which may
+%    change the default parameters.
+% 4) \ThmBegin   uses the parameters to produce a label and start the text.
+%
+% The environment is closed by \end{NAME}, which calls \ThmEnd.
+%
+% Example:
+%   \newtheoremstyle{PickAName}[1]{\def\ThmText{#1}}
+%   \newtheorem[PickAName]{GenericTheorem}{}
+%   \begin{document} ...
+%     \begin{GenericTheorem}{Theorem} ...  \end{GenericTheorem} ...
+%     \begin{GenericTheorem}{Lemma} ...  \end{GenericTheorem} ...
+%     \begin{GenericTheorem}{Observation}[ocurred to me last night] ...
+%       \end{GenericTheorem} ...
+%   \end{document}
+%
+%   Note that the same effect can be achieved without the PickAName style:
+%     \newtheorem{GenericTheorem}{}
+%     \begin{document} .....
+%       \def\ThmText{Theorem}
+%     \begin{GenericTheorem} ... \end{GenericTheorem} ...
+%     \end{document}
+
+%The following macros have default values and may be redefined
+%in the style DEFINITION.
+%
+%\ThmBegin              -- Calls most of the other macros listed below.
+%
+%\ThmEnd                -- Applied at the end of the theorem.
+%
+%\ThmSep                -- Vertical skip before and after the theorem.
+%
+%\ThmLabel              -- Creates theorem label, which consists of
+%                          three components: \ThmText, \ThmNumber, \ThmOption.
+%
+%%   \ThmText   : The TEXT parameter from \newtheorem{NAME}{TEXT}.
+%%                This default value can be overriden if \ThmText is given
+%%                a non-empty definition just before \begin{NAME}.
+%%                In any case, \ThmText is unset before \ThmBeginBody.
+%%
+%%   \ThmNumber : Set to \theNAME, where NAME comes from \newtheorem.
+%%                With \newtheorem*, \ThmNumber is empty,
+%%                unless splecifically defined just before \begin{NAME}.
+%%                In any case, \ThmNumber is unset before \ThmBeginBody.
+%%
+%%   \ThmOption : If the theorem begins with \begin{NAME}[OPTION],
+%%                then \ThmOption is set to OPTION (empty otherwise).
+%
+%\ThmT, \ThmTN, \ThmTO, \ThmTNO -- Called by \ThmLabel,
+%     depending on what components are present, to actually produce the label.
+%
+%\ThmLabelFont            -- used by \ThmT, \ThmTN, \ThmTO, \ThmTNO.
+%
+%\ThmBeginBody            -- The last command called by \ThmBegin.
+%
+%\ThmBodyFont             -- used by \ThmBeginBody.
+%
+%\ThmItem#1               -- can be used in the body to begin a named part of
+%                            the theorem.
+
+%In addition to the above parameters, the macro
+%
+%%   \ThmBeforeLabel
+%
+%can be defined in the document before an instance of \begin{NAME}.
+%It is called just before \ThmLabel, so it can be used e.g., to set a
+%custom paragraph format for the theorem.
+%Just like \ThmText and \ThmNumber, \ThmBeforeLabel is unset automatically,
+%so that it does not affect the theorem body or the following text.
+
+
+%------------------------------------------------------------------------
+
+%Handling default parameters
+
+\AtBeginDocument{%
+  \expandafter\Apply\expandafter\@thm@MoveToPrefixed\expandafter{%
+    \theoremDefaultsList}}
+
+\def\@thm@SetToDefaults{%
+  \expandafter\Apply\expandafter\@thm@ReferToPrefixed\expandafter{%
+    \theoremDefaultsList}}
+
+\def\@thm@MoveToPrefixed#1{%
+  \MoveToPrefixed#1{D@}}
+
+\def\@thm@ReferToPrefixed#1{%
+  \ReferToPrefixed#1{D@}}
+
+%------------------------------------------------------------------------
+
+%Defining new styles
+
+\def\newtheoremstyle#1{%
+  \@ifnextchar[{\theorem@DefStyle{#1}}{\theorem@DefStyle{#1}[0]}}
+
+\newtoks\@thm@toks
+
+\def\theorem@DefStyle#1[#2]#3{%
+  \expandafter\newcommand\expandafter*\csname thmstyle@#1\endcsname[#2]{%
+% Using a token sequence instead of a macro
+% to prevent special treatment of # characters
+    \@thm@toks={#3}\@thm@Do}}
+%\@thm@Do is defined inside the \NAME macro (called from \begin{NAME}) 
+
+\newtheoremstyle{default}{}
+
+%------------------------------------------------------------------------
+
+%Defining new theorem environments
+
+\newif\if@theorem@Star@
+
+\def\newtheorem{%
+  \@ifstar{\@theorem@Star@true\newtheorem@Nostar}%
+          {\@theorem@Star@false\newtheorem@Nostar}}
+
+\def\newtheorem@Nostar{%
+  \@ifnextchar[{\newtheorem@Styled}{\newtheorem@Styled[default]}}
+
+\def\newtheorem@Styled[#1]{%
+  \theorem@SetStyle{#1}\newtheorem@}
+
+\def\theorem@SetStyle#1{%
+  \@ifundefined{thmstyle@#1}%
+    {\Error{Undefined theorem style `#1'}{qthm}}%
+    {\edef\theorem@Def##1##2{%
+      \noexpand\@namedef{##1}{%
+        \def\noexpand\@thm@Do{##2}%
+        \expandafter\noexpand\csname thmstyle@#1\endcsname}}}}
+
+\def\newtheorem@#1{%
+  \@ifnextchar[{\@othm{#1}}{\@nthm{#1}}}
+
+\def\@nthm#1#2{%
+  \@ifnextchar[{\@xnthm{#1}{#2}}{\@ynthm{#1}{#2}}}
+
+\def\@xnthm#1#2[#3]{%
+  \expandafter\@ifdefinable\csname #1\endcsname
+    {\@definecounter{#1}\@newctr{#1}[#3]%
+     \expandafter\xdef\csname the#1\endcsname{%
+       \expandafter\noexpand\csname the#3\endcsname \@thmcountersep
+          \@thmcounter{#1}}%
+     \global\theorem@Def{#1}{\@thm{#1}{#2}}%
+     \global\@namedef{end#1}{\ThmEnd}}}
+
+\def\@ynthm#1#2{%
+  \expandafter\@ifdefinable\csname #1\endcsname
+    {\if@theorem@Star@
+       \global\theorem@Def{#1}{\@thm@Star{#2}}%
+     \else
+       \@definecounter{#1}%
+       \expandafter\xdef\csname the#1\endcsname{\@thmcounter{#1}}%
+       \global\theorem@Def{#1}{\@thm{#1}{#2}}%
+     \fi
+       \global\@namedef{end#1}{\ThmEnd}}}
+
+\def\@othm#1[#2]#3{%
+  \@ifundefined{c@#2}{\@nocounterr{#2}}%
+    {\expandafter\@ifdefinable\csname #1\endcsname
+    {\global\@namedef{the#1}{\@nameuse{the#2}}%
+  \global\theorem@Def{#1}{\@thm{#2}{#3}}%
+  \global\@namedef{end#1}{\ThmEnd}}}}
+
+%------------------------------------------------------------------------
+
+%Beginning a theorem instance
+
+\def\@thm#1#2{%
+  \ifx\ThmText\empty
+    \def\ThmText{#2}%
+  \fi
+  \edef\ThmNumber{\expandafter\noexpand\csname the#1\endcsname}%
+  \stepcounter{#1}%
+  \@ifnextchar[{\@ythm}{\@xthm}}
+
+\def\@thm@Star#1{%
+  \ifx\ThmText\empty
+    \def\ThmText{#1}%
+  \fi
+  \@ifnextchar[{\@ythm}{\@xthm}}
+
+\def\@xthm{%
+  \def\ThmOption{}%
+  \@thm@Prepare%
+  \ThmBegin}
+
+\def\@ythm[#1]{%
+  \def\ThmOption{#1}%
+  \@thm@Prepare%
+  \ThmBegin}
+
+\def\@thm@Prepare{%
+  \@thm@SetToDefaults%
+  \the\@thm@toks%  applying the style
+  \ifx\ThmNumber\empty
+  \else
+    \protected@edef\@currentlabel{\ThmNumber}%
+  \fi}
+
+%------------------------------------------------------------------------
+
+%Standard LaTeX style parameters
+
+\def\@thmcounter#1{\noexpand\arabic{#1}}
+\def\@thmcountersep{.}
+
+%------------------------------------------------------------------------
+
+% This can be changed globally in a package or in the preamble.
+
+\def\theoremDefaultsList{%
+  \ThmBegin\ThmEnd\ThmSep\ThmLabel\ThmT\ThmTN\ThmTO\ThmTNO\ThmLabelFont%
+  \ThmBeginBody\ThmBodyFont\ThmItem}
+
+%------------------------------------------------------------------------
+
+%Default theorem style
+
+\def\ThmBegin{%
+  \ThmOldtopsep\topsep%
+  \topsep\ThmSep%
+  \trivlist%
+  \ifdim\ThmOldtopsep<\topsep \topsep\ThmOldtopsep\fi%
+  \item[]%
+  \ThmBeforeLabel%
+  \ThmLabel\hskip\labelsep%
+  \global\let\ThmText\empty%
+  \global\let\ThmNumber\empty%
+  \global\let\ThmBeforeLabel\relax%
+  \ThmBeginBody}
+
+\let\ThmText\empty
+\let\ThmNumber\empty
+\let\ThmBeforeLabel\relax
+
+\newskip\ThmOldtopsep
+
+\def\ThmEnd{\endtrivlist}
+
+\def\ThmSep{1.0ex plus 0.4ex minus 0.25ex}
+
+\def\ThmLabel{{%
+  \ifx\ThmOption\empty
+    \ifx\ThmNumber\empty
+      \let\ThmLab\ThmT%
+    \else
+      \let\ThmLab\ThmTN%
+    \fi
+  \else
+    \ifx\ThmNumber\empty
+      \let\ThmLab\ThmTO%
+    \else
+      \let\ThmLab\ThmTNO%
+    \fi
+  \fi
+  \ThmLab}}
+
+\def\ThmT{\ThmLabelFont{\ThmText}.}
+\def\ThmTN{\ThmLabelFont{\ThmText}\space{\ThmNumber}.}
+\def\ThmTO{\ThmLabelFont{\ThmText}\space({\ThmOption}).}
+\def\ThmTNO{\ThmLabelFont{\ThmText}\space{\ThmNumber}\space({\ThmOption}).}
+
+\let\ThmLabelFont\bfseries
+
+\def\ThmBeginBody{\ThmBodyFont\ignorespaces}
+
+\let\ThmBodyFont\itshape
+
+\def\ThmItem#1{%
+  \item[]{#1}\hskip\labelsep}
+
+%----------------------------------------------------------
+
+%Some useful theorem styles
+
+%--- theoremstyle for definitions ---
+
+%The optional argument is rendered in italic font.
+%The body text is rendered in the normal font.
+%Special use \ThmNumber is empty:
+%  if the optional argument is present, it is reproduced verbatim
+%  while the standard text is suppressed.
+
+\newtheoremstyle{definition}{%
+%Using \ThmLabelFont for the optional text.
+  \def\ThmTNO{%
+    \ThmLabelFont\ignorespaces{\ThmText}\space{\ThmNumber}\space%
+      ({\itshape\ThmOption}\/).}%
+  \def\ThmTO{\ThmLabelFont\ThmOption.}%
+  \let\ThmBodyFont\relax}
+
+%--- theoremstyle for remarks ---
+
+%The body text is rendered in the normal font.
+%Special use when \ThmNumber is empty:
+%  If the optional argument is present, it is reproduced verbatim
+%  while the standard text is suppressed.
+
+\newtheoremstyle{remark}{%
+  \let\ThmBodyFont\relax%
+  \def\ThmTO{\ThmLabelFont\ThmOption}}
+
+%--- theoremstyle for proofs ---
+
+%To be used with \newtheorem* (\ThmNumber must be empty):
+%  If the optional argument is present, it is reproduced verbatim
+%  while the standard text is suppressed.
+%The body text is rendered in the normal font.
+%The body ends with \qed.
+
+\newtheoremstyle{proof}{%
+  \let\ThmBodyFont\relax%
+  \def\ThmTO{\ThmLabelFont\ThmOption}%
+  \let\proofEnd\ThmEnd%
+  \def\ThmEnd{\qed\proofEnd}}
+
+%This is borrowed from amsthm.sty and slightly simplified.
+\DeclareRobustCommand{\qed}{%
+  \ifmmode \quad\qedsymbol
+  \else
+    \leavevmode\unskip\penalty9999%
+    \hbox{}\nobreak\hfill\quad\qedsymbol%
+  \fi}
+
+\def\qedsymbol{%
+  \hbox to.77778em{%
+    \hfil\vrule%
+    \vbox to.675em{\hrule width.6em\vfil\hrule}%
+    \vrule\hfil}}
+
+%--- proof environment ---
+
+\newtheorem*[proof]{proof}{\proofname}
+
+\def\proofname{Proof}

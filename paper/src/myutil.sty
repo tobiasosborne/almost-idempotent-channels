@@ -1,0 +1,85 @@
+\ProvidesPackage{myutil}
+
+%------------------------------------------------------------------------
+
+%Define a label to reference the current source file
+
+\def\FileLabel#1{%
+  \expandafter\@ifdefinable\csname FileLabel@#1\endcsname
+    {\expandafter\xdef\csname FileLabel@#1\endcsname
+      {\@currname.\@currext}}}
+
+\def\FileRef#1{%
+  \@ifundefined{FileLabel@#1}{??}{\csname FileLabel@#1\endcsname}}
+
+%------------------------------------------------------------------------
+\FileLabel{qsuppl} %Internal reference to this file    
+%------------------------------------------------------------------------
+
+%Produce an error message with reference to a file.
+
+\def\Error#1#2{%
+  \GenericError{}%
+    {LaTeX  Error: #1}%
+    {See file\space\space \FileRef{#2}\MessageBreak}%
+    {\@ehc}}
+
+%------------------------------------------------------------------------
+
+%Apply command #1 to each item of list #2.
+%#1 can be the name of a macro with one argument,
+%or any token sequence that will absorb one following argument when expanded.
+
+
+\def\Apply#1#2{%
+  \Apply@{#1}#2\StopToken}
+
+\def\Apply@#1{%
+  \@Apply@Toks={#1}%
+  \futurelet\@Apply@NextToken\Apply@@}
+
+\def\Apply@@{%
+  \ifx\@Apply@NextToken\StopToken
+    \let\@Apply@StopOrGo\@gobble%
+  \else
+    \edef\@Apply@StopOrGo##1{%
+      \the\@Apply@Toks{##1}\noexpand\Apply@{\the\@Apply@Toks}}
+  \fi
+  \@Apply@StopOrGo}
+
+\newtoks\@Apply@Toks
+
+\let\StopToken\@nnil
+
+%------------------------------------------------------------------------
+
+%Save macro #1 under a different name,
+%which is obtained by prefixing the original name by #2.
+%(#1 must be a control sequence token.)
+
+\def\CopyToPrefixed#1#2{%
+  \edef\@Save@Command{\let\AddPrefix#1{#2}\noexpand#1}%
+  \@Save@Command}
+
+%Same as above, but remove the original.
+
+\def\MoveToPrefixed#1#2{%
+  \edef\@Save@Command{\let\AddPrefix#1{#2}\noexpand#1}%
+  \@Save@Command%
+  \let#1\@undefined}
+
+%Restore a previously saved macro.
+
+\def\CopyFromPrefixed#1#2{%
+  \edef\@Save@Command{\let\noexpand#1\AddPrefix#1{#2}}%
+  \@Save@Command}
+
+%Make a macro to refer to its previously saved version.
+
+\def\ReferToPrefixed#1#2{%
+  \edef\@Save@Command{\def\noexpand#1{\AddPrefix#1{#2}}}%
+  \@Save@Command}
+
+
+\def\AddPrefix#1#2{%
+  \expandafter\noexpand\csname #2\expandafter\@gobble\string#1\endcsname}
