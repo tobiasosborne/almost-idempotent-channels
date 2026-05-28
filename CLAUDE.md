@@ -82,6 +82,8 @@ condition), not a corner to paper over. File it; do not fake it.
 
 For any task, in order. Refuse to add code or math content before steps 1–2.
 
+0. `HANDOFF.md` — five-minute orientation: current state, what's built, what's
+   next, and the key findings/decisions. Read first when resuming work.
 1. This file (`CLAUDE.md`).
 2. `paper/src/approximate_algebras.tex` — the verbatim arXiv source. **Canonical
    ground truth.** When notes, memory, or a shard disagree with it, the
