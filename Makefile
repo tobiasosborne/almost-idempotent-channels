@@ -29,8 +29,13 @@ TEST_SRC := $(wildcard tests/test_*.c)
 TEST_BIN := $(patsubst tests/%.c,$(BUILD)/%,$(TEST_SRC))
 BENCH_SRC := $(wildcard bench/bench_*.c)
 BENCH_BIN := $(patsubst bench/%.c,$(BUILD)/%,$(BENCH_SRC))
+# Generated/committed fixture includes (e.g. tests/fixtures_d24.inc.h, the
+# aic-d24 golden master from tools/gen_fixtures_d24.jl). Made a prerequisite of
+# every test binary so regenerating a fixture forces the dependent test to
+# rebuild — otherwise a stale binary would test against old golden values.
+TEST_INC := $(wildcard tests/*.inc.h)
 
-.PHONY: all test bench clean
+.PHONY: all test bench clean fixtures
 
 all: $(TEST_BIN)
 
@@ -38,8 +43,9 @@ $(BUILD):
 	mkdir -p $(BUILD)
 
 # Each test binary links the test driver, all src cores, and FLINT. -Itests
-# exposes the header-only aic_test.h.
-$(BUILD)/%: tests/%.c $(SRC) | $(BUILD)
+# exposes the header-only aic_test.h and the generated tests/*.inc.h fixtures
+# (which are prerequisites so a regenerated fixture rebuilds its test).
+$(BUILD)/%: tests/%.c $(SRC) $(TEST_INC) | $(BUILD)
 	$(CC) $(CFLAGS) -Itests $< $(SRC) $(LIBS) -o $@
 
 # Each bench binary links the bench driver, all src cores, and FLINT. -Ibench
@@ -75,6 +81,13 @@ bench: $(BENCH_BIN)
 	done; \
 	if [ $$fail -ne 0 ]; then echo "make bench: FAILED"; exit 1; fi; \
 	echo "make bench: all benchmarks ran"
+
+# Regenerate the committed golden-master fixtures (bead aic-d24) via the serial
+# Julia + MOSEK generator. OPTIONAL and NOT a prerequisite of `make test` (the
+# generated .inc.h is committed); run it by hand when the corpus changes. Needs
+# the julia/env environment instantiated and a MOSEK license.
+fixtures:
+	julia --project=julia/env tools/gen_fixtures_d24.jl
 
 clean:
 	rm -rf $(BUILD)

@@ -184,7 +184,113 @@ here.
 - Certified arb Choi->Kraus extraction: same blocker (Choi spectrum degenerate).
   A Cholesky-based eig-free extraction (arb-friendly) was NOT implemented this
   session — deferred as an audition follow-up (Law 4).
-- `||Phi^2-Phi||_cb` diamond-norm SDP: bead aic-d24 (out of scope).
+- `||Phi^2-Phi||_cb` diamond-norm SDP: bead aic-d24 — FIRST INCREMENT shipped
+  (the Choi substrate + Julia golden master; see the `cb-norm` section below).
+
+---
+
+## Module `cb-norm` / eta-idempotence defect (bead aic-d24)
+
+Computes the central quantity of the paper, the eta-idempotence defect
+
+> `.tex:354`, verbatim: "A UCP map Phi: B(H)->B(H) is called eta-idempotent if
+> ||Phi^2-Phi||_cb <= eta."
+
+`Lambda = Phi^2 - Phi` is Hermiticity-preserving but NOT completely positive, so
+the CP closed form `||Phi||_cb = ||Phi(1)||_op` (`.tex:1717-1719`, used by
+`aic_ucp_cbnorm_cp`) does NOT apply. The cb-norm equals the diamond norm and is
+"efficiently computable using semidefinite programming" (`.tex:352`); for a
+Hermiticity-preserving map the ampliation truncation `N = dim(input)` is rigorous
+(Watrous 2012), so a single SDP at the channel's own dimension suffices.
+
+### Architecture (Route B) — C computes the Choi, Julia+MOSEK solves the SDP
+
+No arb-native SDP solver exists, so the work splits:
+
+- **C core** (`src/aic_ucp_compose.c`, 104 LOC; decls in `include/aic_ucp.h`)
+  supplies the SDP its input — the Choi matrix of `Lambda` — and nothing else.
+  Two routines, both arb/acb (explicit `prec`):
+  - `aic_ucp_compose(out, phi, psi)` — Kraus of `Phi o Psi`. Heisenberg
+    composition (derived in the header, verbatim there):
+    `(Phi o Psi)(X) = sum_a K_a^dag (sum_b L_b^dag X L_b) K_a
+                    = sum_{a,b} (L_b K_a)^dag X (L_b K_a)`,
+    so `Kraus(Phi o Psi) = { L_b K_a } = { psi.K[b] @ phi.K[a] }`. Requires
+    `phi->dim_K == psi->dim_H` (asserted, fail loud); result shape
+    `(psi->dim_K, phi->dim_H)`, `r = phi->r * psi->r`. `Phi^2 = compose(Phi,Phi)`.
+  - `aic_ucp_choi_diff(C, phi1, phi2)` — `C = Choi(phi1) - Choi(phi2)`,
+    Convention A. Choi is linear in the map, so `Choi(Phi^2 - Phi) =
+    Choi(Phi^2) - Choi(Phi)`; pass `phi1 = compose(Phi,Phi)`, `phi2 = Phi`. The
+    result is Hermitian but generically indefinite (why the SDP is needed).
+- **Julia golden master** (`tools/gen_fixtures_d24.jl`, env `julia/env/`):
+  Convex.jl 0.16.6 + MosekTools 0.15.10 + Mosek 11.2.0 (NO PYTHON). The Watrous
+  2012 SDP (complex-native): vars `X` (n^2 x n^2 complex), `P,Q` HermPSD;
+  `maximize Re tr(J' X)` s.t. `[[P,X],[X',Q]] >= 0`, `P + Q = I_{n^2}`.
+  NORMALIZATION (load-bearing): Convention-A Choi has trace `n` for a UCP map but
+  the SDP is trace-1 calibrated, so `||Lambda||_diamond = (2/n) * SDP_optval`.
+
+### Verification — analytic anchors and the C-vs-Julia Choi cross-check
+
+The generator ASSERTS the analytic anchors before emitting any fixture (fails
+loud otherwise), so a broken solver/normalization cannot silently poison the
+golden master. Anchors (all reproduced to <1e-6 at generation):
+
+- `id_d`: `Lambda = 0` => `eta = 0`.
+- `Dep_d - id_d`: `2(1 - 1/d^2)` (1.5 at d=2; 16/9 at d=3; 15/8=1.875 at d=4 —
+  the dimension canary confirming the `2/n` normalization, now asserted at ALL
+  three dimensions that appear in the corpus, not just d=2).
+- `Phi_t = (1-t) id + t Dep`: `Phi_t^2 - Phi_t = t(1-t)(Dep - id)`, so
+  `eta = t(1-t) * 2(1-1/d^2)` (0.315 / 0.135 / 0.01485 / 0.0014985 at d=2,
+  t=0.3/0.1/0.01/0.001; 0.084444 at d=3,t=0.05; 0.30 at d=4,t=0.2). The
+  poison-pill `assert_anchors()` checks this general formula at d=2,3,4 so a
+  broken solver/normalization cannot silently poison any dimension-varying
+  fixture.
+- **The paper's own example** (`.tex:367-378`): the C^2 channel
+  `Phi(X)=P0 Tr(g0 X)+P1 Tr(g1 X)` has `||Phi^2-Phi||_cb = eta*sqrt(1-eta)`
+  (verbatim `.tex:378`); reproduced as 0.09486833 at eta=0.1, 0.009949873 at 0.01.
+
+`tests/fixtures_d24.inc.h` (generated, committed) carries, per fixture: `n, r`,
+the Kraus ops (aic_ucp layout), the diamond-norm `eta_ref`, and the reference
+`Choi(Phi^2-Phi)`. `tests/test_ucp_d24.c` rebuilds each channel, computes `Phi^2`
+via `aic_ucp_compose` and `Choi(Lambda)` via `aic_ucp_choi_diff`, and asserts it
+matches the Julia reference — a genuine **C-vs-Julia cross-check of the Choi
+substrate** (max-diff 2.7e-15 over the 17-fixture corpus; worst at the n=4
+`phi_t4_0p2`), plus the eta=0 oracles carry `eta_ref < 1e-9`. Regenerate with
+`make fixtures` (serial Julia; not a `make test` prerequisite — the .inc.h is
+committed). Two of the 17 fixtures are dedicated hardening cases:
+- `complex_qubit` (`K_0=[[0.6,0],[0.8i,0]]`, `K_1=[[0,0.8i],[0,0.6]]`, unital,
+  eta≈1.28): the FIRST fixture with genuinely complex Kraus ops
+  (max|Im(Kraus)|=0.8) and a Lambda-Choi with nonzero imaginary off-diagonals
+  (max|Im|≈0.61), so the C-vs-Julia cross-check now GUARDS the conjugation in
+  `aic_ucp_kraus_to_choi`. Teeth-proven: dropping the `conj` makes the C Choi
+  diverge from the Julia reference by 1.28 in operator norm (≫ the 1e-11 fixture
+  tolerance), turning the assertion RED; restored to 5.9e-16.
+- `block_lowrank3` (`Phi_t` on the upper 2-block of C^3 ⊕ identity on e2, unital,
+  eta=0.16): a genuinely RANK-DEFICIENT Lambda-Choi (9×9, rank 4, with real zero
+  eigenvalues), replacing the earlier mislabeled `partial_dephase3` whose Lambda
+  was full rank.
+
+### Cross-check ladder coverage (Rule 6) and mutation proofs
+
+- compose correctness: `apply(compose(Phi,Psi),X) == Phi(Psi(X))` (the definition,
+  an independent path), incl. non-self-map chaining `B(C^3)->B(C^2)->B(C^3)`.
+- compose preserves unitality; `Phi^2` Kraus count `r^2`, shape correct.
+- eta=0 Choi oracle: idempotent `Phi` => `Choi(Phi^2-Phi) == 0` to machine zero,
+  on identity / Dep_2 / Dep_3 / dephasing_M2 / block_cond_exp.
+- double-vs-arb@53 on the composed Kraus ops and on the Choi-diff entries.
+- MUTATION PROOF (Rule 7): the wrong product order `K_a L_b` (instead of
+  `L_b K_a`) breaks the compose cross-check on the non-commuting
+  complex-channel/dephasing pair — verified by a source mutation that turned the
+  test RED, then restored.
+
+### Deferred (beaded / escalation)
+
+- The **certified arb cb-ball**: no arb-native SDP solver exists; the credible
+  route is solve-in-double then a rational-certificate / verified-SDP
+  post-processing (KKT + duality-gap in FLINT/arb). NOT implemented; escalation
+  note — the certified ladder rung (4) for `eta` is unreachable without it.
+- The **C-callable `aic_ucp_idemp_defect_cb`** that invokes the SDP via `ccall`:
+  belongs in the Julia package (E5, bead aic-obc). For now the diamond-norm VALUE
+  is produced only by the Julia generator / golden master.
 
 ---
 

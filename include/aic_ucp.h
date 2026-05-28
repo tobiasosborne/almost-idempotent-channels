@@ -146,6 +146,33 @@ void aic_ucp_carrier_annihilate_defect(arb_t out, const aic_ucp_kraus *phi,
 void aic_ucp_phiX_M_defect(arb_t out, const aic_ucp_kraus *phi,
                            const acb_mat_t X, const acb_mat_t Pi_M, slong prec);
 
+/* --- composition + Choi-difference (bead aic-d24; aic_ucp_compose.c) --- */
+
+/* Heisenberg COMPOSITION (Phi o Psi)(X) = Phi(Psi(X)). For UCP maps in the
+ * Kraus form Phi(Y)=sum_a K_a^dag Y K_a (K_a: dim_K(phi) x dim_H(phi)) and
+ * Psi(X)=sum_b L_b^dag X L_b (L_b: dim_K(psi) x dim_H(psi)),
+ *   (Phi o Psi)(X) = sum_a K_a^dag (sum_b L_b^dag X L_b) K_a
+ *                  = sum_{a,b} (L_b K_a)^dag X (L_b K_a),
+ * so the Kraus operators of Phi o Psi are { L_b K_a } = { psi.K[b] @ phi.K[a] }.
+ * TYPE CHECK: Psi outputs in B(K_psi) which Phi must accept, so this REQUIRES
+ *   phi->dim_K == psi->dim_H            (asserted, fail loud).
+ * The product L_b K_a is (dim_K(psi) x dim_H(psi)) * (dim_K(phi) x dim_H(phi))
+ * with dim_K(phi)==dim_H(psi), so it is dim_K(psi) x dim_H(phi). RESULT shape:
+ *   out->dim_K = psi->dim_K,  out->dim_H = phi->dim_H,  out->r = phi->r * psi->r.
+ * For Phi^2 = compose(Phi,Phi) (requires dim_K==dim_H): { K_b K_a }, n x n,
+ * r^2 operators. `out` is aic_ucp_kraus_init'd HERE (caller clears it). */
+void aic_ucp_compose(aic_ucp_kraus *out, const aic_ucp_kraus *phi,
+                     const aic_ucp_kraus *psi, slong prec);
+
+/* Choi DIFFERENCE C = Choi(phi1) - Choi(phi2), Convention A (header). Both maps
+ * must share (dim_K, dim_H); `C` must be initialised (dim_K*dim_H) square. The
+ * eta-idempotence defect Lambda = Phi^2 - Phi has Choi C_{Phi^2} - C_Phi by
+ * linearity (.tex:347-354); pass phi1 = compose(Phi,Phi), phi2 = Phi. The result
+ * is Hermitian (a difference of Hermitian Choi matrices) but in general NOT PSD
+ * (Phi^2-Phi is not CP), which is exactly why the diamond-norm SDP is needed. */
+void aic_ucp_choi_diff(acb_mat_t C, const aic_ucp_kraus *phi1,
+                       const aic_ucp_kraus *phi2, slong prec);
+
 /* --- double path (LAPACK): degenerate-spectrum extraction (aic_ucp_*_latd) --- */
 
 /* Choi->Kraus extraction (.tex / shard G): PSD eigendecomposition of C_Phi,
