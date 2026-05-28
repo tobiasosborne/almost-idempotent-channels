@@ -150,6 +150,15 @@ subagent wrote "recommended." Keep multiple candidates alive until a benchmark
 retires one. Performance is a first-class gate, not an afterthought (the
 `su2-fft` `PROFILING.md` discipline).
 
+When **no candidate dominates** on the current metric, do **not** pick
+arbitrarily — **add performance dimensions** (wall time, iteration count, peak
+memory, accuracy / certified-ball tightness at fixed precision, robustness /
+convergence basin on adversarial inputs) and look for **Pareto domination**. If
+none dominates across the regimes of interest, keep the entire **Pareto
+frontier** in the code (named, dispatchable) and select per regime, recording
+the frontier and the regime boundaries. Only declare a single default when one
+candidate Pareto-dominates everywhere of interest.
+
 ## The Rules (numbered, non-negotiable)
 
 0. **Laws 1–3 apply.** Always.
