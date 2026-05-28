@@ -1,0 +1,148 @@
+/* aic_mat.h — Layer-0 matrix substrate (beads aic-9zh, "T-mat").
+ *
+ * The matrix type IS FLINT's `acb_mat_t` (CLAUDE.md Law 2: reuse, do not invent
+ * a new struct). FLINT 3.0.1 already gives multiplication, transpose,
+ * conjugate-transpose, trace, the certified Frobenius norm, and a certified
+ * eigenvalue family; this module adds ONLY the free functions over `acb_mat_t`
+ * that the paper's later modules (ucp, idemp_structure, opspace, ...) need and
+ * that FLINT does not expose directly: operator norm, a Hermitian-eig wrapper
+ * with the Hermiticity precondition asserted, singular values, the Kronecker
+ * product, and partial traces.
+ *
+ * Number path / cross-check ladder (beads aic-5ty). LAPACK is unavailable on
+ * this box; the only number path is arb/acb. The cross-check ladder is
+ * therefore temporarily "acb@prec=53 vs acb@high-prec": every routine here takes
+ * an explicit `prec`, and the tests run it at 53 and at 256 and require the two
+ * certified balls to agree within a 53-bit-appropriate tol (tests/test_mat.c).
+ *
+ * Certified vs approximate (the FLINT eig wrinkle). FLINT's certified eig path
+ * is two-stage: `acb_mat_approx_eig_qr` produces *heuristic* float
+ * approximations (no error guarantee), then `acb_mat_eig_simple` *proves*
+ * isolating complex-interval enclosures `E` with eigenvector enclosures `R` and
+ * `L = R^{-1}` such that `L A R = diag(E)` (acb_mat.rst lines 740-756). There is
+ * NO Hermitian-specialised solver in FLINT 3.0.1 — only this general
+ * (non-Hermitian) family — so we feed it the general matrix, then EXPLOIT
+ * Hermiticity for checking: a Hermitian input must yield real eigenvalues, which
+ * we assert (the imaginary part of each enclosure must contain 0; see
+ * aic_mat_eig_hermitian). If `acb_mat_eig_simple` cannot isolate the spectrum at
+ * the given prec it returns 0 and we abort (CLAUDE.md Rule 4: fail loud), rather
+ * than fall back to a cluster enclosure — the multiple-eigenvalue fallback is a
+ * separate Law-4 audition.
+ *
+ * Paper provenance. These are generic linear-algebra primitives, not a single
+ * paper result, but they are the substrate for results that ARE cited:
+ *   - operator norm / cb-norm ampliation sup, approximate_algebras.tex:349;
+ *   - partial trace in the decode map rho_j = Tr_{E_j}(W_j rho W_j^dag),
+ *     approximate_algebras.tex:277 and :288, over the tensor factoring
+ *     M -> L_j (x) E_j of approximate_algebras.tex:263-264.
+ * The partial-trace index convention chosen here (below) is load-bearing for
+ * those UCP constructions, so it is pinned now.
+ *
+ * Tensor / partial-trace index convention (LOAD-BEARING — pinned here).
+ *   A matrix on the tensor-factored space C^a (x) C^b is stored as an
+ *   (a*b) x (a*b) `acb_mat_t` with the LEFT factor MAJOR (row-major Kronecker,
+ *   matching acb_mat_kronecker_product below and NumPy/textbook `kron`):
+ *
+ *       row index  I = i*b + j   with i in [0,a), j in [0,b)   (i = left, j = right)
+ *       col index  J = k*b + l   with k in [0,a), l in [0,b)
+ *       M[I,J] = <i,j| M |k,l>.
+ *
+ *   "Trace out factor 2 (the RIGHT/C^b factor)" sums the diagonal over j=l,
+ *   leaving an a x a operator on C^a (the LEFT factor):
+ *       (Tr_2 M)[i,k] = sum_{j} M[i*b + j, k*b + j].
+ *   "Trace out factor 1 (the LEFT/C^a factor)" sums over i=k, leaving a b x b
+ *   operator on C^b (the RIGHT factor):
+ *       (Tr_1 M)[j,l] = sum_{i} M[i*b + j, i*b + l].
+ *   So Tr_2 keeps the FIRST factor and Tr_1 keeps the SECOND. With this
+ *   convention Tr_2(A (x) B) = Tr(B) * A and Tr_1(A (x) B) = Tr(A) * B for the
+ *   Kronecker product below; tests/test_mat.c asserts both identities.
+ */
+#ifndef AIC_MAT_H
+#define AIC_MAT_H
+
+#include <flint/acb.h>
+#include <flint/acb_mat.h>
+#include <flint/arb.h>
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+/* Frobenius norm sqrt(sum |A_ij|^2) as a certified arb ball. Thin wrapper over
+ * FLINT's acb_mat_frobenius_norm; provided for API symmetry with aic_mat_opnorm
+ * and so callers depend on aic_mat, not on the FLINT spelling. `out` must be an
+ * initialised arb_t; A may be rectangular. */
+void aic_mat_frobenius_norm(arb_t out, const acb_mat_t A, slong prec);
+
+/* Largest eigenvalue of a Hermitian H, as a certified arb ball, ROBUST TO
+ * DEGENERACY. Asserts Hermiticity (fail loud). Route: FLINT's
+ * acb_mat_eig_global_enclosure (acb_mat.rst:653-694) gives a rigorous radius eps
+ * with every eigenvalue within eps of some approximate eigenvalue; the largest
+ * true eigenvalue then lies in [max_k Re(E_k) - eps, max_k Re(E_k) + eps], which
+ * is returned as the ball `out`. Unlike aic_mat_eig_hermitian this does NOT
+ * require a simple spectrum, so it works on the identity (lambda_max = 1) and
+ * any repeated-eigenvalue Gram matrix. `out` must be initialised. */
+void aic_mat_herm_max_eig(arb_t out, const acb_mat_t H, slong prec);
+
+/* Operator norm = largest singular value = sqrt(largest eigenvalue of A^dag A),
+ * as a certified arb ball. A may be rectangular (m x n); A^dag A is the n x n
+ * Hermitian PSD Gram matrix. Route: form the smaller Gram matrix, take its
+ * largest Hermitian eigenvalue (aic_mat_herm_max_eig, degeneracy-robust), sqrt
+ * it. `out` must be initialised. */
+void aic_mat_opnorm(arb_t out, const acb_mat_t A, slong prec);
+
+/* Hermitian eigendecomposition of a Hermitian H (n x n). Asserts Hermiticity of
+ * H up to a prec-appropriate tol (CLAUDE.md Rule 4, fail loud) BEFORE solving.
+ * Outputs:
+ *   evals : caller-allocated arb_t[n], the n real eigenvalues, ASCENDING. The
+ *           certified acb enclosures FLINT returns are asserted to have an
+ *           imaginary part containing 0 (Hermitian => real spectrum), and the
+ *           real part is copied out.
+ *   evecs : if non-NULL, an n x n acb_mat_t (caller-initialised) whose COLUMNS
+ *           are the certified right-eigenvector enclosures, column k <-> evals[k]
+ *           (same ascending order).
+ * Reconstruction V diag(evals) V^dag ~ H holds within tol; tests assert it.
+ *
+ * REQUIRES A SIMPLE (non-degenerate) SPECTRUM. The underlying acb_mat_eig_simple
+ * proves n ISOLATED eigenvalues; on a repeated eigenvalue it returns 0 and this
+ * routine aborts (CLAUDE.md Rule 4). Degenerate-spectrum eigenvectors (via
+ * acb_mat_eig_multiple's invariant-subspace enclosures) are a separate Law-4
+ * audition, not implemented here. For the largest eigenvalue alone (no
+ * eigenvectors) use aic_mat_herm_max_eig, which IS degeneracy-robust. */
+void aic_mat_eig_hermitian(arb_ptr evals, acb_mat_t evecs,
+                           const acb_mat_t H, slong prec);
+
+/* Singular values of a general m x n matrix A, as sqrt of the eigenvalues of the
+ * smaller Gram matrix (A^dag A if n<=m, else A A^dag), in DESCENDING order.
+ *   svals : caller-allocated arb_t[min(m,n)], the singular values.
+ * Goes through aic_mat_eig_hermitian, so it REQUIRES DISTINCT singular values
+ * (simple Gram spectrum); a repeated singular value aborts. Full U, Sigma, V SVD
+ * and the degenerate-spectrum case are later beads; only the distinct values are
+ * produced here. */
+void aic_mat_singular_values(arb_ptr svals, const acb_mat_t A, slong prec);
+
+/* Kronecker (tensor) product: out = A (x) B, LEFT factor major (row-major), so
+ * for A (m x n) and B (p x q), out is (m*p) x (n*q) with
+ *   out[i*p + r, j*q + s] = A[i,j] * B[r,s].
+ * `out` must be initialised to the (m*p) x (n*q) shape (asserted). */
+void aic_mat_kronecker(acb_mat_t out, const acb_mat_t A, const acb_mat_t B,
+                       slong prec);
+
+/* Partial trace over the RIGHT factor (C^b). Input M is (a*b) x (a*b) on
+ * C^a (x) C^b (index convention in the file docstring); `out` is the a x a
+ * result on C^a. (Tr_2 M)[i,k] = sum_j M[i*b+j, k*b+j]. `out` must be
+ * initialised a x a; a*b must equal nrows(M)=ncols(M) (asserted). */
+void aic_mat_partial_trace_right(acb_mat_t out, const acb_mat_t M,
+                                 slong a, slong b, slong prec);
+
+/* Partial trace over the LEFT factor (C^a). `out` is the b x b result on C^b.
+ * (Tr_1 M)[j,l] = sum_i M[i*b+j, i*b+l]. `out` must be initialised b x b;
+ * a*b must equal nrows(M)=ncols(M) (asserted). */
+void aic_mat_partial_trace_left(acb_mat_t out, const acb_mat_t M,
+                                slong a, slong b, slong prec);
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif /* AIC_MAT_H */
