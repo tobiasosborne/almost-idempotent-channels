@@ -64,6 +64,15 @@ Deps: gcc/C11, FLINT 3.0.1 (arb/acb bundled), LAPACK+LAPACKE+BLAS (installed
   image SVD); arb path certifies the 5 relations (ΓC_MΔ=1_A, ΔΓC_M=Φ, w *-hom,
   block-diag, Γ-CP) machine-zero across 6 channels incl. M⊊H. 76 checks.
   **Milestone `aic-9kk` (η=0 vertical slice) ACHIEVED.**
+- **`cbnorm`/η-defect** (`aic_ucp_compose`+`aic_ucp_choi_diff`, `aic-d24` increment 1):
+  `‖Φ²−Φ‖_cb` (η). Λ=Φ²−Φ is NOT CP → needs the Watrous diamond-norm SDP. Route B:
+  C core supplies `Choi(Φ²−Φ)` (both paths, cross-checked); the **SDP is in
+  Julia+MOSEK** (`tools/gen_fixtures_d24.jl`, committed `julia/env`), NO Python.
+  Load-bearing: `‖Λ‖_⋄ = (2/n)·SDP_optval` (Convention-A Choi has trace n). Golden
+  master triple-verified (hand-derivation + Julia regen + independent CLARABEL)
+  across n=2,3,4 + the paper's `η√(1−η)` example; 17 fixtures (incl. a complex one
+  guarding Choi-conjugation, + a rank-deficient Λ); `test_ucp_d24` n=71. Certified-arb
+  cb-ball + reusable value entry point → `aic-m24`.
 
 ## Key decisions & findings (the non-obvious stuff — don't relearn the hard way)
 
@@ -101,21 +110,25 @@ Deps: gcc/C11, FLINT 3.0.1 (arb/acb bundled), LAPACK+LAPACKE+BLAS (installed
 
 Issue tracker is **beads**, prefix `aic` (persistent across sessions; JSONL at
 `.beads/issues.jsonl` is committed). `bd ready` for the live list. `aic-c7n` (ucp),
-`aic-wuh` (idemp), `aic-9kk` (η=0 milestone) all CLOSED this session.
+`aic-wuh` (idemp), `aic-9kk` (η=0 milestone), `aic-d24` (cbnorm incr.1) all CLOSED
+this session.
 
-- **`aic-w4o.1` (P1)** — certified degenerate Hermitian eig (arb). Now the main
-  certified-path debt: gates the certified extraction in BOTH `ucp` (Kraus extract)
-  and `idemp` (M, A subspaces), and `projection`. Tooling found: `acb_mat_eig_
-  multiple_rump` (cluster enclosures), `acb_mat_eig_global_enclosure`; audition vs
-  an eig-free Cholesky route (see the bead notes).
-- **`aic-d24` (P1, NEW)** — `‖Φ²−Φ‖_cb` (the η-defect) via the Watrous diamond-norm
-  SDP + MOSEK golden master. Φ²−Φ is NOT CP so no closed form; needs an SDP. The
-  ampliation truncation `N=dim(input)` is RIGOROUS (resolves the old cb-norm-N
-  escalation). BLOCKS `assoc_ecsa` (`aic-92f`) — the almost-idempotent path needs η.
-- **E2-eps** (`aic-vs9`): `ecstar`, `unitfix`, `unitary`, `projection` (blocked by
-  `aic-w4o.1`), `corner`. **`aic-92f`** (`assoc_ecsa`, almost-idempotent ε-C* via
-  Φ̃=θ(2Φ−1)) — blocked by `aic-d24`. Then **E3-mainthm**, **E4-headline**,
-  **E5-julia**, **E6-research** (`aic-1bc` c_0, `aic-1sk` factorization closure).
+- **`aic-knm` (P2)** — ε-C* algebra data model + axiom-defect estimators (`ecstar`).
+  The ONLY remaining blocker for `aic-92f` (assoc_ecsa, the almost-idempotent
+  headline path): `aic-92f`'s other 3 deps (funcalc, ucp, d24) are now CLOSED. This
+  is the clear next step toward the headline.
+- **`aic-92f`** (`assoc_ecsa`, almost-idempotent ε-C* via Φ̃=θ(2Φ−1)) — unblocked
+  once `aic-knm` lands. η is measurable now via the Julia+MOSEK golden master.
+- **`aic-w4o.1` (P1)** — certified degenerate Hermitian eig (arb). The main
+  certified-path debt: gates the certified extraction deferred in `ucp` (Kraus),
+  `idemp` (M, A subspaces), and `projection`. Tooling: `acb_mat_eig_multiple_rump`
+  (cluster enclosures), `acb_mat_eig_global_enclosure`; audition vs an eig-free
+  Cholesky route (bead notes).
+- **`aic-m24` (P2, NEW)** — certified-arb cb-ball (KKT/rational-certificate; no arb
+  SDP solver — research escalation) + reusable diamond-norm value entry point (E5).
+- Rest of **E2-eps** (`aic-vs9`): `unitfix`, `unitary`, `projection` (blocked by
+  `aic-w4o.1`), `corner`. Then **E3-mainthm**, **E4-headline**, **E5-julia**,
+  **E6-research** (`aic-1bc` c_0, `aic-1sk` factorization closure).
 - **`aic-dbo.2` (P1)** — adversarial instance generators (evil-matrix corpus; unify
   with `aic-f9u.1`).
 - **NEW follow-ups from this session:** `aic-ynu` (P2, Artin–Wedderburn block
