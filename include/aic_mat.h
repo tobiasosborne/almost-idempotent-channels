@@ -9,11 +9,13 @@
  * with the Hermiticity precondition asserted, singular values, the Kronecker
  * product, and partial traces.
  *
- * Number path / cross-check ladder (beads aic-5ty). LAPACK is unavailable on
- * this box; the only number path is arb/acb. The cross-check ladder is
- * therefore temporarily "acb@prec=53 vs acb@high-prec": every routine here takes
- * an explicit `prec`, and the tests run it at 53 and at 256 and require the two
- * certified balls to agree within a 53-bit-appropriate tol (tests/test_mat.c).
+ * Number path / cross-check ladder (beads aic-5ty). This module is the arb/acb
+ * path; every routine takes an explicit `prec`. Its own internal cross-check is
+ * "acb@prec=53 vs acb@high-prec": the tests run it at 53 and at 256 and require
+ * the two certified balls to agree within a 53-bit-appropriate tol
+ * (tests/test_mat.c). (LAPACK was unavailable when this was first written; it is
+ * now installed and the double path lives in the separate `latd` module, against
+ * which arb is cross-checked double-vs-arb@53 — see include/aic_latd.h.)
  *
  * Certified vs approximate (the FLINT eig wrinkle). FLINT's certified eig path
  * is two-stage: `acb_mat_approx_eig_qr` produces *heuristic* float
