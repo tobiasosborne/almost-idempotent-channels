@@ -96,9 +96,80 @@ static void make_compress_idemp(aic_ucp_kraus *phi, slong d, slong m)
         acb_set_si(acb_mat_entry(phi->K[1 + b], 0, m + b), 1);
 }
 
+/* Build a FIXED n x n complex unitary V = exp(i H) for a fixed Hermitian H with
+ * a real (basis-mixing) part AND a complex (phase) part, so V is non-real and
+ * not basis-aligned. exp(i H) is unitary to ~machine precision (arb), enough to
+ * keep a conjugated idempotent EXACTLY idempotent at the 1e-12 oracle gate.
+ * H[p,q] for p<q: real 0.4 on the (p,p+1) super-diagonal (basis mixing) + a
+ * complex 0.3 i on (p, p+2) when it exists; H Hermitian by symmetrising. */
+__attribute__((unused))
+static void make_fixed_unitary(acb_mat_t V, slong n, slong prec)
+{
+    acb_mat_t H, iH;
+    acb_mat_init(H, n, n);
+    acb_mat_init(iH, n, n);
+    acb_mat_zero(H);
+    for (slong p = 0; p + 1 < n; p++) {
+        acb_set_d(acb_mat_entry(H, p, p + 1), 0.4);     /* real coupling   */
+        acb_set_d(acb_mat_entry(H, p + 1, p), 0.4);     /* Hermitian       */
+    }
+    for (slong p = 0; p + 2 < n; p++) {
+        acb_set_d_d(acb_mat_entry(H, p, p + 2), 0.0, 0.3);   /* + 0.3 i     */
+        acb_set_d_d(acb_mat_entry(H, p + 2, p), 0.0, -0.3);  /* Hermitian   */
+    }
+    for (slong p = 0; p < n; p++)
+        acb_set_d(acb_mat_entry(H, p, p), 0.1 * (double) (p + 1)); /* phases */
+    /* iH = i * H */
+    {
+        acb_t I_unit;
+        acb_init(I_unit);
+        acb_onei(I_unit);
+        acb_mat_scalar_mul_acb(iH, H, I_unit, prec);
+        acb_clear(I_unit);
+    }
+    acb_mat_exp(V, iH, prec); /* V = exp(i H), unitary */
+    acb_mat_clear(iH);
+    acb_mat_clear(H);
+}
+
+/* Conjugate an exactly-idempotent self-map `base` (on C^n) by a FIXED complex
+ * unitary V: K'_a = V^dag K_a V, so Phi'(X) = V^dag Phi(V X V^dag) V =
+ * Ad_{V^dag} o Phi o Ad_V. Phi' is still EXACTLY idempotent (Ad_V Ad_{V^dag}=id)
+ * and unital, but its image algebra V^dag (Img Phi) V is generally NOT transpose-
+ * closed for complex V — which gives the from_idemp reshape a real tooth (a
+ * TRANSPOSED reshape B_k[i,j]=Delta[j*n+i,k] would span a DIFFERENT subspace,
+ * making the gauge-invariant defects O(1); the original 7 channels all had
+ * transpose-closed images and could not catch it). `out` is init'd here. */
+__attribute__((unused))
+static void make_conjugated(aic_ucp_kraus *out, const aic_ucp_kraus *base,
+                            slong prec)
+{
+    slong n = base->dim_H;
+    AIC_CHECK_MSG(base->dim_K == n,
+                  "make_conjugated: base must be a self-map (dim_K==dim_H)");
+    acb_mat_t V, Vd, tmp;
+    acb_mat_init(V, n, n);
+    acb_mat_init(Vd, n, n);
+    acb_mat_init(tmp, n, n);
+    make_fixed_unitary(V, n, prec);
+    acb_mat_conjugate_transpose(Vd, V);
+    aic_ucp_kraus_init(out, n, n, base->r);
+    for (slong a = 0; a < base->r; a++) {
+        acb_mat_mul(tmp, Vd, base->K[a], prec);   /* V^dag K_a       */
+        acb_mat_mul(out->K[a], tmp, V, prec);     /* V^dag K_a V     */
+    }
+    acb_mat_clear(tmp);
+    acb_mat_clear(Vd);
+    acb_mat_clear(V);
+}
+
 /* ---- shared cross-check harness ---- */
 
-/* Pi_A = Delta Delta^dag (the gauge-invariant subspace projector for A). */
+/* Pi_A = Delta Delta^dag (the gauge-invariant subspace projector for A).
+ * __attribute__((unused)): the channel constructors above are reused by
+ * tests that do not drive the full idemp-relation harness (e.g. test_ecstar.c);
+ * marking the harness-only helpers keeps those TUs warning-clean. */
+__attribute__((unused))
 static void build_Pi_A(acb_mat_t Pi_A, const acb_mat_t Delta, slong prec)
 {
     acb_mat_t Dd;
@@ -130,6 +201,7 @@ static void check_iso(const char *name, const char *what, const acb_mat_t M,
 }
 
 /* Decompose, assert dims, internal sanity, the five relations + Gamma CP. */
+__attribute__((unused))
 static void check_decomp(const char *name, aic_ucp_kraus *phi,
                          slong expect_dM, slong expect_dA)
 {

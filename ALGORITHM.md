@@ -769,3 +769,127 @@ guard rejects any `Phi` with `max_ij ||Phi^2(E_ij)-Phi(E_ij)||_op > 1e-9`.
 - Certified degenerate eig/SVD for the extraction -> bead aic-w4o.1.
 - `eta > 0` (almost-idempotent, via `Phi_tilde`) is `assoc_ecsa`'s job (the entry
   guard rejects it here).
+
+## Module `ecstar` — ε-C* algebra data model + axiom-defect estimators (bead aic-knm)
+
+Files: `include/aic_ecstar.h`, `src/aic_ecstar.c` (data model + star +
+projection residual), `src/aic_ecstar_assoc.c` (the trilinear associator),
+`src/aic_ecstar_defect.c` (submult, C*, involution, unit), shared helper
+`src/aic_ecstar_internal.h`; tests `tests/test_ecstar.c`.
+
+### Data model
+
+An ε-C* algebra is a subspace `A ⊆ M_n` (`dim A = d`) given by a Frobenius-
+ORTHONORMAL operator basis `{B_1,…,B_d}` (`<B_j,B_k>_F = δ_jk`, each `n×n`),
+together with a unital CP map `Φ : B(C^n) → B(C^n)` (an `aic_ucp_kraus`,
+`dim_K == dim_H == n`). The multiplication is the **Choi–Effros star**
+
+```
+X ⋆ Y = Φ(X·Y)            (approximate_algebras.tex:341-342, :2187-2189)
+```
+
+with `X·Y` the ORDINARY matrix product and `Φ` applied via `aic_ucp_apply`. The
+involution is the matrix adjoint `X ↦ X†`; the unit is `I = 1_n` (the ambient
+identity, inherited, .tex:2186-2187); the norm is the OPERATOR norm
+`aic_mat_opnorm` (inherited from `B(H)`, .tex:2192). The cb-norm appears ONLY in
+the definition of `η` (.tex:347) and is NOT used inside the estimators.
+
+`aic_ecstar_from_idemp` fills `B_k[i,j] = d->Delta[i*n+j, k]` (reshape column `k`
+ROW-MAJOR, the project's vec convention), the exact `η=0` case `A = Img Φ`; it
+ASSERTS the columns are Frobenius-orthonormal on entry (the inherited
+`Delta† Delta = 1_A`). `phi` is BORROWED (caller-owned, must outlive the struct).
+
+### The estimators (basis sweeps; certified arb balls)
+
+Each is a sweep over the stored basis using `aic_mat_opnorm`; each is the eta=0
+EXACT-ZERO detector / a basis-sweep LOWER bound on the true sup-over-unit-ball
+`ε`. The faithful worst-case search (HOPM) and the certified SDP upper bound are
+later cycles (bead aic-0at).
+
+| estimator | axiom (.tex) | formula (basis sweep) | η=0 reading | kind |
+|---|---|---|---|---|
+| `assoc` | ax_assoc :412-413 | `max_ijk ‖(B_i⋆B_j)⋆B_k − B_i⋆(B_j⋆B_k)‖_op` | ~0 | EXACT zero-detector (associator is trilinear ⟹ basis triples ⟺ identically) |
+| `submult` | ax_prodnorm :410-411 | `max_jk max(0, ‖B_j⋆B_k‖_op − ‖B_j‖_op‖B_k‖_op)` | ~0 | LOWER bound (clamped ≥0) |
+| `cstar` | ax_C* :427-428 | `max_k max(0, 1 − ‖B_k†⋆B_k‖_op / ‖B_k‖_op²)` | ~0 | LOWER bound (clamped ≥0); fails loud if `‖B_k‖_op < 1/(2√n)` |
+| `involution` | ax_* :422-423 | `max_jk ‖(B_j⋆B_k)† − B_k†⋆B_j†‖_op` | 0 | ALWAYS-zero invariant for any Hermicity-preserving Φ (.tex:2208/:2211) |
+| `unit` | ax_eps_unit :432-434 | `max( ‖1_n−Π_A(1_n)‖_op, max_k‖B_k⋆I−B_k‖_op, max_k‖I⋆B_k−B_k‖_op )` | 0 | ALWAYS-zero invariant for unital Φ, `A=Img Φ` (.tex:2211 `X⋆I=X=I⋆X`) |
+
+A structural identity, recorded as a FINDING: **a UCP-defined star is always
+submultiplicative** (`‖Φ(XY)‖ ≤ ‖Φ‖_cb‖XY‖ ≤ ‖X‖‖Y‖`, `‖Φ‖_cb=1`), so
+`ax_prodnorm` holds with `ε ≤ 0` for ANY UCP `Φ` — the `submult` defect cannot be
+made positive by mixing UCP maps; its teeth require a NON-contractive map.
+
+### Cross-check ladder coverage (measured, prec=53)
+
+Rung 3 (η=0 oracle) — all five defects per channel, run via
+`aic_idemp_decompose → aic_ecstar_from_idemp`:
+
+```
+block_cond_exp(5,2)     assoc 0        submult 0  cstar 0  invol 0  unit 0
+block_cond_exp(3,1)     assoc 0        submult 0  cstar 0  invol 0  unit 0
+trace_replace(3)        assoc 0        submult 0  cstar 0  invol 0  unit 5.08e-16
+noiseless_subsystem(2,2) assoc 0       submult 0  cstar 0  invol 0  unit 3.01e-16
+identity(3)             assoc 0        submult 0  cstar 0  invol 0  unit 0
+dephasing(4)            assoc 0        submult 0  cstar 0  invol 0  unit 0
+compress_idemp(4,2)     assoc 0        submult 0  cstar 0  invol 0  unit 1.67e-16
+```
+
+The measured oracle ceiling is `≤ 5.08e-16` (unit, trace_replace(3)); assoc /
+submult / cstar read EXACTLY 0 on every channel. Gate: involution + unit at
+1e-12, assoc/submult/cstar at 1e-9 (the latter route Φ through the LAPACK-
+extracted Δ-basis; in practice they stay machine-zero, well inside both gates).
+
+Rung 2 (arb@53 vs arb@256): max defect diff `0.000e+00` on block_cond_exp(5,2).
+
+Gauge invariance (a real plane-rotation chain on the `d` basis vectors,
+`B'_k = Σ_l U[l,k] B_l`): max defect diff `1.923e-16` — confirms no estimator
+secretly depends on the basis choice.
+
+### Mutation / teeth map (Rule 7 — mandatory; the project's #1 bug is a test that cannot fail)
+
+Each estimator is shown to MOVE under a deliberate non-C* perturbation:
+
+- **`Φ_t = (1−t)Φ + t·Dep`** (UCP + Hermicity-preserving mix; Dep = trace-replace),
+  basis from the exact `A=Img Φ`, star uses `Φ_t`. `B_k` is no longer a `Φ_t`
+  fixed point, so:
+  ```
+  t=1e-3:  assoc 2.50e-4  cstar 7.50e-4  unit 1.00e-3   (submult 0, invol 0)
+  t=1e-2:  assoc 2.48e-3  cstar 7.50e-3  unit 1.00e-2   (≈10× each)
+  ```
+  `involution` stays 0 (Hermicity preserved); `submult` stays 0 (UCP ⟹
+  submultiplicative — the structural finding above).
+- **`submult`** teeth need a NON-contractive map `Φ' = (1+δ)Φ` (scale each Kraus
+  op by `√(1+δ)`): `submult` reads `0 → 1.00e-3 (δ=1e-3) → 1.00e-2 (δ=1e-2)`, 10×.
+- **basis off A**: push `B_0` of the dephasing algebra by `t·E_{01}` (off the
+  diagonal subalgebra): `unit` term (b) `‖Φ(B_0)−B_0‖` reads
+  `0 → 1.00e-3 → 1.00e-2`, 10×.
+- **projection residual / unit term (a)**: a 1-d algebra `span{E_00}` (Φ=id) does
+  NOT contain `1_2`, so `aic_ecstar_proj_residual(1_2) = 1.000` and the unit
+  defect = `1.000` — proves term (a) is non-vacuous.
+- **`involution`**: `aic_ucp_kraus` can only encode Hermicity-preserving maps
+  (`Φ(X)=ΣK†XK` is HP for any Kraus set), so the production estimator is a
+  STRUCTURAL always-zero. The mutation-proof recomputes the same defect with a
+  synthetic NON-HP map (doubling the imaginary part of one operand): the metric
+  jumps `0.00 (HP) → 5.00e-1 (non-HP)`, confirming the adjoint bookkeeping is real.
+- **plain-XY star mutant** (drop `Φ` from `aic_ecstar_star`): the η=0 oracle STILL
+  PASSES (the exact-idempotent basis is closed/associative under plain `XY` too,
+  lem_idemp), but the `Φ_t` teeth go RED (nothing routes through `Φ`). This is
+  exactly why Part B (teeth) is mandatory: the oracle alone does not pin the
+  Choi–Effros product.
+
+### Precision
+
+The defects are differences of `O(1)` operator-norm quantities, so `prec=53`
+resolves them to `~1e-16` (oracle ceiling 5.08e-16) and arb@53 vs arb@256 agree
+to `0`. No near-singular inversion arises in the basis sweep (the `(Λ+R)^{-1}` and
+`O(ε)` cancellations belong to the §12 modules). `cstar` fails loud if any
+`‖B_k‖_op` drops below `1/(2√n)` (a Frobenius-unit op has `‖·‖_op ≥ 1/√n`).
+
+### Deferred (beaded)
+
+- The faithful sup-over-operator-norm-unit-ball `ε` via HOPM multi-start (LOWER
+  bound, double path) and the certified SDP upper bound (Watrous cb-norm SDP for
+  the bilinear submult/cstar; Lasserre/SOS lift for the trilinear assoc) ->
+  bead aic-0at. The basis sweep here is a lower-bound / exact-zero detector only.
+- The `√d` operator-vs-Frobenius unit-ball factor (web leg §2) is irrelevant to
+  the zero-detection use here but must be handled in the HOPM/SDP cycle.
