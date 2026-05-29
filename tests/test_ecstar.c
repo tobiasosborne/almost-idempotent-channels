@@ -604,6 +604,382 @@ static void test_prec(void)
     aic_ucp_kraus_clear(&phi);
 }
 
+/* ---- Cycle 2: FAITHFUL worst-case HOPM search --------------------------- *
+ * The basis-sweep estimators above are exact-zero detectors / cheap lower
+ * bounds; the HOPM routines (aic_ecstar_defect_*_hopm) are the second audition
+ * candidate (Law 4): a scale-invariant alternating-maximization search over the
+ * OPERATOR-norm unit ball of A, returning a RIGOROUS LOWER BOUND (the lo end of a
+ * certified arb ball). The tests below establish, in order:
+ *   E1. eta=0 oracle: all three HOPM lower bounds ~0 on the exact-idempotent
+ *       channels (the search seeks a defect that is genuinely 0).
+ *   E2. audition payoff: HOPM_assoc >= basis-sweep_assoc on a perturbed instance
+ *       (HOPM is the faithful/tighter lower bound for the trilinear associator).
+ *   E3. THE UNIVERSALITY CANARY: at a FIXED perturbation t across growing dim,
+ *       the HOPM defect/t ratio does NOT grow (dimension-independent), while the
+ *       basis-sweep ratio drifts (the d^{3/2} trap). The headline test.
+ *   E4. mutation-proof the search SEARCHES (Rule 7): the weakest search
+ *       (n_restarts=1, n_iters=0) finds a STRICTLY SMALLER defect than the full
+ *       search on a perturbed instance (a "return 0 / never iterate" stub is
+ *       caught), per defect.
+ *   E5. certified-ball soundness: the returned lo <= the ratio re-evaluated at
+ *       the explicit witness, and the witness is in A (proj_residual ~0).
+ *
+ * Search counts are kept modest to bound suite time (convergence near eta=0 is
+ * fast; the global max is found in ~10-25 iters, see the bead notes). */
+
+/* assoc defect/t and (optionally) basis-sweep/t at a FIXED t for a
+ * block_cond_exp(d,m) family mixed with `dep`. Returns both ratios via out-params.
+ * The basis-sweep assoc is O(dim_A^3) arb star products (=91125 at dim_A=45), so
+ * `do_bs` lets the dimension-sweep skip it at the large-dim point (where the
+ * basis sweep is not asserted -- only HOPM/t flatness is); the contrast sweep
+ * computes it at the small dims where it is cheap. bs_over_t is set to -1 when
+ * skipped. */
+static void canary_point(double *hopm_over_t, double *bs_over_t, slong d, slong m,
+                         const aic_ucp_kraus *dep, double t, int rs, int its,
+                         int do_bs)
+{
+    aic_ucp_kraus phi;
+    make_block_cond_exp(&phi, d, m);
+    aic_idemp_decomp dd;
+    aic_idemp_decompose(&dd, &phi, PREC);
+    aic_ucp_kraus phit;
+    make_phi_mix(&phit, &phi, dep, t, PREC);
+    aic_ecstar A;
+    aic_ecstar_init(&A, dd.n, dd.dim_A, &phit);
+    aic_ecstar_from_idemp(&A, &dd, &phit, PREC);
+    arb_t bs, la;
+    arb_init(bs);
+    arb_init(la);
+    *bs_over_t = -1.0;
+    if (do_bs) { aic_ecstar_defect_assoc(bs, &A, PREC); *bs_over_t = defect_dbl(bs) / t; }
+    aic_ecstar_defect_assoc_hopm(la, &A, rs, its, PREC);
+    *hopm_over_t = defect_dbl(la) / t;
+    if (do_bs)
+        printf("  CANARY bce(%ld,%ld) dim_A=%2ld  basis_sweep/t=%.4e  HOPM/t=%.4e\n",
+               (long) d, (long) m, (long) dd.dim_A, *bs_over_t, *hopm_over_t);
+    else
+        printf("  CANARY bce(%ld,%ld) dim_A=%2ld  basis_sweep/t=(skipped, O(d^3))  HOPM/t=%.4e\n",
+               (long) d, (long) m, (long) dd.dim_A, *hopm_over_t);
+    arb_clear(la);
+    arb_clear(bs);
+    aic_ecstar_clear(&A);
+    aic_idemp_clear(&dd);
+    aic_ucp_kraus_clear(&phit);
+    aic_ucp_kraus_clear(&phi);
+}
+
+/* E1: eta=0 oracle — all three HOPM lower bounds ~0 on the 7+1 channels. */
+static void hopm_oracle_channel(const char *name, aic_ucp_kraus *phi)
+{
+    aic_idemp_decomp d;
+    aic_idemp_decompose(&d, phi, PREC);
+    aic_ecstar A;
+    aic_ecstar_init(&A, d.n, d.dim_A, phi);
+    aic_ecstar_from_idemp(&A, &d, phi, PREC);
+    arb_t la, ls, lc;
+    arb_init(la);
+    arb_init(ls);
+    arb_init(lc);
+    aic_ecstar_defect_assoc_hopm(la, &A, 4, 8, PREC);
+    aic_ecstar_defect_submult_hopm(ls, &A, 4, 8, PREC);
+    aic_ecstar_defect_cstar_hopm(lc, &A, 4, 8, PREC);
+    double a = defect_dbl(la), s = defect_dbl(ls), c = defect_dbl(lc);
+    printf("HOPM-ORACLE %-24s assoc_lo=%.2e submult_lo=%.2e cstar_lo=%.2e\n",
+           name, a, s, c);
+    /* the genuine C* algebra has zero defect; the search must read ~0 (a tiny
+     * negative is fine — submult/cstar lower bounds clamp at >=0 conceptually but
+     * the certified ratio can dip slightly below by rounding). */
+    AIC_CHECK_MSG(a < 1e-7, "%s: HOPM assoc_lo not ~0 (%.3e)", name, a);
+    AIC_CHECK_MSG(s < 1e-7, "%s: HOPM submult_lo not ~0 (%.3e)", name, s);
+    AIC_CHECK_MSG(c < 1e-7, "%s: HOPM cstar_lo not ~0 (%.3e)", name, c);
+    arb_clear(lc);
+    arb_clear(ls);
+    arb_clear(la);
+    aic_ecstar_clear(&A);
+    aic_idemp_clear(&d);
+}
+
+static void test_hopm_oracle(void)
+{
+    aic_ucp_kraus phi;
+    make_block_cond_exp(&phi, 5, 2); hopm_oracle_channel("block_cond_exp(5,2)", &phi);
+    aic_ucp_kraus_clear(&phi);
+    make_trace_replace(&phi, 3);     hopm_oracle_channel("trace_replace(3)", &phi);
+    aic_ucp_kraus_clear(&phi);
+    make_noiseless_subsystem(&phi, 2, 2);
+    hopm_oracle_channel("noiseless_subsystem(2,2)", &phi);
+    aic_ucp_kraus_clear(&phi);
+    make_identity(&phi, 3);          hopm_oracle_channel("identity(3)", &phi);
+    aic_ucp_kraus_clear(&phi);
+    make_dephasing(&phi, 4);         hopm_oracle_channel("dephasing(4)", &phi);
+    aic_ucp_kraus_clear(&phi);
+    make_compress_idemp(&phi, 4, 2); hopm_oracle_channel("compress_idemp(4,2)", &phi);
+    aic_ucp_kraus_clear(&phi);
+    /* asymmetric conjugated channel (the transpose-closure tooth from Cycle 1). */
+    {
+        aic_ucp_kraus base, conj;
+        make_compress_idemp(&base, 4, 2);
+        make_conjugated(&conj, &base, PREC);
+        hopm_oracle_channel("conj_compress_idemp(4,2)", &conj);
+        aic_ucp_kraus_clear(&conj);
+        aic_ucp_kraus_clear(&base);
+    }
+}
+
+/* E2: HOPM_assoc >= basis-sweep_assoc on a phi_mix-perturbed instance, across t.
+ * The associator basis sweep is a genuine LOWER bound on the trilinear sup, so the
+ * faithful HOPM must meet or beat it. (For submult/cstar the basis sweep measures
+ * a DIFFERENT per-basis-element quantity, not normalized to op-norm-1, so the >=
+ * relation need not hold there; this audition payoff is asserted for assoc.) */
+static void test_hopm_vs_basis_sweep(void)
+{
+    aic_ucp_kraus phi, dep;
+    make_block_cond_exp(&phi, 4, 2);
+    make_dep(&dep, 4);
+    aic_idemp_decomp d;
+    aic_idemp_decompose(&d, &phi, PREC);
+    const double ts[2] = {1e-3, 1e-2};
+    for (int it = 0; it < 2; it++) {
+        aic_ucp_kraus phit;
+        make_phi_mix(&phit, &phi, &dep, ts[it], PREC);
+        aic_ecstar A;
+        aic_ecstar_init(&A, d.n, d.dim_A, &phit);
+        aic_ecstar_from_idemp(&A, &d, &phit, PREC);
+        arb_t bs, la;
+        arb_init(bs);
+        arb_init(la);
+        aic_ecstar_defect_assoc(bs, &A, PREC);
+        aic_ecstar_defect_assoc_hopm(la, &A, 12, 15, PREC);
+        double b = defect_dbl(bs), h = defect_dbl(la);
+        printf("AUDITION t=%.0e  assoc basis_sweep=%.4e  HOPM_lo=%.4e  (HOPM/BS=%.2f)\n",
+               ts[it], b, h, b > 1e-30 ? h / b : 0.0);
+        AIC_CHECK_MSG(h >= b - 1e-9,
+                      "audition: HOPM assoc %.3e < basis-sweep %.3e (t=%.0e)", h, b,
+                      ts[it]);
+        AIC_CHECK_MSG(h > b + 1e-9 || ts[it] < 1e-30,
+                      "audition: HOPM not strictly tighter than basis-sweep");
+        arb_clear(la);
+        arb_clear(bs);
+        aic_ecstar_clear(&A);
+        aic_ucp_kraus_clear(&phit);
+    }
+    aic_idemp_clear(&d);
+    aic_ucp_kraus_clear(&dep);
+    aic_ucp_kraus_clear(&phi);
+}
+
+/* E3: THE UNIVERSALITY CANARY. Fixed t=1e-2 across block_cond_exp at growing dim.
+ * The HOPM defect/t ratio must NOT grow with dim (stays within a constant factor)
+ * -- that is the dimension-independence the operator-norm-sphere search buys (no
+ * d^{3/2} Frobenius inflation). Two sweeps:
+ *   (A) DIMENSION SWEEP d=4,6,9 (dim_A=8,18,45) with a DEPHASING perturbation
+ *       (d Kraus -> cheap, the 3-point sweep stays fast); asserts HOPM/t flat.
+ *   (B) CONTRAST d=4,6 with a TRACE_REPLACE perturbation, where the basis-sweep
+ *       ratio visibly DRIFTS DOWN with dim (0.25 -> 0.17) while HOPM stays high
+ *       (~1.4-1.5) -- exposing the basis sweep's dimension-dependence the faithful
+ *       search avoids. (trace_replace at d=9 has ~90 Kraus and is too slow for the
+ *       suite, so the 3-point sweep uses the cheap dephasing perturbation.) */
+static void test_hopm_canary(void)
+{
+    double t = 1e-2;
+    double h4, b4, h6, b6, h9, b9;
+    printf("UNIVERSALITY CANARY (A) dimension sweep, dephasing-mix, assoc/t, t=%.0e:\n", t);
+    {
+        aic_ucp_kraus dep; make_dephasing(&dep, 4);
+        canary_point(&h4, &b4, 4, 2, &dep, t, 10, 12, 1);
+        aic_ucp_kraus_clear(&dep);
+    }
+    {
+        aic_ucp_kraus dep; make_dephasing(&dep, 6);
+        canary_point(&h6, &b6, 6, 3, &dep, t, 6, 8, 1);
+        aic_ucp_kraus_clear(&dep);
+    }
+    {
+        aic_ucp_kraus dep; make_dephasing(&dep, 9);
+        canary_point(&h9, &b9, 9, 3, &dep, t, 3, 6, 0);
+        aic_ucp_kraus_clear(&dep);
+    }
+    (void) b4; (void) b6; (void) b9; /* printed inside canary_point; A asserts only HOPM */
+    /* HOPM/t stays within a constant factor: bounded above (does NOT grow with
+     * dim) AND bounded below away from 0 (the search genuinely finds the defect at
+     * every dim). */
+    double hmin = h4, hmax = h4;
+    double hs[3] = {h4, h6, h9};
+    for (int i = 0; i < 3; i++) { if (hs[i] < hmin) hmin = hs[i]; if (hs[i] > hmax) hmax = hs[i]; }
+    AIC_CHECK_MSG(hmin > 0.3,
+                  "canary: HOPM/t fell near 0 at some dim (min %.3e) -- search "
+                  "failed to find the defect", hmin);
+    AIC_CHECK_MSG(hmax / hmin < 4.0,
+                  "canary: HOPM/t GREW with dim (max/min=%.2f) -- the d^{3/2} trap "
+                  "(universality FAIL)", hmax / hmin);
+    printf("  -> HOPM/t in [%.3f, %.3f], spread factor %.2f (flat = dim-independent)\n",
+           hmin, hmax, hmax / hmin);
+
+    /* (B) the trace_replace contrast: basis sweep DRIFTS DOWN with dim. */
+    printf("UNIVERSALITY CANARY (B) contrast, trace_replace-mix, assoc/t, t=%.0e:\n", t);
+    double hc4, bc4, hc6, bc6;
+    {
+        aic_ucp_kraus dep; make_trace_replace(&dep, 4);
+        canary_point(&hc4, &bc4, 4, 2, &dep, t, 10, 12, 1);
+        aic_ucp_kraus_clear(&dep);
+    }
+    {   /* second contrast point at bce(5,2): dim_A=13 (basis-sweep O(d^3) is
+         * 2.6s here vs 12s at dim_A=18 -- the contrast drift is already visible
+         * from dim_A=8 to 13). */
+        aic_ucp_kraus dep; make_trace_replace(&dep, 5);
+        canary_point(&hc6, &bc6, 5, 2, &dep, t, 8, 10, 1);
+        aic_ucp_kraus_clear(&dep);
+    }
+    printf("  -> basis_sweep/t DRIFTS %.4f -> %.4f (down %.0f%%); "
+           "HOPM/t stays %.4f -> %.4f (flat)\n",
+           bc4, bc6, 100.0 * (1.0 - bc6 / bc4), hc4, hc6);
+    /* HOPM stays high & flat where the basis sweep drops: the faithful search does
+     * NOT inherit the basis sweep's dimension drift. */
+    AIC_CHECK_MSG(hc4 > 1.0 && hc6 > 1.0,
+                  "canary(B): HOPM/t dropped below 1.0 (%.3f, %.3f)", hc4, hc6);
+    AIC_CHECK_MSG(bc6 < bc4,
+                  "canary(B): basis_sweep/t did not drift down with dim (%.3f -> %.3f)",
+                  bc4, bc6);
+}
+
+/* E4: mutation-proof the search SEARCHES (Rule 7). On a perturbed instance the
+ * weakest search (1 restart, 0 iters: a single un-iterated init) must find a
+ * STRICTLY SMALLER defect than the full search -- so a "return 0 / never iterate"
+ * stub is caught for each defect. Also confirms the full search recovers a value
+ * bounded below by the hand-checked basis-sweep witness for assoc. */
+static void test_hopm_searches(void)
+{
+    aic_ucp_kraus phi, dep;
+    make_block_cond_exp(&phi, 4, 2);
+    make_dep(&dep, 4);
+    aic_idemp_decomp d;
+    aic_idemp_decompose(&d, &phi, PREC);
+    aic_ucp_kraus phit;
+    make_phi_mix(&phit, &phi, &dep, 1e-2, PREC);
+    aic_ecstar A;
+    aic_ecstar_init(&A, d.n, d.dim_A, &phit);
+    aic_ecstar_from_idemp(&A, &d, &phit, PREC);
+
+    arb_t a0, a1, s0, s1, c0, c1, bs;
+    arb_init(a0); arb_init(a1); arb_init(s0); arb_init(s1);
+    arb_init(c0); arb_init(c1); arb_init(bs);
+    aic_ecstar_defect_assoc_hopm(a0, &A, 1, 0, PREC);   /* weakest */
+    aic_ecstar_defect_assoc_hopm(a1, &A, 12, 15, PREC); /* full    */
+    aic_ecstar_defect_submult_hopm(s0, &A, 1, 0, PREC);
+    aic_ecstar_defect_submult_hopm(s1, &A, 12, 15, PREC);
+    aic_ecstar_defect_cstar_hopm(c0, &A, 1, 0, PREC);
+    aic_ecstar_defect_cstar_hopm(c1, &A, 12, 15, PREC);
+    aic_ecstar_defect_assoc(bs, &A, PREC);
+    printf("SEARCHES assoc  weakest(1,0)=%.4e  full=%.4e  basis_sweep=%.4e\n",
+           defect_dbl(a0), defect_dbl(a1), defect_dbl(bs));
+    printf("SEARCHES submult weakest(1,0)=%.4e  full=%.4e\n", defect_dbl(s0), defect_dbl(s1));
+    printf("SEARCHES cstar  weakest(1,0)=%.4e  full=%.4e\n", defect_dbl(c0), defect_dbl(c1));
+    /* the full search STRICTLY beats the weakest -- a non-searching stub is RED */
+    AIC_CHECK_MSG(defect_dbl(a1) > defect_dbl(a0) + 1e-5,
+                  "searches: assoc full %.3e not > weakest %.3e (search is a stub?)",
+                  defect_dbl(a1), defect_dbl(a0));
+    AIC_CHECK_MSG(defect_dbl(s1) > defect_dbl(s0) + 1e-5,
+                  "searches: submult full %.3e not > weakest %.3e",
+                  defect_dbl(s1), defect_dbl(s0));
+    AIC_CHECK_MSG(defect_dbl(c1) > defect_dbl(c0) + 1e-5,
+                  "searches: cstar full %.3e not > weakest %.3e",
+                  defect_dbl(c1), defect_dbl(c0));
+    /* full assoc recovers at least the basis-sweep witness value (hand-checkable). */
+    AIC_CHECK_MSG(defect_dbl(a1) >= defect_dbl(bs) - 1e-9,
+                  "searches: full assoc %.3e below basis-sweep witness %.3e",
+                  defect_dbl(a1), defect_dbl(bs));
+    arb_clear(bs); arb_clear(c1); arb_clear(c0);
+    arb_clear(s1); arb_clear(s0); arb_clear(a1); arb_clear(a0);
+    aic_ecstar_clear(&A);
+    aic_ucp_kraus_clear(&phit);
+    aic_idemp_clear(&d);
+    aic_ucp_kraus_clear(&dep);
+    aic_ucp_kraus_clear(&phi);
+}
+
+/* E5: certified-ball soundness. The returned lo must be <= the assoc ratio
+ * re-evaluated at the explicit witness (rigorous lower bound), and each witness
+ * block must be in A (aic_ecstar_proj_residual ~0).
+ *
+ * FINDING (subspace-polar accept-guard, Cycle-2 blind spot). The witness-in-A
+ * property here is enforced by Pi_A(polar(C)) in the block update. But on EVERY
+ * Cycle-2 test instance, A = Img(exact Phi) is a GENUINE C* algebra, which is
+ * polar/von-Neumann-CLOSED, so polar(C) already lands in A and dropping Pi_A is
+ * observationally identical (verified: a skip-Pi_A mutation leaves this test
+ * GREEN). The Pi_A projection's CORRECTNESS contribution (keeping witnesses in an
+ * only-eps-polar-closed A) can only be exercised by a genuine eta>0 A = Img Phi~
+ * (Phi~=theta(2Phi-1)) -- that is Cycle 3 (bead aic-92f assoc_ecsa), where the
+ * associator is also nonzero so candidates actually get accepted. The accept-
+ * guard's MONOTONE-ASCENT contribution IS exercised now: a never-iterate mutation
+ * of the engine drives the canary/searches RED (the witness ratio collapses).
+ * Bead filed for the Pi_A teeth on a non-polar-closed A. */
+static void test_hopm_soundness(void)
+{
+    aic_ucp_kraus phi, dep;
+    make_block_cond_exp(&phi, 4, 2);
+    make_dep(&dep, 4);
+    aic_idemp_decomp d;
+    aic_idemp_decompose(&d, &phi, PREC);
+    aic_ucp_kraus phit;
+    make_phi_mix(&phit, &phi, &dep, 1e-2, PREC);
+    aic_ecstar A;
+    aic_ecstar_init(&A, d.n, d.dim_A, &phit);
+    aic_ecstar_from_idemp(&A, &d, &phit, PREC);
+
+    slong n = A.n;
+    acb_mat_t wX, wY, wZ, xy, lhs, yz, rhs, hh;
+    acb_mat_init(wX, n, n); acb_mat_init(wY, n, n); acb_mat_init(wZ, n, n);
+    acb_mat_init(xy, n, n); acb_mat_init(lhs, n, n); acb_mat_init(yz, n, n);
+    acb_mat_init(rhs, n, n); acb_mat_init(hh, n, n);
+    arb_t lo;
+    arb_init(lo);
+    aic_ecstar_defect_assoc_hopm_witness(lo, wX, wY, wZ, &A, 20, 20, PREC);
+
+    /* (i) witnesses in A */
+    arb_t rX, rY, rZ;
+    arb_init(rX); arb_init(rY); arb_init(rZ);
+    aic_ecstar_proj_residual(rX, &A, wX, PREC);
+    aic_ecstar_proj_residual(rY, &A, wY, PREC);
+    aic_ecstar_proj_residual(rZ, &A, wZ, PREC);
+    AIC_CHECK_MSG(defect_dbl(rX) < 1e-9 && defect_dbl(rY) < 1e-9 &&
+                  defect_dbl(rZ) < 1e-9,
+                  "soundness: witness not in A (residuals %.2e %.2e %.2e)",
+                  defect_dbl(rX), defect_dbl(rY), defect_dbl(rZ));
+
+    /* (ii) lo <= ratio at the witness. ratio = ||h||_op/(||X||||Y||||Z||). */
+    aic_ecstar_star(xy, &A, wX, wY, PREC);
+    aic_ecstar_star(lhs, &A, xy, wZ, PREC);
+    aic_ecstar_star(yz, &A, wY, wZ, PREC);
+    aic_ecstar_star(rhs, &A, wX, yz, PREC);
+    acb_mat_sub(hh, lhs, rhs, PREC);
+    arb_t nh, nx, ny, nz, ratio;
+    arb_init(nh); arb_init(nx); arb_init(ny); arb_init(nz); arb_init(ratio);
+    aic_mat_opnorm(nh, hh, PREC);
+    aic_mat_opnorm(nx, wX, PREC);
+    aic_mat_opnorm(ny, wY, PREC);
+    aic_mat_opnorm(nz, wZ, PREC);
+    arb_mul(ratio, nx, ny, PREC);
+    arb_mul(ratio, ratio, nz, PREC);
+    arb_div(ratio, nh, ratio, PREC);
+    printf("SOUNDNESS lo=%.6e  ratio@witness=%.6e  residuals<%.1e\n",
+           defect_dbl(lo), defect_dbl(ratio),
+           fmax(fmax(defect_dbl(rX), defect_dbl(rY)), defect_dbl(rZ)) + 1e-30);
+    AIC_CHECK_MSG(arb_le(lo, ratio) || defect_dbl(lo) <= defect_dbl(ratio) + 1e-9,
+                  "soundness: lo %.6e > ratio@witness %.6e (NOT a lower bound)",
+                  defect_dbl(lo), defect_dbl(ratio));
+
+    arb_clear(ratio); arb_clear(nz); arb_clear(ny); arb_clear(nx); arb_clear(nh);
+    arb_clear(rZ); arb_clear(rY); arb_clear(rX);
+    arb_clear(lo);
+    acb_mat_clear(hh); acb_mat_clear(rhs); acb_mat_clear(yz); acb_mat_clear(lhs);
+    acb_mat_clear(xy); acb_mat_clear(wZ); acb_mat_clear(wY); acb_mat_clear(wX);
+    aic_ecstar_clear(&A);
+    aic_ucp_kraus_clear(&phit);
+    aic_idemp_clear(&d);
+    aic_ucp_kraus_clear(&dep);
+    aic_ucp_kraus_clear(&phi);
+}
+
 int main(void)
 {
     test_oracle();
@@ -613,6 +989,12 @@ int main(void)
     teeth_non_hp();
     test_gauge();
     test_prec();
+    /* Cycle 2: faithful worst-case HOPM search */
+    test_hopm_oracle();
+    test_hopm_vs_basis_sweep();
+    test_hopm_canary();
+    test_hopm_searches();
+    test_hopm_soundness();
     aic_test_report("test_ecstar");
     printf("OK test_ecstar\n");
     return 0;

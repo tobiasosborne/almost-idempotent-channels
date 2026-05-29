@@ -165,6 +165,73 @@ void aic_ecstar_involution_core(arb_t out, const acb_mat_t *B, slong d, slong n,
  * .tex:2211 "X*I = X = I*X"). An always-zero invariant for unital Phi, A=Img Phi. */
 void aic_ecstar_defect_unit(arb_t out, const aic_ecstar *A, slong prec);
 
+/* --- Cycle 2: FAITHFUL worst-case defect search (HOPM) -------------------- *
+ * The basis-sweep estimators above are EXACT-ZERO detectors / cheap LOWER
+ * bounds; the routines below are the second audition candidate (Law 4): a
+ * scale-invariant alternating-maximization (higher-order power method) search
+ * for the worst-case axiom defect over the OPERATOR-norm unit ball of the
+ * subspace A. Each returns a RIGOROUS LOWER BOUND on the true sup (the `lo`
+ * end of a certified arb ball): the search runs in the fast double path for
+ * speed, but the FINAL witness it returns (an explicit operator IN A) is
+ * evaluated for its defect ratio in the certified arb path (aic_ecstar_star +
+ * aic_mat_opnorm), so `lo` provably under-estimates the sup. There is no global
+ * guarantee — any in-A witness gives a valid lower bound (web leg Q8).
+ *
+ * WHY this is dimension-independent (the universality canary). The search works
+ * directly on the spectral-norm unit sphere of A: every iterate X = sum_k x_k B_k
+ * is in A (so the witness is valid) and is normalized by ||.||_op (not ||.||_F),
+ * so it does NOT pay the d^{3/2} Frobenius-to-operator inflation that makes the
+ * basis sweep grow with dim (web leg Cycle-2 decision; HANDOFF universality canary).
+ *
+ * THE SUBSPACE-POLAR SUBTLETY (load-bearing). The block update maximizes the
+ * linear functional Re<C, X>_F over {X in A, ||X||_op <= 1} where the Frobenius
+ * gradient C = sum_k c_k B_k is IN A (c_k = <u, h(B_k,...) v>). polar(C)=U V^dag
+ * (from the SVD of C) is the exact maximizer over the FULL M_n operator-ball, but
+ * for an APPROXIMATE C* algebra (eta>0) polar(C) is generally NOT in A (a genuine
+ * C* algebra is polar/von-Neumann closed; ours is only eps-close). Using polar(C)
+ * directly would yield a witness OUTSIDE A and an INVALID lower bound. So the step
+ * is X' = Pi_A(polar(C)) (project the polar factor back onto A), accepted only if
+ * the scale-invariant ratio STRICTLY improves (monotone-ascent guard); else X is
+ * kept. The accept-guard keeps every accepted iterate exactly in A and makes the
+ * approximate-polar step robust.
+ *
+ * Deterministic restarts (no wall-clock RNG, project rule): each restart's init
+ * is seeded from a fixed counter derived from the restart index, so the result is
+ * reproducible. Half the restarts warm-start from the Frobenius-relaxation optimum
+ * (top singular vectors / random in A), half from Haar-ish random operators in A.
+ *
+ * Contract: `lo` (initialised arb_t) receives a LOWER bound on the true sup. The
+ * routines ASSERT n_restarts >= 1 and n_iters >= 0 (n_iters==0 is the "never
+ * iterate" mutation probe: it returns only the init witness value). */
+
+/* ax_assoc (.tex:412-413): lower bound on
+ *   eps_assoc = sup_{X,Y,Z in A, !=0}
+ *               ||(X*Y)*Z - X*(Y*Z)||_op / (||X||_op ||Y||_op ||Z||_op). */
+void aic_ecstar_defect_assoc_hopm(arb_t lo, const aic_ecstar *A, int n_restarts,
+                                  int n_iters, slong prec);
+
+/* ax_prodnorm (.tex:410-411): lower bound on
+ *   sup_{X,Y in A} ||X*Y||_op / (||X||_op ||Y||_op) - 1
+ * (expected ~0: any UCP star is submultiplicative; the search must confirm ~0). */
+void aic_ecstar_defect_submult_hopm(arb_t lo, const aic_ecstar *A, int n_restarts,
+                                    int n_iters, slong prec);
+
+/* ax_C* (.tex:427-428): lower bound on
+ *   eps_cstar = sup_{X in A} (1 - ||X^dag * X||_op / ||X||_op^2)
+ *             = 1 - min_{||X||_op=1} ||X^dag * X||_op   (a MINIMIZATION inside). */
+void aic_ecstar_defect_cstar_hopm(arb_t lo, const aic_ecstar *A, int n_restarts,
+                                  int n_iters, slong prec);
+
+/* assoc HOPM with the EXPLICIT witness exposed (for the certified-ball soundness
+ * test, Rule 7). Same as aic_ecstar_defect_assoc_hopm but also writes the worst-
+ * case witness operators into wX,wY,wZ (caller-initialised n x n acb_mat), so a
+ * test can check (i) each is in A (aic_ecstar_proj_residual ~0) and (ii) the
+ * returned `lo` <= the ratio re-evaluated at (wX,wY,wZ). `lo` is the same
+ * rigorous lower bound. wX/wY/wZ may be NULL to skip. */
+void aic_ecstar_defect_assoc_hopm_witness(arb_t lo, acb_mat_t wX, acb_mat_t wY,
+                                          acb_mat_t wZ, const aic_ecstar *A,
+                                          int n_restarts, int n_iters, slong prec);
+
 #ifdef __cplusplus
 }
 #endif

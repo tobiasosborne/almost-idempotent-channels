@@ -548,3 +548,452 @@ maximum of a form that is near zero benefit from:
   https://arxiv.org/pdf/2502.09984
 - Complexity of matrix p-norms, arXiv:0908.1397.
   https://arxiv.org/pdf/0908.1397
+
+---
+
+## Cycle 2 — faithful operator-norm worst-case search (method decision)
+
+**Date:** 2026-05-29  
+**Scope:** aic-knm. Faithful (dimension-independent) lower-bound search for
+ε_assoc, ε_sub, ε_cstar via iterative witness extraction, without SDP.
+
+### Problem restatement
+
+Subspace A ⊆ M_n (n×n complex), dim A = d, basis {B_1..B_d} Frobenius-ONB.
+Star product X⋆Y = Φ(XY). Three defects, each a ratio of norms over
+operator-norm (spectral-norm) unit balls of A:
+
+  ε_assoc = sup_{X,Y,Z∈A, ‖·‖_op≤1} ‖(X⋆Y)⋆Z − X⋆(Y⋆Z)‖_op
+  ε_sub   = sup_{X,Y∈A, ‖·‖_op≤1} (‖X⋆Y‖_op − 1)   [positive part]
+  ε_cstar = 1 − inf_{X∈A, ‖X‖_op=1} ‖X†⋆X‖_op
+
+Goal: find a witness (X*,Y*,Z*) by iterative double-path search, evaluate
+the ratio in arb to certify the lower bound. NOT an SDP.
+
+### Candidate methods evaluated
+
+#### Method 1: Scale-invariant HOPM / alternating maximization on the
+spectral-norm unit sphere — RECOMMENDED PRIMARY
+
+**Core insight.** Scale-invariance of the ratio means we can work on the
+actual spectral-norm unit sphere {A∈M_n: ‖A‖_op=1} rather than an ℓ₂
+sphere on coefficient vectors, avoiding the √dim inflation entirely.
+
+**The scale-invariant objective.** For ε_assoc the ratio is
+  R(X,Y,Z) = ‖h(X,Y,Z)‖_op / (‖X‖_op ‖Y‖_op ‖Z‖_op),
+which is homogeneous of degree 0. Maximizing R is equivalent to maximizing
+  F(X,Y,Z) = ‖h(X,Y,Z)‖_op
+subject to ‖X‖_op = ‖Y‖_op = ‖Z‖_op = 1, X,Y,Z ∈ A.
+
+**Variational reduction of the outer ‖·‖_op.** Use
+  ‖h(X,Y,Z)‖_op = max_{‖u‖₂=‖v‖₂=1} |⟨u, h(X,Y,Z) v⟩|.
+Introduce auxiliary unit vectors u,v ∈ C^n and maximize
+  G(X,Y,Z,u,v) = Re⟨u, h(X,Y,Z) v⟩
+over ‖X‖_op=‖Y‖_op=‖Z‖_op=1 (X,Y,Z∈A), ‖u‖₂=‖v‖₂=1.
+
+This is a five-way alternating maximization. Each update is closed-form or
+a single SVD/eigenstep:
+
+  **u-update** (fix X,Y,Z,v): u ← h(X,Y,Z)v / ‖h(X,Y,Z)v‖₂.
+  **v-update** (fix X,Y,Z,u): v ← h(X,Y,Z)† u / ‖h(X,Y,Z)† u‖₂.
+  **X-update** (fix Y,Z,u,v): maximize Re⟨u, h(X,Y,Z)v⟩ over ‖X‖_op≤1, X∈A.
+    Write h(X,Y,Z) = Φ(Φ(XY)Z) − Φ(XΦ(YZ)); fixing Y,Z,u,v the functional
+    X ↦ Re⟨u, h(X,Y,Z)v⟩ is linear in X (since h is linear in X). Thus it
+    equals Re⟨C_X, X⟩_F for some C_X ∈ M_n computable from (Y,Z,u,v):
+      C_X = [∂_X h(X,Y,Z)]† (uv†)
+           = Φ†(uv†) · (YZ)† [first term contribution]
+           − Φ†(uv†) · Φ(YZ)† [second term contribution],
+    where Φ† is the adjoint of Φ (also a CP map, the dual in Hilbert-Schmidt
+    inner product). This simplifies to
+      C_X = Φ†(uv†) · (YZ)† − Φ(YZ) · (something)
+    (precise formula requires unrolling; see implementation note below).
+    Now maximize Re⟨C_X, X⟩_F over X∈A, ‖X‖_op≤1.
+    **This is the crux.** The Frobenius inner product Re⟨C_X, X⟩_F = Re⟨P_A C_X, X⟩_F
+    (project C_X onto A) = Re⟨c, x⟩ for x = coefficient vector in A-basis,
+    c_k = Re⟨B_k, C_X⟩_F. Then we want to maximize Re⟨c, x⟩ over
+    ‖X(x)‖_op ≤ 1, X(x) = Σ x_k B_k.
+    The solution: x* = λ(u₁v₁†) where (u₁,v₁) is the leading singular pair
+    of P_A(C_X) (the A-projection of C_X) in the sense that u₁v₁† maximizes
+    Re⟨C_X, X⟩_F over ‖X‖_op≤1, X∈A. Concretely:
+      X* = argmax_{‖X‖_op≤1, X∈A} Re⟨C_X, X⟩_F
+         = P_A(C_X / ‖P_A(C_X)‖_op)  ... if P_A preserves operator-norm structure
+    CAUTION: P_A is the Frobenius projection onto A; P_A(C_X) is not in general
+    a rank-1 matrix. The correct update is: decompose P_A(C_X) = Σ σ_k e_k f_k†
+    via SVD; then X* = e₁f₁† is the maximizer (a rank-1 matrix in M_n, but
+    not necessarily in A). To enforce X∈A, we need P_A(e₁f₁†) and then
+    re-normalize to the spectral-norm unit sphere:
+      X* ← P_A(e₁f₁†) / ‖P_A(e₁f₁†)‖_op.
+    This is a valid subgradient-type step: it moves in the direction of the
+    supergradient of Re⟨C_X,·⟩ restricted to {X∈A: ‖X‖_op≤1}. Each iterate
+    is in the feasible set, so the ratio at each iterate is a valid lower bound.
+    Non-smoothness at degenerate top singular value of P_A(C_X): any choice of
+    leading singular pair in the degenerate subspace is a valid (sub)gradient;
+    pick one (e.g. the one returned by LAPACK's `zgesvd`). The iterate is still
+    feasible.
+  **Y-update, Z-update:** symmetric to X-update with the appropriate linear
+    functional in Y (or Z) derived from fixing X,Z,u,v (resp. X,Y,u,v).
+
+**Implementation note.** To compute C_X explicitly:
+  h(X,Y,Z) = Φ(Φ(XY)Z) − Φ(XΦ(YZ)).
+  ∂_X h(X,Y,Z) · δX = Φ(Φ(δX·Y)·Z) − Φ(δX·Φ(YZ)).
+  Thus ⟨uv†, ∂_X h · δX⟩_F = ⟨Φ†(uv†)·Z†·Φ†(·), δX⟩  [unrolled carefully].
+  In practice with a double path: compute
+    M_Y  = Φ(YZ)          (n×n matrix, precomputed)
+    M_XY = Φ(XY)          (n×n)
+    h    = Φ(M_XY · Z) − Φ(X · M_Y)
+  The derivative w.r.t. X (holding Y,Z,u,v fixed) is:
+    c_k = Re[ ⟨u, Φ(Φ(B_k · Y) · Z) v⟩ − ⟨u, Φ(B_k · Φ(YZ)) v⟩ ]
+  Computed for each basis element B_k: O(d·N³) per X-update (d SVDs or
+  Φ-applications on N×N matrices). At N=16, d=16: 16 × O(16³) ≈ 65k FLOPs.
+
+**Convergence guarantee.** HOPM on a multilinear form converges to a
+critical point (Łojasiewicz inequality; Usevich et al. arXiv:1407.4586,
+Numer. Math. 2018). NOT guaranteed global maximum. Multi-start covers this.
+
+**Cost.** Per iterate: 5 updates × O(d·N³) = O(d·N³). At N=d=16:
+~100k FLOPs per iterate; 50 iterates per start × 200 starts = ~10^9 FLOPs.
+Sub-second in double precision.
+
+**Non-smoothness.** Operator-norm non-smooth at tied singular values. Does
+NOT break the algorithm: any element of the subdifferential of the spectral
+norm at a tie is a valid update direction; `zgesvd` returns one. Each iterate
+is feasible; the ratio at each iterate is a rigorously valid lower bound.
+
+**Scale-invariance and the coefficient vector.** Expressing X = Σ_k x_k B_k,
+the operator-norm constraint ‖X‖_op=1 defines a spectrahedron in x-space
+(not a Euclidean sphere). The update above works directly in x-space by
+SVD-clipping the Frobenius gradient: it does NOT assume ‖x‖₂=1 and hence
+does NOT pay the √d Frobenius-to-operator inflation. This is the
+dimension-independence guarantee.
+
+#### Method 2: Riemannian gradient / geodesic optimization — EVALUATED,
+SECONDARY for ε_sub and ε_cstar, NOT RECOMMENDED for ε_assoc
+
+**What manifold?** For the operator-norm unit sphere {A: ‖A‖_op=1} the
+issue is that the set is NOT a smooth manifold: it is a semi-algebraic set
+whose boundary (where the top singular value has multiplicity ≥ 2) is a
+submanifold of lower dimension — a "corner" in the Riemannian sense.
+At generic points (simple top singular value), the tangent space is well-
+defined, but algorithms must handle the non-smooth boundary.
+
+**Practical fix: work on the Frobenius sphere, operator-norm in objective.**
+The standard workaround (confirmed in the iMuon line of work,
+arXiv:2605.09238, and in arXiv:2202.11597 for p-norm spheres) is:
+
+  - Constrain to the Frobenius unit sphere ‖X‖_F=1 (a smooth manifold,
+    Riemannian gradient is standard projection);
+  - Put the operator norm into the objective: maximize G(X,Y,Z) = ‖h(X,Y,Z)‖_op
+    subject to ‖X‖_F=‖Y‖_F=‖Z‖_F=1.
+
+This pays a √d factor: the Frobenius unit sphere in A has operator norms
+between 1/√d and 1, so maximizing over the Frobenius sphere gives a result
+that is within √d of the operator-norm-sphere maximum. For d≤16 this is at
+most factor 4 — smaller than the d^{3/2} basis-sweep bound but still a
+dimension-dependent inflation.
+
+**Alternative: Fixed-rank manifold with spectral-norm LMO (iMuon).**
+The iMuon framework (arXiv:2605.09238, May 2026) provides closed-form
+Riemannian updates for spectral-norm LMOs on Stiefel, Grassmann, and fixed-
+rank manifolds. Its retraction is: x_{+} = R_x(−ηξ*) where ξ* involves
+G_x^{-1/2} Z* and Z* = U diag(z*) V† from an SVD of the metric-preconditioned
+gradient. This is for optimization on the manifold of rank-r matrices, with
+the spectral norm acting on the manifold's tangent space, NOT for
+maximization over the spectral-norm sphere in a subspace. It does not
+directly address the subspace constraint X∈A.
+
+**Verdict for the project.** Riemannian gradient on Frobenius sphere is a
+valid *alternative* for ε_sub (bilinear) and ε_cstar (quadratic) where
+smooth manifold structure helps and the √d factor is acceptable. For ε_assoc
+(trilinear), the five-way HOPM with direct spectral-norm enforcement (Method
+1) is cleaner and avoids the inflation. Riemannian CG on Frobenius sphere
+can serve as a warm-start generator or fallback when HOPM stalls.
+
+**Retraction for Frobenius sphere (exact).** For X = X_old + η∇_Riem f,
+project via: X ← (X_old + η g) / ‖X_old + η g‖_F (standard sphere retraction,
+or polar retraction). The Riemannian gradient is: grad_Riem f = g − ⟨g,X⟩_F X
+where g is the Euclidean gradient of f at X with ‖X‖_F=1. This is textbook
+(Boumal, "An Introduction to Optimization on Smooth Manifolds," 2023,
+Cambridge University Press, ch. 3).
+
+#### Method 3: TDVP-type variational dynamics — NOT RECOMMENDED for this
+problem; honest negative assessment
+
+**What TDVP does.** Real-time TDVP projects the Schrödinger equation onto
+the tangent space of a variational manifold (e.g., matrix product states)
+so that the time-evolved state stays on the manifold while approximately
+satisfying the equation of motion (Haegeman et al. 2016, unige.ch preprint).
+Imaginary-time TDVP recovers DMRG in the limit of large imaginary time steps:
+it finds the ground state (lowest eigenvalue) of a Hamiltonian on the manifold.
+
+**Why it does NOT fit here.** The ε_assoc maximization problem is:
+  - A MAX problem (find largest defect), not a MIN or ground-state problem.
+  - The objective ‖h(X,Y,Z)‖_op is NOT expressible as ⟨ψ|H|ψ⟩ for a fixed
+    Hamiltonian H acting on the manifold. It is a non-quadratic (degree-6 in
+    matrix entries) functional of three independent matrix variables, not a
+    bilinear expectation value.
+  - There is no natural tensor-network topology connecting X, Y, Z (they are
+    independent factors in M_n, not a single state in a tensor product space).
+  - The "variational manifold" would be the product of three spectral-norm
+    spheres in A, which has no natural MPS/TTN structure.
+
+**TDVP as imaginary-time flow toward a leading eigenvector** only works when
+the objective is a Rayleigh quotient ⟨x,Ax⟩/⟨x,x⟩ for a linear operator A.
+The ε_cstar defect comes closest: it is inf_X ‖X†⋆X‖_op over ‖X‖_op=1,
+which is related to a smallest-eigenvalue problem. But ‖X†⋆X‖_op = ‖Φ(XX†)‖_op
+is not a linear functional of X (it is quadratic in XX†), so even here TDVP
+does not apply directly.
+
+**Conclusion.** TDVP has no sound fit for this problem. It is not a
+first-class candidate for ε_assoc or ε_sub. For ε_cstar, imaginary-time
+power iteration on the sesquilinear form is equivalent to Method 1 restricted
+to two-way alternating, which is just standard power iteration — there is no
+benefit from the TDVP framing. Do not implement a TDVP-based estimator.
+
+#### Method 4: Tensor-network / DMRG-like alternating sweeps — EVALUATED,
+NO ADVANTAGE at the target sizes
+
+**What the TN/DMRG view adds.** For a tensor with structure (bond dimension,
+local Hilbert spaces), DMRG-type alternating sweeps are equivalent to ALS
+(alternating least squares) / HOPM on the tensor. In a TN language, the
+trilinear form h_assoc has a coefficient tensor T_{ijk} (in the B_k basis)
+of size d×d×d→d, and HOPM is literally one-site DMRG for finding its leading
+singular value. This yields no algorithmic advantage: it is the same update
+rule as Method 1 with added notation. At d,n≤16 the "bond dimension" is at
+most 16, so there is no compression benefit from a TN representation.
+
+**What TN does NOT buy here.**
+  - The coefficient tensor T has size ≤16³: no compression needed.
+  - The operator-norm constraint (spectrahedron in x-space) does not factorize
+    as a tensor product, so the one-site update does not become a simpler
+    eigenvector problem than Method 1 already provides.
+  - Riemannian optimization of isometric tensor networks (Hauru et al.,
+    arXiv:2007.03638, SciPost Phys. 2021) optimizes variational manifolds of
+    tensors with isometry constraints (Stiefel/Grassmann), not spectral-norm
+    spheres. No direct mapping.
+
+**Verdict.** TN language is a valid notation for the HOPM update but adds
+nothing algorithmic at these sizes. Implement Method 1; it is ALS/HOPM in
+disguise. If n grows large (n>64), a TN representation of h(X,Y,Z) might
+reduce contraction cost, but that is outside current scope.
+
+#### Method 5: Projected gradient with alternating projection onto
+{X∈A: ‖X‖_op≤1} — EVALUATED, VALID FALLBACK but sub-optimal
+
+**The projections.** Two non-commuting projections:
+  - P_A: M_n → A (Frobenius projection; closed-form via basis).
+  - P_op: M_n → {X: ‖X‖_op≤1} (SVD clip: X ← U diag(min(σ_k,1)) V†).
+
+**Does alternating projection stay in A∩{‖·‖_op≤1}?**  Not automatically:
+P_op(P_A(X)) is in A (P_A maps to A) but after P_op it leaves A. Starting
+from X∈A with ‖X‖_op>1, the sequence P_A∘P_op iterates. Convergence of
+alternating projections for two closed convex sets is guaranteed (von Neumann;
+linear rate when sets intersect transversally). Here both sets are:
+  - A = affine subspace of M_n: convex, closed.
+  - {‖X‖_op≤1}: convex, closed (the spectral norm is convex).
+So A∩{‖X‖_op≤1} is convex and the alternating projection converges to the
+nearest feasible point from the initial iterate.
+
+**For maximization** (not just feasibility), use projected gradient ascent:
+  X_{t+1} ← P_A(P_op(X_t + η ∇_X G(X_t)))
+where ∇_X G is the Euclidean gradient of the objective w.r.t. X and η is a
+step size. This is gradient ascent with projection. Convergence is to a
+stationary point of the projected problem; no guarantee of global max.
+
+**Disadvantage vs. Method 1.** The step X ← P_A(P_op(X+η∇G)) discards the
+optimal-direction property of Method 1's SVD-based update. Method 1's X-update
+is the *exact* maximizer of the linear functional in X on the feasible set
+{X∈A: ‖X‖_op≤1} (up to the inner product approximation), which is provably
+the best single-step improvement. Projected gradient with a fixed step size
+is typically slower.
+
+**Use case.** Valid as a sanity check or warm-start initialization. For
+the main search, Method 1 dominates.
+
+#### Method 6: Frobenius relaxation — inequality direction and warm-start use
+
+**Direction of the inequality.** For X∈A (the subspace):
+  ‖X‖_op ≤ ‖X‖_F ≤ √d · ‖X‖_op.
+Therefore if ε_F = sup_{X,Y,Z∈A, ‖·‖_F≤1} ‖h(X,Y,Z)‖_op (Frobenius
+unit ball) and ε_op = sup_{‖·‖_op≤1} (same) (operator-norm unit ball), then:
+  ε_F ≤ ε_op [Frobenius ball is SMALLER: ‖X‖_F≤1 implies ‖X‖_op≤‖X‖_F≤1]
+  ε_op ≤ d^{3/2} · ε_F [the d^{3/2} inflation, shown in §2].
+**Direction summarized:** ε_F is a LOWER bound on ε_op (operator-norm defect
+over a larger ball → larger supremum). So the Frobenius maximizer is a valid
+(conservative) lower bound on the operator-norm defect, understating it by
+at most d^{3/2}.
+
+**Warm start.** The Frobenius maximizer X_F* is straightforward: write X =
+Σ_k x_k B_k, the Frobenius constraint becomes ‖x‖₂≤1, and the problem
+reduces to a standard HOPM on the coefficient tensor with Euclidean sphere
+constraints — fully solved by ALS with update x ← T(1; y,z)/‖T(1;y,z)‖ etc.
+This is cheap (O(d³) per iteration, no N dependence beyond computing T once).
+The Frobenius maximizer (x_F*, y_F*, z_F*) gives a feasible starting point
+X_F* = Σ x_k* B_k in A. Normalizing to the spectral norm gives
+  X₀ = X_F* / ‖X_F*‖_op ∈ A, ‖X₀‖_op = 1,
+which is a spectral-norm-feasible warm start for Method 1. This is a useful
+initialization: the Frobenius maximizer likely lives near the operator-norm
+maximizer for structured channels (where B_k are near-unitary or normalized).
+
+**Use in practice:**
+  Init type A (Frobenius warm start): run 10–20 Frobenius-HOPM starts → get
+    X₀s → feed as initial points for Method 1.
+  Init type B (random): draw X = randn(n,n), project to A, normalize by op-norm.
+  Use a mix: 50% Frobenius warm starts + 50% random. At N=d=16, 200 total
+  starts is inexpensive.
+
+### Summary ranking
+
+| Rank | Method | Bound type | Dim-independent? | Cost per start | Recommendation |
+|------|--------|-----------|------------------|----------------|----------------|
+| 1 | Method 1: Scale-invariant HOPM + SVD clip | Lower (witness) | YES (no √dim) | O(d·N³)×50 iter | **Primary; implement first** |
+| 2 | Method 2: Riemannian CG on Frobenius sphere | Lower (Frob-ball) | √d factor only | O(d·N³)×iter | Fallback / warm start for ε_sub, ε_cstar |
+| 3 | Method 5: Projected gradient (A∩op-ball) | Lower (witness) | YES | O(N³)×iter | Sanity check; slower than Method 1 |
+| 4 | Method 6: Frobenius relaxation | Lower (under-estimate) | d^{3/2} factor | O(d³)×iter | Cheap warm-start generator; undercounts |
+| 5 | Method 4: TN/DMRG | Lower (= Method 1) | YES (= Method 1) | Same | No advantage; skip dedicated TN code |
+| — | Method 3: TDVP | Not applicable | — | — | Does not fit; do not implement |
+
+### Exact update recipe (Method 1 — the primary algorithm)
+
+**Data.** n×n matrix Φ represented as Choi matrix / Kraus operators;
+orthonormal basis {B_1..B_d} of A stored as d n×n complex matrices.
+Precompute: for each k,l: Φ(B_k · B_l) (d² matrices, each n×n);
+  for each k,l,m: h(B_k,B_l,B_m) (d³ matrices). This is O(d³·N³) setup.
+
+**Per-start initialization.**
+  1. Draw X,Y,Z ∈ A randomly: x,y,z ← randn(d); X = Σ x_k B_k / ‖Σ x_k B_k‖_op.
+  2. Draw u,v ← randn(n), normalize to unit ℓ₂.
+
+**Inner loop (50 iterations per start).**
+  For t = 1..50:
+    1. h ← Φ(Φ(X·Y)·Z) − Φ(X·Φ(Y·Z))        [two Φ-applications each, O(N³)]
+    2. u ← h·v / ‖h·v‖₂                        [O(N²)]
+    3. v ← h†·u / ‖h†·u‖₂                      [O(N²)]
+    4. For k=1..d: c_k ← Re⟨u, [Φ(Φ(B_k·Y)·Z) − Φ(B_k·Φ(Y·Z))] v⟩   [O(d·N²)]
+       C_X ← Σ_k c_k B_k                        [in A; or equivalently work with
+                                                   the coefficient vector c ∈ R^d]
+       Xnew ← P_A(rank-1 approx of argmax)... but since C_X ∈ A already,
+       SVD decompose C_X = Σ_j σ_j e_j f_j†; take leading pair (e₁,f₁):
+         X ← P_A(e₁f₁†) / ‖P_A(e₁f₁†)‖_op    [P_A via B_k inner products, O(d·N²)]
+    5. Symmetric Y-update (c_k from B_k in Y-slot), Z-update.
+    6. Record current R = ‖h(X,Y,Z)‖_op / (‖X‖_op·‖Y‖_op·‖Z‖_op) as lower bound.
+
+  **Note on step 4 simplification.** If C_X = Σ_k c_k B_k ∈ A, then
+  P_A(e₁f₁†) is in general DIFFERENT from C_X. But the best X∈A maximizing
+  Re⟨C_X,X⟩_F subject to ‖X‖_op≤1 is precisely e₁f₁† IF e₁f₁† ∈ A; otherwise
+  it is P_A(C_X)/‖P_A(C_X)‖_op (since C_X already lives in A, its top singular
+  vector gives the steepest ascent direction; P_A is identity on C_X; so just
+  normalize C_X by its operator norm):
+    X ← C_X / ‖C_X‖_op.
+  This is exact for the linear inner product because the maximizer of Re⟨C,X⟩_F
+  over {X∈A, ‖X‖_op≤1} when C∈A is sgn(C) in the polar-decomposition sense:
+  X* = U V† where C = U Σ V† (full SVD of C). So the update is:
+    X ← polar(C_X)   (= U V† from SVD of C_X, which satisfies ‖X‖_op=1, X∈A).
+  LAPACK's `zgesvd` or QR-based polar gives this cheaply.
+
+**Multi-start and record-keeping.**
+  Run 200 starts. Record (X*,Y*,Z*,R*) = argmax_{starts} R.
+  The best R* is the lower bound.
+  Also keep the top 5 distinct local maxima (by value) to expose the landscape.
+
+**Warm-start batch (50 of 200 starts).**
+  Run Frobenius-HOPM (d-dimensional ALS on coefficient vectors x,y,z∈R^d,
+  update x ← T_{xyz}·yz / ‖T·yz‖ where T is the d×d×d coefficient tensor
+  of h precomputed in the B_k basis) for 20 iterations; feed resulting
+  X_F*/‖X_F*‖_op into Method 1 as warm start.
+
+### Q7: restart count guidance
+
+At N=d=16 the problem is 16²×3+2n = ~800-dimensional. HOPM's landscape for
+small random instances has empirically O(d) distinct local maxima (Kolda &
+Mayo, SIAM JMAA 2011; Usevich et al. 2018). With 200 starts and fast ~50-iter
+convergence, the probability of missing the global max is (1-θ)^200 where θ
+is the basin-of-attraction volume of the global max. Empirical practice for
+tensor spectral norm at d≤16: 100–500 starts consistently finds the global max
+within 1% (Hillar & Lim 2013, supplementary). Start with 200; if the top-5
+local maxima cluster within 5% of the best value, trust it. If they spread
+widely, increase to 500.
+
+For the universality canary specifically (ε_assoc ≈ 0 case): near η=0 the
+form h is nearly zero, all starts converge to near-zero, and the global max
+is trivially found. The interesting regime is moderate η where d^{3/2} slippage
+would be visible — here 200 starts suffices for the canary.
+
+### Q8: witness-certification as rigorous lower bound
+
+YES, unconditionally. Given a concrete witness (X*, Y*, Z*) ∈ M_n³ (arbitrary
+double-precision floating point):
+  1. Load X*, Y*, Z* into acb_mat at precision p (e.g. p=128 bits).
+  2. Compute h* = Φ(Φ(X*Y*)Z*) − Φ(X*Φ(Y*Z*)) in arb (all operations exact
+     in arb: matrix multiply, Φ-application via Choi matrix contraction).
+  3. Compute ‖h*‖_op via acb_mat eigenvalue enclosure on (h*)†h* (§3.1):
+     certified interval [lo, hi] for ‖h*‖_op.
+  4. Compute ‖X*‖_op, ‖Y*‖_op, ‖Z*‖_op certified similarly.
+  5. R_certified ≥ lo / (hi_X · hi_Y · hi_Z).
+This gives a rigorously certified lower bound on ε_assoc with NO global
+guarantee required. The certification is a single forward evaluation.
+Precision p=128 is sufficient for N≤16; p=64 may work too (check ball radii).
+No SDP needed; no global reasoning needed.
+
+### Q9: submult and cstar special-case simplifications
+
+**ε_sub (bilinear).** Define g(X,Y) = ‖X⋆Y‖_op for X,Y∈A, ‖X‖_op=‖Y‖_op=1.
+  ε_sub = max(0, sup_{X,Y} g(X,Y) − 1).
+  Use Method 1 with two variables (X,Y) and u,v:
+    G(X,Y,u,v) = Re⟨u, Φ(XY) v⟩
+  Three-way alternating (X, Y, u/v pair). Update rules:
+    u ← Φ(XY)v / ‖Φ(XY)v‖₂
+    v ← Φ(XY)†u / ‖Φ(XY)†u‖₂
+    X ← polar(C_X) where C_X = Σ_k ⟨u, Φ(B_k Y) v⟩ B_k
+    Y ← polar(C_Y) where C_Y = Σ_k ⟨u, Φ(X B_k) v⟩ B_k
+  If ε_sub ≈ 0 (near-UCP case, which is expected here), the iteration
+  converges rapidly and the witness certifies a near-zero lower bound.
+  For exact UCP channels, ‖Φ(XY)‖_op ≤ ‖XY‖_op ≤ ‖X‖_op‖Y‖_op (submultiplicativity
+  is automatic), so ε_sub = 0 and any witness certifies it.
+
+**ε_cstar (quadratic/sesquilinear).** Minimize ‖X†⋆X‖_op over ‖X‖_op=1, X∈A.
+  This is a MIN problem. For a C*-algebra, ‖X†⋆X‖_op = ‖X‖_op² = 1 exactly
+  (C* identity). So ε_cstar = 1 − min and we want the value to be near 1
+  (i.e., min ≈ 1, ε_cstar ≈ 0).
+  To MAXIMIZE ε_cstar (find the worst-case departure from C*): we want to
+  MINIMIZE ‖X†⋆X‖_op = ‖Φ(X†X)‖_op over ‖X‖_op=1.
+  Method: gradient DESCENT on F(X,u,v) = Re⟨u, Φ(X†X) v⟩ over ‖X‖_op=1,
+  ‖u‖₂=‖v‖₂=1. Updates:
+    u ← Φ(X†X)v / ‖...‖, v ← Φ(X†X)†u / ‖...‖ (same as above).
+    X-update (minimize): C_X = Σ_k ⟨u, Φ(B_k†X + X†B_k) v⟩ B_k (gradient of
+      F w.r.t. X, treating the sesquilinear form);
+      X ← polar(−C_X) (DESCENT: flip sign to minimize, then polar-normalize).
+  For ε_cstar near 0 (C*-algebra case), the minimum is near 1 and the
+  landscape is unimodal near the identity element of A — gradient descent
+  with 50 restarts suffices.
+  Alternative: power iteration on the sesquilinear form T(x) = Σ_{k,l} x_k x_l*
+    ⟨u, Φ(B_k† B_l) v⟩. This is a quadratic form in x ∈ C^d; its minimum
+    over ‖X(x)‖_op=1 is a small eigenvector problem combined with a
+    spectrahedron constraint. At d≤16 this is directly solvable.
+
+### References added (Cycle 2)
+
+- Usevich, Li & Comon, "A new convergence proof for the higher-order power
+  method and generalizations," arXiv:1407.4586; Numer. Math. 2018.
+  https://arxiv.org/abs/1407.4586
+  https://link.springer.com/article/10.1007/s00211-018-0981-3
+- Kolda & Mayo, "Shifted Power Method for Computing Tensor Eigenpairs,"
+  SIAM J. Matrix Anal. Appl. 32(4) 2011. https://arxiv.org/abs/1007.1267
+- Lim, "Singular values and eigenvalues of tensors: a variational approach,"
+  arXiv:math/0607648 (background on tensor spectral norm via alternating SVD).
+- Boumal, "An Introduction to Optimization on Smooth Manifolds," Cambridge 2023.
+  https://www.cambridge.org/core/books/an-introduction-to-optimization-on-smooth-manifolds/
+- Hauru, Van Damme & Haegeman, "Riemannian optimization of isometric tensor
+  networks," arXiv:2007.03638; SciPost Phys. 10, 040 (2021).
+  https://arxiv.org/abs/2007.03638
+- iMuon: "Intrinsic Muon: Spectral Optimization on Riemannian Matrix Manifolds,"
+  arXiv:2605.09238 (May 2026). https://arxiv.org/abs/2605.09238
+- Chen, Han & Ye, "Riemannian optimization on unit sphere with p-norm and its
+  applications," arXiv:2202.11597; Comput. Optim. Appl. 2023.
+  https://arxiv.org/abs/2202.11597
+- Hillar & Lim, "Most tensor problems are NP-hard," arXiv:0911.1393 2013.
+  (convergence-basin empirics for small d). https://arxiv.org/abs/0911.1393
+- Haegeman et al., "Unifying time evolution and optimization with matrix
+  product states," Phys. Rev. B 94, 165116 (2016). (TDVP background.)
+  https://www.unige.ch/math/vandereycken/papers/published_Haegeman_LOVV_2016.pdf
+- Leloykun (blog), "Rethinking Maximal Update Parametrization: Steepest Descent
+  on the Spectral Ball," 2025. https://leloykun.github.io/ponder/rethinking-mup-spectral-ball/

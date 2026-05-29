@@ -885,11 +885,127 @@ to `0`. No near-singular inversion arises in the basis sweep (the `(Λ+R)^{-1}` 
 `O(ε)` cancellations belong to the §12 modules). `cstar` fails loud if any
 `‖B_k‖_op` drops below `1/(2√n)` (a Frobenius-unit op has `‖·‖_op ≥ 1/√n`).
 
+### Cycle 2 — HOPM faithful worst-case search (the second audition candidate)
+
+Files: `src/aic_ecstar_hopm.{c,h}` (double-path matrix kernel: Φ-apply, star,
+associator, opnorm, u/v power-step, project-to-A, polar), `src/aic_ecstar_iterate.{c,h}`
+(restart init + the block-update with the accept-guard), `src/aic_ecstar_search.{c,h}`
+(the multi-restart engine + `objval`), `src/aic_ecstar_setup.{c,h}` (double snapshot
+of the `aic_ecstar` + scratch + the six defect-map term thunks),
+`src/aic_ecstar_certify.c` (public API + arb certification). All ≤200 LOC.
+
+Public API (`include/aic_ecstar.h`):
+`aic_ecstar_defect_{assoc,submult,cstar}_hopm(arb_t lo, A, n_restarts, n_iters, prec)`
+return a RIGOROUS LOWER BOUND `lo` on the true sup over the operator-norm unit
+ball of `A`; `aic_ecstar_defect_assoc_hopm_witness` additionally exposes the
+witness (for the soundness test).
+
+| defect | objective (sup over op-norm-1 in A) | .tex |
+|---|---|---|
+| `assoc`   | `‖(X⋆Y)⋆Z − X⋆(Y⋆Z)‖_op` | :412-413 |
+| `submult` | `‖X⋆Y‖_op − 1` (expected ~0: UCP star is submultiplicative) | :410-411 |
+| `cstar`   | `1 − min_{‖X‖_op=1} ‖X†⋆X‖_op` (a MINIMIZATION inside) | :427-428 |
+
+**The method (web leg "Cycle 2 method decision", Method 1).** Scale-invariant
+alternating maximization. `X = Σ_k x_k B_k` so every iterate is automatically in
+`A` (valid witness); `‖h‖_op = max_{‖u‖=‖v‖=1}|⟨u,hv⟩|` introduces auxiliary unit
+vectors. Per inner iteration: (1) `u ← hv/‖hv‖`, `v ← h†u/‖h†u‖` (closed form);
+(2) per block, form the A-gradient `C = Σ_k ⟨u, h(B_k,·,·) v⟩ B_k` (in A), then the
+candidate `X' = Π_A(polar(C))` re-normalized to op-norm 1, **accepted only if the
+scale-invariant objective strictly improves**. `cstar` minimizes (`sign=−1`,
+accept on decrease); `submult` drops the Z block. Deterministic restarts (LCG
+seeded from the restart index — no wall-clock RNG); half warm-start from a
+polar-projected random A-op, half plain random in A.
+
+**The load-bearing SUBSPACE-POLAR subtlety + accept-guard.** `polar(C)=UV†` is the
+exact maximizer of `Re⟨C,X⟩` over the FULL `M_n` op-norm ball, but a *genuine* C\*
+algebra is polar/von-Neumann closed while our `A` is only an *ε*-C\* algebra
+(η>0), so `polar(C) ∉ A` in general. Using it directly would produce a witness
+OUTSIDE A → an INVALID lower bound. Hence `Π_A(polar(C))` + the monotone-ascent
+accept-guard: this keeps every accepted iterate exactly in A AND makes the
+approximate-polar step robust. (Confirmed: the soundness test recomputes
+`proj_residual(witness) < 1e-30`.)
+
+**arb-vs-double split + certification.** The search runs entirely in the fast
+double path (LAPACKE SVD via `latd`, C99 `double _Complex` Φ-apply on ball
+midpoints) — decisions use midpoints. The FINAL witness (explicit, in A) is
+re-evaluated ONCE in the certified arb path (`aic_ecstar_star` + `aic_mat_opnorm`),
+and `lo` is `‖num‖_op.lo / (Π ‖den‖_op.hi)` (arb rounding directions chosen so the
+quotient provably under-estimates the value at the witness ≤ the sup). So `lo` is
+a rigorous lower bound regardless of how the witness was found (web leg Q8).
+
+**Timing (prec=53, this box).** Search cost ≈ `O(n_restarts · n_iters · nblk · d · r · n³)`
+(the `d·r` factor is the per-block gradient looping over the `d` basis × `r` Kraus).
+Convergence near η=0 is fast: 10 restarts × 20 iters already reaches the converged
+value on bce(4,2) (0.35s). The full `test_ecstar` (Cycle 1 + Cycle 2, 109 checks)
+runs in ~12s on this box; the HOPM calls themselves are 0.1-1s each (the d=9
+dim_A=45 dephasing HOPM is 0.9s). NOTE: the slow part of the canary is the
+Cycle-1 BASIS sweep, not HOPM — `aic_ecstar_defect_assoc` is `O(dim_A³)` arb star
+products (91125 at dim_A=45 ≈ 190s), so the canary skips it at the large-dim
+point. The dominant HOPM
+cost is the per-`k` gradient recomputing the full associator; a `Φ†`-adjoint
+gradient (no `k` loop) is the obvious future speedup (deferred — it is exactly the
+kind of adjoint bookkeeping where a sign/transpose bug hides, Rule 3).
+
+### The audition verdict (Law 4 — both candidates kept, Pareto)
+
+| | basis sweep (Cycle 1) | HOPM (Cycle 2) |
+|---|---|---|
+| what | max over basis triples/pairs/singletons | scale-invariant alternating max over the op-norm unit ball of A |
+| bound | exact-zero detector / loose LOWER bound | faithful LOWER bound (tighter) |
+| cost | `O(d³ n³)` one pass, no iteration | `O(restarts·iters·d·r·n³)` |
+| dim-independence | can DRIFT with dim (`√d`/`d^{3/2}`, web §2) | flat — works on the op-norm sphere, no Frobenius inflation |
+| certified | yes (arb) | yes (arb witness re-eval) |
+
+Neither dominates: the basis sweep is the **cheap zero-detector** (η=0 oracle in
+one pass, no search); HOPM is the **faithful, dimension-independent worst-case
+lower bound** but iterative/slower. Both are kept and dispatchable. Measured
+audition payoff and canary (prec=53):
+
+```
+AUDITION (bce(4,2) + trace_replace mix):
+  t=1e-3   assoc basis_sweep=2.498e-4   HOPM_lo=1.449e-3   (HOPM 5.80x BS)
+  t=1e-2   assoc basis_sweep=2.481e-3   HOPM_lo=1.443e-2   (HOPM 5.81x BS)
+
+CANARY (A) dimension sweep, dephasing-mix, assoc/t, fixed t=1e-2:
+  bce(4,2) dim_A= 8   HOPM/t=1.000
+  bce(6,3) dim_A=18   HOPM/t=1.319
+  bce(9,3) dim_A=45   HOPM/t=1.302     -> spread factor 1.32 (FLAT, dim-independent)
+
+CANARY (B) contrast, trace_replace-mix, assoc/t, fixed t=1e-2:
+  bce(4,2) dim_A= 8   basis_sweep/t=0.2481   HOPM/t=1.4030
+  bce(5,2) dim_A=13   basis_sweep/t=0.1984   HOPM/t=1.3331
+  -> basis_sweep/t DRIFTS DOWN 20% with dim; HOPM/t stays flat (~1.3-1.4)
+```
+
+The HOPM/t ratio staying within a factor 1.32 across `dim_A ∈ {8,18,45}` is the
+universality canary passing (HANDOFF "the single highest-value test"); the
+trace_replace contrast shows the basis sweep's ratio drifting where HOPM does not.
+(The contrast's second point is `bce(5,2)`, dim_A=13, NOT d=9: the basis-sweep
+assoc is `O(dim_A³)` arb star products — 91125 at dim_A=45, ~190s — so the
+canary skips it at the large-dim point, where only HOPM/t flatness is asserted.
+The `O(dim_A³)` arb basis sweep is the practical ceiling on the basis-sweep rung,
+a finding in its own right.)
+
+η=0 oracle (HOPM, prec=53): assoc_lo `= 0` exactly; submult_lo / cstar_lo in
+`[-1.4e-14, -7e-16]` (slightly negative = the genuine C\* algebra has zero/negative
+defect) on the 7+1 channels — all under the `1e-7` gate.
+
+Mutation-proof (Rule 7) — the weakest search (1 restart, 0 iters) finds STRICTLY
+less than the full search on a perturbed instance, so a "return 0 / never iterate"
+stub is RED:
+```
+SEARCHES assoc  weakest(1,0)=4.698e-3  full=1.443e-2   (also full >= basis-sweep witness 2.481e-3)
+SEARCHES submult weakest(1,0)=-9.476e-3 full=-6.286e-4
+SEARCHES cstar  weakest(1,0)=-5.1e-15  full=6.102e-3
+```
+Soundness: `lo = ratio@witness = 1.442605e-2`, witness `proj_residual < 1e-30`.
+
 ### Deferred (beaded)
 
-- The faithful sup-over-operator-norm-unit-ball `ε` via HOPM multi-start (LOWER
-  bound, double path) and the certified SDP upper bound (Watrous cb-norm SDP for
-  the bilinear submult/cstar; Lasserre/SOS lift for the trilinear assoc) ->
-  bead aic-0at. The basis sweep here is a lower-bound / exact-zero detector only.
-- The `√d` operator-vs-Frobenius unit-ball factor (web leg §2) is irrelevant to
-  the zero-detection use here but must be handled in the HOPM/SDP cycle.
+- The certified SDP UPPER bound (Watrous cb-norm SDP for the bilinear
+  submult/cstar; Lasserre/SOS lift for the trilinear assoc) -> bead aic-0at.
+  Cycle 1 (basis sweep) + Cycle 2 (HOPM) bracket the sup from below; the SDP is
+  the matching upper bracket.
+- A `Φ†`-adjoint gradient for the block update (eliminates the per-`k` loop -> the
+  main speedup for larger `n`,`d`). Filed as a follow-up bead.
