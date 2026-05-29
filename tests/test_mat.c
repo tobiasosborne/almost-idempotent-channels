@@ -14,13 +14,24 @@
  *  4. Kronecker / partial-trace identities: Tr_2(A (x) B) = Tr(B) A and
  *     Tr_1(A (x) B) = Tr(A) B for small pseudo-random A, B.
  *  5. singular values of a known matrix equal hand values.
+ *  6. aic_mat_herm_max_eig NON-FINITE-eps FALLBACK (bead aic-92f fix pass): on a
+ *     near-zero Hermitian Gram whose acb_mat_eig_global_enclosure radius is
+ *     non-finite, the eig-free ball [-||H||_F, ||H||_F] must be SOUND (finite,
+ *     radius == ||H||_F) and CONTAIN the true lambda_max (cross-checked against
+ *     the LAPACK double path). Mutation-proven: arb_zero(out) (unsound point-ball)
+ *     and 0.25*||H||_F (too-small radius) both fail to contain lambda_max.
  */
+#include <math.h>
+
 #include <flint/acb.h>
 #include <flint/acb_mat.h>
 #include <flint/arb.h>
 
+#include "aic_assoc.h"
+#include "aic_latd.h"
 #include "aic_mat.h"
 #include "aic_test.h"
+#include "aic_ucp.h"
 
 /* tol as an acb (zero imaginary) for the matrix close-checker, and as arb. */
 static void set_tol(arb_t tol, double t) { arb_set_d(tol, t); }
@@ -92,20 +103,22 @@ static void test_norms_exact(void)
     arb_init(val);
     set_tol(tol, 1e-60);
 
-    /* Identity 5x5: ||I||_F = sqrt(5), ||I||_op = 1. sqrt(5) is irrational, so
-     * the reference is computed in arb at the same prec, not as a double. */
-    acb_mat_t I;
-    acb_mat_init(I, 5, 5);
-    acb_mat_one(I);
+    /* Identity 5x5: ||Id||_F = sqrt(5), ||Id||_op = 1. sqrt(5) is irrational, so
+     * the reference is computed in arb at the same prec, not as a double. (Named
+     * `Id`, not `I`: aic_latd.h pulls in <complex.h>, whose `I` macro would
+     * shadow a matrix called `I`.) */
+    acb_mat_t Id;
+    acb_mat_init(Id, 5, 5);
+    acb_mat_one(Id);
     arb_t sqrt5;
     arb_init(sqrt5);
     arb_sqrt_ui(sqrt5, 5, prec);
-    aic_mat_frobenius_norm(val, I, prec);
+    aic_mat_frobenius_norm(val, Id, prec);
     check_arb_close(val, sqrt5, tol);
     arb_clear(sqrt5);
-    aic_mat_opnorm(val, I, prec);
+    aic_mat_opnorm(val, Id, prec);
     check_arb_eq(val, 1.0, tol);
-    acb_mat_clear(I);
+    acb_mat_clear(Id);
 
     /* Diagonal diag(3, -4, 12): ||.||_F = 13, ||.||_op = 12. */
     acb_mat_t D;
@@ -326,6 +339,159 @@ static void test_singular_values(void)
     acb_mat_clear(A2);
 }
 
+/* --- 6. aic_mat_herm_max_eig non-finite-eps fallback (bead aic-92f) --------- */
+/* The fallback in aic_mat_herm_max_eig (src/aic_mat_spectral.c) returns the
+ * rigorous eig-free ball [-||H||_F, ||H||_F] when acb_mat_eig_global_enclosure
+ * yields a NON-FINITE radius. That branch is exercised by test_assoc on near-zero
+ * Grams of EXACT idempotents but had no direct correctness test; the hostile
+ * review showed mutating its body to arb_zero(out) (an UNSOUND point-ball claiming
+ * lambda_max==0 exactly) passed the whole suite. This test gives it teeth.
+ *
+ * TRIGGER (found empirically): the Hermitian Gram H = D^dag D, D = S^2 - S, where
+ * S is the superoperator of the EXACT idempotent noiseless_subsystem(2,2) channel.
+ * Its entries are ~1e-31, the heuristic-QR-seeded global enclosure overflows, and
+ * eps is non-finite at prec=256 -> the fallback fires (verified: mid==0, radius ==
+ * ||H||_F == 6.287e-32 exactly). The true lambda_max (LAPACK) is 3.144e-32 =
+ * 0.5*||H||_F, strictly inside the fallback ball AND strictly outside 0.25*||H||_F.
+ * Plain near-zero diagonals/rank-1 matrices do NOT fire the branch (FLINT returns
+ * a finite eps for them) -- the degenerate Gram structure is what overflows.
+ *
+ * MUTATION-PROVEN (FIX 1 of the aic-92f fix pass):
+ *  (a) fallback body -> arb_zero(out): ball [0,0] cannot contain lambda_max>0 -> RED.
+ *  (b) fallback radius -> 0.25*||H||_F: ball cannot contain lambda_max=0.5*||H||_F
+ *      -> RED.
+ *  Both verified RED, then restored.  This test ALSO fails loud (AIC_CHECK at the
+ *  "fallback fired" guard) if a future FLINT stops triggering the branch, so it can
+ *  never silently stop exercising the fallback. */
+
+/* noiseless_subsystem(dL,dE) Heisenberg Kraus, replicated inline (test_idemp.h is
+ * not included here -- its un-attributed static builders would warn under
+ * -Wunused-function). Phi(X) = (Tr_E X) (x) (1_E / dE); K_{jk} = (1_L (x)
+ * |e_j><e_k|)/sqrt(dE), dE^2 operators, on C^{dL*dE}. */
+static void build_noiseless_subsystem(aic_ucp_kraus *phi, slong dL, slong dE)
+{
+    slong n = dL * dE;
+    aic_ucp_kraus_init(phi, n, n, dE * dE);
+    double inv = 1.0 / sqrt((double) dE);
+    slong op = 0;
+    for (slong j = 0; j < dE; j++)
+        for (slong k = 0; k < dE; k++) {
+            for (slong a = 0; a < dL; a++)
+                acb_set_d(acb_mat_entry(phi->K[op], a * dE + j, a * dE + k), inv);
+            op++;
+        }
+}
+
+static void test_herm_max_eig_fallback(void)
+{
+    const slong prec = 256;
+
+    /* Build the triggering Gram H = D^dag D, D = S^2 - S. */
+    aic_ucp_kraus phi;
+    build_noiseless_subsystem(&phi, 2, 2);
+    slong n = phi.dim_H, N = n * n;
+    acb_mat_t S, S2, D, Dd, H;
+    acb_mat_init(S, N, N);
+    acb_mat_init(S2, N, N);
+    acb_mat_init(D, N, N);
+    acb_mat_init(Dd, N, N);
+    acb_mat_init(H, N, N);
+    aic_assoc_superop_from_ucp(S, &phi, prec);
+    acb_mat_sqr(S2, S, prec);
+    acb_mat_sub(D, S2, S, prec);            /* ~1e-31 entries */
+    acb_mat_conjugate_transpose(Dd, D);
+    acb_mat_mul(H, Dd, D, prec);            /* Hermitian PSD Gram */
+
+    arb_t lam, fro;
+    arb_init(lam);
+    arb_init(fro);
+    aic_mat_herm_max_eig(lam, H, prec);
+    aic_mat_frobenius_norm(fro, H, prec);
+
+    /* (1) The fallback must actually have FIRED: a sound ball with finite, nonzero
+     * radius and midpoint 0 (the eig-free [-||H||_F, ||H||_F]). If a future FLINT
+     * returns a finite eps here, this guard fails loud rather than letting the
+     * branch go silently untested. */
+    AIC_CHECK_MSG(arb_is_finite(lam),
+                  "fallback: lambda_max ball must be finite (no nan/inf)");
+    double mid = arf_get_d(arb_midref(lam), ARF_RND_NEAR);
+    double rad = mag_get_d(arb_radref(lam));
+    double frod = arf_get_d(arb_midref(fro), ARF_RND_NEAR);
+    AIC_CHECK_MSG(frod > 0.0, "fallback: ||H||_F must be positive (near-zero Gram)");
+    AIC_CHECK_MSG(mid == 0.0,
+                  "fallback did NOT fire: midpoint=%.3e != 0 (FLINT returned a "
+                  "finite eps? the fallback branch is no longer exercised)", mid);
+    {
+        /* radius == ||H||_F to ~mag precision. The fallback sets the radius via
+         * arb_add_error(out, ||H||_F-ball), so the stored radius is the UPPER
+         * bound of the ||H||_F ball rounded UP into a mag_t (~30-bit mantissa),
+         * hence rad >= frod and rad/frod - 1 ~ 3e-9 (the mag granularity), NOT
+         * exactly 1. Assert rad in [||H||_F, 1.01*||H||_F]: the lower bound
+         * (rad >= ||H||_F) is the SOUND eig-free bound and fails for both the
+         * arb_zero mutation (rad=0) and the 0.25*||H||_F mutation (rad~0.25 frod);
+         * the upper bound confirms it is the TIGHT [-||H||_F,||H||_F], not a wide
+         * over-claim. */
+        double ratio = rad / frod;
+        AIC_CHECK_MSG(ratio >= 1.0 && ratio <= 1.01,
+                      "fallback radius=%.6e not in [||H||_F, 1.01||H||_F]=%.6e "
+                      "(ratio=%.9f); the fallback bound is not [-||H||_F,||H||_F]",
+                      rad, frod, ratio);
+    }
+
+    /* (2) The ball must CONTAIN the true lambda_max. Compute it via the LAPACK
+     * double path (the project's independent double-vs-arb oracle rung), which
+     * handles the degenerate near-zero spectrum the arb certifier could not. */
+    double _Complex *arr = malloc(sizeof(double _Complex) * (size_t) (N * N));
+    double *ev = malloc(sizeof(double) * (size_t) N);
+    AIC_CHECK_MSG(arr != NULL && ev != NULL, "fallback test: OOM");
+    aic_latd_from_acb_mat(arr, H);
+    aic_latd_eig_hermitian(ev, NULL, arr, N);  /* ascending */
+    double lam_true = ev[N - 1];
+    AIC_CHECK_MSG(lam_true > 0.0,
+                  "fallback test: expected lambda_max>0 (PSD Gram), got %.3e",
+                  lam_true);
+
+    /* lam_true must lie in [mid-rad, mid+rad]. Build the true value as a
+     * zero-radius arb and require the fallback ball to certainly contain it
+     * (arb_contains is the rigorous enclosure predicate). */
+    arb_t lam_true_arb;
+    arb_init(lam_true_arb);
+    arb_set_d(lam_true_arb, lam_true);
+    AIC_CHECK_MSG(arb_contains(lam, lam_true_arb),
+                  "fallback ball does NOT contain true lambda_max=%.6e "
+                  "(ball mid=%.6e rad=%.6e) -- UNSOUND (arb_zero point-ball "
+                  "mutation, or too-small-radius mutation, would fail here)",
+                  lam_true, mid, rad);
+
+    /* Sanity that the test has real teeth on BOTH mutations: lam_true is strictly
+     * between 0.25*||H||_F (the too-small mutation) and ||H||_F. Assert it so the
+     * mutation analysis is self-documenting and a regression that shifts lam_true
+     * out of this band is flagged. */
+    AIC_CHECK_MSG(lam_true > 0.25 * frod,
+                  "fallback test integrity: lambda_max=%.6e <= 0.25*||H||_F=%.6e, "
+                  "the 0.25*||H||_F mutation would NOT be caught", lam_true,
+                  0.25 * frod);
+    AIC_CHECK_MSG(lam_true < frod,
+                  "fallback test integrity: lambda_max=%.6e >= ||H||_F=%.6e",
+                  lam_true, frod);
+
+    printf("  test6 herm_max_eig fallback: ||H||_F=%.3e fired (mid=0,rad=||H||_F); "
+           "lambda_max(LAPACK)=%.3e in ball, > 0.25*||H||_F=%.3e\n",
+           frod, lam_true, 0.25 * frod);
+
+    arb_clear(lam_true_arb);
+    free(ev);
+    free(arr);
+    arb_clear(fro);
+    arb_clear(lam);
+    acb_mat_clear(H);
+    acb_mat_clear(Dd);
+    acb_mat_clear(D);
+    acb_mat_clear(S2);
+    acb_mat_clear(S);
+    aic_ucp_kraus_clear(&phi);
+}
+
 int main(void)
 {
     test_norms_exact();
@@ -333,6 +499,7 @@ int main(void)
     test_precision_ladder();
     test_kron_ptrace();
     test_singular_values();
+    test_herm_max_eig_fallback();
 
     aic_test_report("test_mat");
     printf("OK test_mat\n");

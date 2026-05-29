@@ -22,6 +22,20 @@
  * gives a rigorous radius eps with every eigenvalue within eps of some
  * approximate eigenvalue — valid regardless of multiplicity — and returns
  * [max_k Re(E_k) - eps, max_k Re(E_k) + eps] as a certified ball on lambda_max.
+ *
+ * NEAR-ZERO ROBUSTNESS (bead aic-92f finding). For a near-zero Hermitian H —
+ * e.g. the Gram matrix of S^2 - S for an EXACTLY idempotent superoperator, whose
+ * entries are ~1e-31 (the eta=0 oracle of assoc_ecsa) — acb_mat_eig_global_-
+ * enclosure can return a NON-FINITE radius eps (mag overflow on the tiny,
+ * effectively-degenerate spectrum). A naive [maxre +/- inf] then sqrt's to
+ * nan+/-inf in aic_mat_opnorm, spuriously tripping prop_P's basin guard on the
+ * cleanest ground-truth input. Root-cause fix (Rule 3, not a bandaid): when eps
+ * is non-finite, fall back to the RIGOROUS, eig-free bound — every eigenvalue of
+ * Hermitian H satisfies |lambda| <= ||H||_op <= ||H||_F — and return the sound
+ * enclosure [-||H||_F, ||H||_F] (midpoint 0, radius ||H||_F). This never NaNs,
+ * is always valid (the heuristic QR midpoint is NOT trusted when the certifier
+ * failed), and is tight exactly where it is used: a near-zero H gives a near-zero
+ * ||H||_F, so opnorm returns ~0 with a small, finite radius.
  */
 #include <assert.h>
 #include <stdio.h>
@@ -120,19 +134,30 @@ void aic_mat_herm_max_eig(arb_t out, const acb_mat_t H, slong prec)
     mag_init(eps);
     acb_mat_eig_global_enclosure(eps, H, E, R, prec);
 
-    /* max_k Re(E_k): the largest approximate eigenvalue. */
     arb_t maxre, re;
     arb_init(maxre);
     arb_init(re);
-    acb_get_real(maxre, E + 0);
-    for (slong k = 1; k < n; k++) {
-        acb_get_real(re, E + k);
-        arb_max(maxre, maxre, re, prec);
-    }
 
-    /* lambda_max in [maxre - eps, maxre + eps]: inflate the midpoint by eps. */
-    arb_add_error_mag(maxre, eps);
-    arb_set(out, maxre);
+    if (mag_is_finite(eps)) {
+        /* max_k Re(E_k): the largest approximate eigenvalue. lambda_max in
+         * [maxre - eps, maxre + eps]: inflate the midpoint by eps. */
+        acb_get_real(maxre, E + 0);
+        for (slong k = 1; k < n; k++) {
+            acb_get_real(re, E + k);
+            arb_max(maxre, maxre, re, prec);
+        }
+        arb_add_error_mag(maxre, eps);
+        arb_set(out, maxre);
+    } else {
+        /* Certifier failed (near-zero / degenerate H): rigorous eig-free bound
+         * |lambda| <= ||H||_F => lambda_max in [-||H||_F, ||H||_F]. */
+        arb_t fro;
+        arb_init(fro);
+        aic_mat_frobenius_norm(fro, H, prec);
+        arb_zero(out);
+        arb_add_error(out, fro);   /* [-||H||_F, ||H||_F] */
+        arb_clear(fro);
+    }
 
     arb_clear(re);
     arb_clear(maxre);

@@ -1009,3 +1009,195 @@ Soundness: `lo = ratio@witness = 1.442605e-2`, witness `proj_residual < 1e-30`.
   the matching upper bracket.
 - A `Φ†`-adjoint gradient for the block update (eliminates the per-`k` loop -> the
   main speedup for larger `n`,`d`). Filed as a follow-up bead.
+
+## Module `assoc_ecsa` (Increment 1) — regularization Φ̃ = θ(2Φ−1) (bead aic-92f)
+
+STEP 1 of `th_almost_idemp` (`approximate_algebras.tex:2162-2237`): regularize an
+η-idempotent UCP map `Φ` to an EXACTLY idempotent superoperator `Φ̃`. Increment 1
+builds the superoperator matrix `S_Φ`, the regularization `Φ̃ = θ(2Φ−1)`, and the
+apply helper; `A = Img Φ̃` and the Choi-Effros star are Increment 2.
+
+### Paper technique vs constructive route
+
+The regularization is (`.tex:2171-2174`, eq `tilde_Phi`):
+
+```
+Φ̃ = θ(2Φ − 1) = (1/2)(1 + sgn(2Φ − 1))
+              = (1/2)(1 + (2Φ − 1)(1 − 4(Φ − Φ²))^{−1/2}).
+```
+
+The paper frames this as the functional calculus of the **cb-norm Banach algebra**
+of completely bounded maps on `B(H)` (`.tex:354-359`) — a Taylor expansion in
+`4(Φ − Φ²)` converging for `η < 1/4`. This is Proposition `prop_P`
+(`.tex:524-533`: `‖P²−P‖ ≤ δ < 1/4 ⇒ P̃ = θ(2P−I)` is an exact idempotent) applied
+to `P = Φ`. We do **not** transcribe the infinite-dim cb-algebra calculus. In
+finite dimensions a UCP self-map on `M_n` IS an `n²×n²` matrix `S_Φ`, so
+`θ(2 S_Φ − 1)` is an ORDINARY matrix-functional-calculus call, served by the
+eig-free certified `funcalc` engine: `aic_prop_P` → `aic_theta` → `aic_sgn`
+(Newton-Schulz). The paper's bound `‖Φ̃−Φ‖_cb ≤ O(η)` (`.tex:2179`) is the spec;
+T7 asserts a computable proxy of it (linear-in-defect growth, vanishing at η=0,
+dimension-independent constant).
+
+### Superoperator + the row-major oracle
+
+vec convention (matches `aic_idemp.h`, `aic_ecstar.h`): `vec_r(X)[i·n+j] = X[i,j]`;
+the superoperator `S` of `T : M_n → M_n` has `S[a·n+b, p·n+q] = T(E_{pq})[a,b]`, so
+column `(p·n+q)` of `S` is `vec_r(T(E_{pq}))`.
+
+- PRIMARY build `aic_assoc_superop_from_ucp` (lowest vec-bug risk): column-by-column,
+  reshaping `aic_ucp_apply(Φ, E_{pq})` row-major. Reuses the TESTED apply + reshape
+  (idemp/ecstar precedent).
+- SECONDARY build `aic_assoc_superop_kron` (the cross-check): the index-derived
+  `S_Φ = Σ_a K_a^† ⊗ K_a^T` (left-major Kronecker, left `K_a^†`, right `K_a^T`).
+  Derivation: `Φ(X)[a,b] = Σ_a Σ_{p,q} (K_a^†)[a,p] X[p,q] (K_a^T)[q,b]`, so
+  `S[a·n+b, p·n+q] = Σ_a (K_a^†)[a,p] (K_a^T)[b,q] = Σ_a (K_a^† ⊗ K_a^T)[a·n+b,p·n+q]`.
+
+The vec convention is the project's #1 historical bug (idemp deliberately AVOIDED
+forming the superoperator). So `S_Φ` is oracle-tested two independent ways:
+- **T1 oracle:** `S_Φ vec_r(X) == vec_r(aic_ucp_apply(Φ,X))` for 3 fixed `X` (complex
+  non-Hermitian, shifted, Hermitian) on ≥2 channels incl. a complex/asymmetric one
+  (conjugated dephasing). Machine-zero. Mutation-proven: a **transposed reshape**
+  (store `Φ(E_{pq})[b,a]`) → RED at entry `(0,1)`.
+- **T2 Kronecker:** column-image `S_Φ == Σ_a K_a^† ⊗ K_a^T`, machine-zero.
+  Mutation-proven: **swapped Kronecker factors** (`K_a^T ⊗ K_a^†`) → RED at `(0,1)`.
+
+### The η=0 reduction (headline oracle, T3)
+
+If `Φ² = Φ` exactly then `Φ − Φ² = 0 ⇒ (1−4(Φ−Φ²))^{−1/2} = I`, so
+`Φ̃ = (1/2)(1 + (2Φ−1)) = Φ`; equivalently `(2S_Φ−1)² = I` exactly ⇒
+`sgn(2S_Φ−1) = 2S_Φ−1`. **T3:** for each exact-idempotent test channel
+`S_Φ̃ == S_Φ`. Subtlety (a real finding): some "exact" idempotents carry
+IRRATIONAL Kraus entries (`trace_replace`, `noiseless_subsystem` use `1/√k` set
+from a `double`), so `Φ` is idempotent only to its own residual
+`δ = ‖S²−S‖ ≈ 2.7e-16`; integer-Kraus channels (`block_cond_exp`, `identity`,
+`dephasing`, `compress_idemp`) are exact (`δ ≈ 1e-30`). The honest T3 bound is
+`prop_P`'s `‖S̃−S‖ ≤ ‖2S−I‖·O(δ)` with the input's TRUE `δ` (a defect-aware tol
+= `100·ubound(‖S²−S‖_F) + 1e-22`, NOT a constant) — the channel reduces to its OWN
+idempotence precision. Measured: `0.00e+00` (integer-Kraus), `2.69e-16`
+(`trace_replace(3)`), `3.55e-16` (`noiseless_subsystem(2,2)`), `1.01e-75`
+(conjugated dephasing) across 7 channels.
+
+### Property proofs (T4, T5)
+
+`.tex:2177-2182` — `Φ̃²=Φ̃`, `Φ̃(1)=1`, `Φ̃(X^†)=Φ̃(X)^†`.
+- **T4 idempotency, EXACT (machine-floor `1e-22`):** `sgn²=I` exactly ⇒ `θ²=θ`
+  exactly, INDEPENDENT of the input defect. Measured `‖S̃²−S̃‖_F ≤ 2e-74`.
+  Mutation-proven: `aic_assoc_regularize` returning `S_Φ` unmodified → RED (caught
+  on both `trace_replace` T4 and the dedicated non-idempotent T4 teeth, where the
+  no-op leaves `‖S̃²−S̃‖_F = ‖S²−S‖ ≫ tol`).
+- **T5 unit (defect-aware):** `Φ̃(I)=I` because `I` is a `Φ`-fixed point (up to δ).
+- **T5 Hermicity, EXACT (machine-floor):** `θ` of an HP superoperator is HP, so
+  `Φ̃(X^†)=Φ̃(X)^†` machine-zero regardless of δ.
+
+### The non-normality cross-check (T6) — funcalc's first non-normal customer
+
+`S_Φ` is NON-NORMAL (`Φ` is Hermicity-preserving but NOT HS-self-adjoint), and
+`aic_sgn` (Newton-Schulz) was auditioned only on Hermitian/near-normal inputs.
+T6 fills the gap AND is an independent algorithmic cross-check:
+- **Route A1** = `aic_prop_P(S_Φ)` (Newton-Schulz `sgn`).
+- **Route A2** = the explicit binomial series (`aic_funcalc_xpow`):
+  `D = 4(Φ−Φ²) = 4(S−S²)`; `M = I − D = (2S−I)²`; `M^{−1/2} = xpow(M,−1/2,1)`;
+  `S̃ = (1/2)(I + (2S−I) M^{−1/2})`. **Sign is load-bearing:** `M = 1−4(Φ−Φ²)`, so
+  `D = 4(S−S²)` not `4(S²−S)`; the η=0 case (`D=0`) is blind to the sign, the η>0
+  non-normal T6 channel PINS it (a flipped sign gives `sgn²≠I` ⇒ A1/A2 disagree by
+  `O(0.1)` — this was caught during bring-up).
+- TWO structurally-different non-normal in-basin channels (each runs the same
+  `T6_nonnormal` helper, which asserts non-normality + in-basin live):
+  - `compress_idemp(3,1)` mixed `0.05` with `dephasing(3)`: `‖[S,S^†]‖_F = 3.126`,
+    `4‖S²−S‖_op = 0.329`, A1-vs-A2 `1.92e-74`.
+  - `compress_idemp(4,1)` mixed `0.05` with `block_cond_exp(4,2)` (different base
+    dim + a different, two-block mix family ⇒ a different non-normal structure):
+    `‖[S,S^†]‖_F = 4.421`, `4‖S²−S‖_op = 0.380`, A1-vs-A2 `3.00e-74`.
+- Newton-Schulz is CORRECT on non-normal input (it uses only matrix multiply/add,
+  no normality assumption). Both channels mutation-proven: flipping the A2 sign
+  (`D=S²−S`) makes A1≠A2 by `O(0.1)` ⇒ RED on each channel independently.
+
+### The O(η) bound (T7) — a PRELIMINARY check, not the universality claim
+
+`.tex:2179` gives `‖Φ̃−Φ‖_cb ≤ O(η)`, but **prop_P (`.tex:524-533`) only proves
+`‖Φ̃−Φ‖ ≤ ‖2Φ−1‖·O(δ)` at the superoperator level**, and `‖2Φ−1‖` need NOT be
+dimension-independent. So `‖Φ̃−Φ‖` dimension-independence is **NOT** the paper's
+universality claim — that claim is about the **algebra's axiom-defect constant**
+being dimension-independent, which is **Increment 2's canary** (`aic-3qq`/
+`aic-4c7`), not this. T7 is a preliminary sanity check using the computable proxy
+`η_proxy = ‖S²−S‖_op`, `dist = ‖S̃−S‖_op` (no cb-norm SDP for the trend), in two
+honest parts:
+
+- **T7a (linear growth + vanishing).** Smooth family
+  `Φ_t = (1−t)·dephasing(3) + t·trace_replace(3)`, `t = 0.02..0.18` at ONE dim.
+  `dist/η_proxy ∈ [1.02, 1.22]`, `dist` strictly increasing with `t` (asserted)
+  and `→ 0` as `t → 0`. This is the genuinely-meaningful O(η) behavior, on a family
+  where the op-norm proxy is smooth.
+- **T7b (dimension-boundedness canary, strengthened).** The earlier
+  `dephasing⊕trace` family was DIMENSION-TRIVIAL (byte-IDENTICAL ratios at every
+  `d`; the hostile review showed it would pass even with a dim-dependent bug). T7b
+  instead uses `compress_idemp(d,1) ⊕ dephasing(d)`, `d = 3,4,6,8`, `t = 0.02,0.04`
+  (all in-basin), whose non-normality `‖[S,S^†]‖_F` GROWS with `d` (`3.3 → 10.2`),
+  so `dist/η_proxy` is genuinely MEASURED (`∈ [0.52, 1.04]`; e.g. the `d=8,t=.02`
+  ratio `0.52` ≠ the `d=3,t=.02` ratio `1.02`), not constant-by-construction. The
+  ratio stays BOUNDED across dims (`≤ 5` gate, met at `~1`), i.e. does not grow
+  with dim. Two INTEGRITY guards keep T7b from itself becoming toothless, BOTH
+  mutation-proven (swap to `dephasing⊕trace` ⇒ RED): (i) `‖[S,S^†]‖_F > 1e-3` at
+  every dim AND grows ≥2× from `d=3` to `d=8` (a NORMAL family has `‖[S,S^†]‖_F=0`
+  and is rejected); (ii) the `d=3` and `d=8` ratios DIFFER by `> 1e-3` (a constant-
+  by-construction family is rejected). The ratio bound and T7a monotonicity were
+  also mutation-proven (tighten the gate / reverse the sweep ⇒ RED).
+
+### Fail-loud basin (T9) + its dimension dependence
+
+`θ`/`sgn` require `‖(2S−1)²−I‖_op = 4‖S²−S‖_op < 1` (`.tex:516,520-521`);
+`aic_prop_P` additionally asserts `‖S²−S‖_op < 1/4` (`.tex:525`) on a CERTIFIED
+ball and aborts loudly otherwise (Rule 4). This holds at η=0 and small η but TRIPS
+near `η → 1/4` or for large-`n` channels whose defect inflates (the in-basin guard
+`4‖S²−S‖_op < 1` is asserted live in T6). The out-of-basin globally-convergent
+`sgn` variant is bead **aic-8hz** (out of scope here). T9 documents this; an abort
+would fail the binary, so it is not invoked, only asserted in-basin.
+
+### Precision ladder (T8) + the near-zero opnorm fix
+
+Following funcalc's arb-only precedent (no double `sgn`), the prec=53-vs-256 rung
+substitutes for double-vs-arb. **T8:** `Φ̃@53` vs `Φ̃@256` agree to `2.26e-14`
+(within `1e-12` gate).
+
+A near-zero-input fragility in `aic_mat_herm_max_eig` was found and ROOT-CAUSE
+fixed here (Rule 3, not a bandaid). For a near-zero Hermitian `H` — e.g. the Gram
+of `S²−S` for an EXACT idempotent (entries `~1e-31`, the η=0 oracle) —
+`acb_mat_eig_global_enclosure` can return a NON-FINITE radius `ε`, which `sqrt`'d
+in `aic_mat_opnorm` gives `nan±inf` and spuriously trips `prop_P`'s basin guard on
+the cleanest ground-truth input. Fix: when `ε` is non-finite, fall back to the
+rigorous eig-free bound `|λ| ≤ ‖H‖_op ≤ ‖H‖_F` ⇒ `λ_max ∈ [−‖H‖_F, ‖H‖_F]` (the
+heuristic QR midpoint is not trusted when the certifier failed). Sound, always
+finite, tight where used (near-zero `H` ⇒ near-zero `‖H‖_F`). This fallback now has
+a DIRECT, mutation-proven correctness test in `tests/test_mat.c` (test 6): the
+trigger (found empirically) is the Gram `H = D^†D`, `D = S²−S` of the exact
+idempotent `noiseless_subsystem(2,2)` superoperator (entries `~1e-31`); plain
+near-zero diagonals do NOT fire the branch (FLINT returns a finite `ε` for them),
+so the degenerate Gram structure is what overflows. The test asserts (1) the
+fallback FIRED (mid=0, radius `== ‖H‖_F = 6.287e-32`, fails loud if a future FLINT
+stops triggering it), (2) the ball is SOUND (finite, radius `≥ ‖H‖_F`), (3) the
+ball CONTAINS the true `λ_max = 3.144e-32` (LAPACK double-path oracle), which is
+exactly `0.5·‖H‖_F`. Mutation-proven: `arb_zero(out)` (point-ball `[0,0]`) and
+`0.25·‖H‖_F` (too-small radius) BOTH fail to contain `λ_max` ⇒ RED. The
+inflated-radius opnorm
+(funcalc iterations grow `S̃` radii to `~5e-75` at prec=256, exceeding the
+Hermiticity tol `2^{−(prec−8)} ≈ 2.2e-75` when squared into the Gram) is handled in
+the TREND measurements (T7, defect proxy) by `midpoint_opnorm` (strip radii first;
+rigor lives in T3/T6, not the trend).
+
+### Files + numbers
+
+- `include/aic_assoc.h`, `src/aic_assoc_superop.c` (116 LOC), `src/aic_assoc_regularize.c`
+  (61 LOC), `tests/test_assoc.c` (93 checks). The `aic_mat_herm_max_eig` fallback
+  test lives in `tests/test_mat.c` (test 6; `test_mat` is now 23 checks).
+- T3 η=0 oracle: max `‖S̃−S_Φ‖_F = 3.55e-16` across 7 channels at prec=256 (machine-
+  zero for integer-Kraus). T4: `‖S̃²−S̃‖_F ≤ 2e-74`. T6 (two non-normal channels)
+  A1-vs-A2 `1.92e-74` (`‖[S,S^†]‖_F=3.126`, `4‖S²−S‖_op=0.329`) and `3.00e-74`
+  (`‖[S,S^†]‖_F=4.421`, `4‖S²−S‖_op=0.380`). T7a `dist/η ∈ [1.02,1.22]` (monotone);
+  T7b `dist/η ∈ [0.52,1.04]` across `d=3,4,6,8` on a dim-nontrivial family
+  (`‖[S,S^†]‖_F 3.3→10.2`). T8: `2.26e-14`.
+
+### Deferred (beaded)
+
+- `A = Img Φ̃` extraction, the Choi-Effros star `X⋆Y = Φ̃(XY)`, ecstar axiom-defect
+  wiring, the dimension-sweep canary → Increment 2 of `aic-92f`.
+- Out-of-basin globally-convergent `sgn` (η near 1/4 / large n) → bead **aic-8hz**.
