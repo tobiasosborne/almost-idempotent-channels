@@ -292,6 +292,89 @@ committed). Two of the 17 fixtures are dedicated hardening cases:
   belongs in the Julia package (E5, bead aic-obc). For now the diamond-norm VALUE
   is produced only by the Julia generator / golden master.
 
+### cbnorm (eig-free ball) — the always-valid fallback rung (bead aic-m24, incr. 1)
+
+An EIG-FREE, certified, two-sided bracket on the eta-idempotence defect
+`eta = ||Phi^2-Phi||_cb = ||Phi^2-Phi||_diamond` (`.tex:347-354`), using ONLY the
+certified Frobenius norm of `J = Choi(Lambda)`, `Lambda = Phi^2 - Phi`
+(Convention-A, `n^2 x n^2`, Hermitian). No SDP solver, no eigendecomposition (so
+it dodges the degenerate-eig wall, bead aic-w4o.1) and it NEVER aborts (the only
+assert is a fail-loud shape check, Rule 4). This is the cheapest rung of the
+certified-bound ladder and the fallback the future tight certifier dispatches to
+near `eta=0`. Files: `include/aic_cbnorm.h`, `src/aic_cbnorm.c` (108 LOC, arb
+path only), `tests/test_cbnorm.c` (125 checks).
+
+**The math (derivation).** The Watrous 2012 SDP (cb-norm section above;
+`tools/gen_fixtures_d24.jl`) gives `eta = (2/n)*optval`, where
+`optval = max Re tr(J^dag X)` s.t. `[[P,X],[X^dag,Q]] >= 0`, `P+Q = I_{n^2}`,
+`P,Q >= 0`.
+
+- *Upper bound (eig-free).* `P+Q=I_{n^2}` with `P,Q>=0` forces `0<=P,Q<=I`
+  (`||P||_op,||Q||_op<=1`) and `tr(Q) <= tr(P+Q) = n^2`. The block-PSD condition
+  Schur-factors `X = P^{1/2} K Q^{1/2}` with `||K||_op<=1`, so
+  `||X||_F <= ||P^{1/2}||_op ||K||_op ||Q^{1/2}||_F <= 1*1*sqrt(tr Q) <= n`.
+  Then `optval <= ||J||_F ||X||_F <= n ||J||_F`, giving `eta <= 2 ||J||_F`.
+- *Lower bound (eig-free).* `J = (id_n (x) Lambda)(omega)`, `omega=|Omega><Omega|`,
+  `|Omega>=sum_i |i>|i>` (unnormalized). For the normalized maximally-entangled
+  `rho = omega/n`, `(id (x) Lambda)(rho) = J/n`, so (diamond-norm sup over input
+  states; truncation `N=n` rigorous for a Herm-preserving map, Watrous 2012, bead
+  aic-d24) `eta >= ||(id (x) Lambda)(rho)||_1 = ||J||_1/n >= ||J||_2/n = ||J||_F/n`
+  (Schatten `||.||_1 >= ||.||_2 = ||.||_F`).
+
+So the certified bracket is `[ ||J||_F/n , 2*||J||_F ]`. Ratio `hi/lo = 2n` —
+valid but loose by design; the tight ball is a later increment and is NOT
+attempted here.
+
+**API.** `aic_cbnorm_eigfree_ball_choi(lo,hi,J,n,prec)` (from the `n^2 x n^2`
+Choi) and `aic_cbnorm_eigfree_ball(lo,hi,phi,prec)` (from a UCP self-map: builds
+`Phi^2` via `aic_ucp_compose`, `J` via `aic_ucp_choi_diff`, then defers).
+Implementation: `fro = ||J||_F` via `aic_mat_frobenius_norm` (certified ball);
+`lo = fro/n` (`arb_div_ui`), `hi = 2*fro` (`arb_mul_2exp_si` by +1, exact).
+Returning the arb BALLS suffices for rigor: the true `||J||_F` lies in the `fro`
+ball, so by monotonicity `arb_lower(lo) <= eta` and `arb_upper(hi) >= eta`.
+
+**Verification — two assertion families over all 17 d24 fixtures.**
+- (A) CORRECTNESS / validity: build `J` from each fixture's golden Choi, assert
+  the bracket CONTAINS `eta_ref` (`lo <= eta_ref <= hi`, slack `1e-7` for the
+  SDP solver tolerance). A wrong `n`-power or a sign error makes some fixture's
+  bracket miss `eta_ref`. Tightest upper margin `hi - eta_ref = 1.96e-3`, on the
+  smallest nonzero `eta` (`phi_t_0p001`, `eta_ref=1.499e-3`, `2*fF=3.46e-3`).
+- (B) TEETH / exactness: INDEPENDENTLY recompute `fF = ||J||_F` by a direct
+  double sum over the stored Choi arrays, then assert `lo == fF/n` and
+  `hi == 2*fF` to `~1e-12`. This pins BOTH constants. Measured worst-case
+  midpoint errors: `|lo - fF/n| = 1.11e-16`, `|hi - 2fF| = 8.88e-16` over the
+  corpus.
+- (C) eta=0 oracle: for the seven `eta_is_zero` fixtures `J~0`, so the bracket
+  collapses to `~[0,0]`: `arb_upper(hi) < 1e-9` (all `hi = 0` exactly).
+- (D) precision self-consistency: `prec=53` vs `prec=256` on `phi_t_0p3` and
+  `phi_t4_0p2` both bracket `fF/n` and `2*fF`.
+- (E) wrapper path: `aic_cbnorm_eigfree_ball` (rebuilds `Phi`, runs
+  compose+choi_diff) agrees with the choi-level path within `1e-9` on
+  `phi_t_0p3 / complex_qubit / phi_t4_0p2 / block_lowrank3` — cross-checks the
+  whole `Phi -> Phi^2 -> J -> ball` pipeline.
+
+**Mutation proofs (Rule 7).** (1) `2*fro -> 1*fro` (drop the factor 2): caught
+by family (B) at `phi_t_0p3` (`hi == 2*fF = 0.727461` failed; the mutated
+`hi = fF = 0.363731`). Family (A) does NOT catch this mutation — the bracket is
+loose enough that `fF >= eta_ref` still holds on every fixture, so the
+constant-pinning family (B) is exactly what gives this teeth. (2) `fro/n -> fro`
+(drop the `1/n`): caught by family (A) at `phi_t_0p3`: the mutated
+`lo = fF = 0.363731` exceeds `eta_ref = 0.315`, violating the rigorous lower-bound
+containment `lo <= eta`. Both restored. No teeth gaps: each constant is pinned by
+at least one family on this corpus.
+
+**Precision argument.** `||J||_F` is a sum of squares of `O(1)` Choi entries, so
+`prec=53` resolves `fF` to `~1e-15` (family-D 53-vs-256 agreement confirms); no
+near-singular inversion or spectral gap arises (this rung is deliberately
+eig/SDP-free). The arb balls are the rigorous object; the bound holds by ball
+monotonicity at any `prec`.
+
+**Deferred.** The TIGHT certified ball (ratio `-> 1`) is a later aic-m24
+increment — the credible route is solve-in-double then a verified-SDP / KKT
+duality-gap certificate in arb (same blocker noted for the cb-ball above). This
+eig-free bracket is the always-valid fallback the tight certifier dispatches to
+near `eta=0`.
+
 ---
 
 ## Module `idemp_structure` — structure of exactly-idempotent UCP maps (bead aic-wuh)
