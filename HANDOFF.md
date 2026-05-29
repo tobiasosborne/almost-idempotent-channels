@@ -1,17 +1,48 @@
 # HANDOFF.md — almost-idempotent-channels
 
 Orientation for a fresh agent. Last updated **2026-05-29**, after the
-**`cbnorm` certifier session** (the entire η-defect cb-norm stack — eig-free
-bracket → Julia value entry point → tight certified-arb ball — is built;
-**`aic-m24` is CLOSED**). Current state: `master` clean, **13 test binaries green,
-zero warnings**, 15 beads closed of 51. The η=0 vertical-slice milestone
-(`aic-9kk`) was achieved the prior session. The next step toward the paper's
-headline (the almost-idempotent factorization) is **`aic-knm` (`ecstar`)** — its
-only dep was `aic-m24`-adjacent work, and η is now both *measurable*
-(`eta_idempotence`) and *certifiable* (`aic_cbnorm_certify`). See the playbook
-below. Read §"Channel-module conventions" before touching `ucp`/`idemp`/`cbnorm`
-or building `assoc_ecsa`; those conventions are load-bearing and a prior
-session-mate (and four hostile reviews) learned them the hard way.
+**`ecstar` session** (the ε-$C^*$ algebra data model + axiom-defect estimators,
+bead `aic-knm`, built in two committed increments). Current state: `master`
+clean, **14 test binaries green, zero warnings**, 15 beads closed of 55. Prior
+session built the η-defect cb-norm stack (`aic-m24` CLOSED). The η=0
+vertical-slice milestone (`aic-9kk`) was achieved earlier. Read §"Channel-module
+conventions" before touching `ucp`/`idemp`/`cbnorm` or building `assoc_ecsa`;
+those conventions are load-bearing and prior hostile reviews learned them hard.
+
+**⚠️ RESUME HERE (interrupted by an internet outage mid-session):** `aic-knm`
+Cycle 2 (HOPM, commit `4c623bf`) shipped green but its **mandated hostile review
+was interrupted** → tracked as **`aic-b7c` (P1)**, which now blocks `aic-knm`
+closure. **Run `aic-b7c` first** (its bead description IS the review brief —
+attack the rigorous-lower-bound/off-A-witness, the un-cross-checked double kernel,
+and the canary teeth), fix any findings, then close `aic-knm`. After that, the
+next step toward the paper's headline is **`aic-92f` (`assoc_ecsa`)** —
+Φ̃=θ(2Φ−1), A=ImgΦ̃, `th_almost_idemp` — now unblocked by `aic-knm`'s deliverables
+and able to MEASURE/CERTIFY η (`eta_idempotence` / `aic_cbnorm_certify`).
+
+**`ecstar` (this session, `aic-knm` Cycles 1+2, committed `124ed68`/`4c623bf`).**
+A = subspace of $M_n$ as an orthonormal operator basis {B_k} (reshaped from
+`aic_idemp_decomp.Delta`) + a borrowed UCP map Φ; star X⋆Y=Φ(XY) (`aic_ucp_apply`,
+NOT plain XY); norm = operator norm; unit I=1_n; all inherited from B(H)
+(verified vs `.tex:2186-2215`). Two audition rungs for the defect estimators
+(assoc/submult/cstar/involution/unit), per the Pareto discipline:
+- **Cycle 1 — certified-arb BASIS-SWEEP** (`src/aic_ecstar{,_assoc,_defect,_involution}.c`):
+  max over basis tuples, the cheap EXACT zero-detector for the η=0 oracle (machine-
+  zero on 7 idemp channels incl. a complex-conjugated ASYMMETRIC one) + always-zero
+  invariants (involution/unit are structural for HP unital Φ). Hostile review caught
+  the signature "test that can't fail" twice (involution no-op; transposed reshape) —
+  both fixed (shared generic-apply core; asymmetric channel) and re-mutation-proven.
+- **Cycle 2 — faithful HOPM worst-case** (`src/aic_ecstar_{hopm,iterate,search,setup,certify}.c`):
+  scale-invariant alternating max over the OPERATOR-norm ball (closed-form u,v power
+  step + Π_A(polar(C)) block step with a monotone-ascent accept-guard), double-path
+  search → arb-certified LOWER bound on the witness. The **universality canary**
+  (HOPM defect/t flat across dim_A=8→45, vs the basis-sweep which drifts) is the
+  payoff: HOPM avoids the d^{3/2} Frobenius trap the basis-sweep pays.
+- Findings (load-bearing): submult is structurally ≤0 for ANY UCP star; the η=0
+  oracle is structurally BLIND to whether Φ is in the star (only the perturbation
+  teeth pin the Choi-Effros product); the Π_A accept-guard's CORRECTNESS half is
+  untestable until a η>0 (non-polar-closed) A exists → bead `aic-3qq` (needs
+  `aic-92f`). Cycle 3 (certified SDP UPPER bound, Watrous bilinear + SOS trilinear)
+  = bead `aic-0at`. Research: `docs/research/ecstar_{paper,web}_leg.md`.
 
 **cb-norm / η-defect stack (this session, `aic-m24` CLOSED + `aic-cne`).** The
 central quantity η = ‖Φ²−Φ‖_cb now has a full certified pipeline:
@@ -211,17 +242,22 @@ but start from here.
 
 Issue tracker is **beads**, prefix `aic` (persistent across sessions; JSONL at
 `.beads/issues.jsonl` is committed). `bd ready` for the live list. **This session
-CLOSED `aic-m24`** (the full certified-arb cb-ball + value entry point, 5
-increments) **and `aic-cne`** (the wolframscript oracle); `aic-ssu` filed (Julia
-end-to-end certify wrapper, follow-up). Prior session closed `aic-c7n`/`aic-wuh`/
-`aic-9kk`/`aic-d24`.
+BUILT `aic-knm` (`ecstar`) Cycles 1+2** (data model + basis-sweep estimators +
+HOPM worst-case search, committed) and filed `aic-b7c`/`aic-3qq`/`aic-cr6`/
+`aic-0at`/`aic-4c7`. Prior session CLOSED `aic-m24`/`aic-cne`; earlier
+`aic-c7n`/`aic-wuh`/`aic-9kk`/`aic-d24`.
 
-- **`aic-knm` (P2)** — ε-C* algebra data model + axiom-defect estimators (`ecstar`).
-  The clear next step toward the headline (`aic-92f` assoc_ecsa): all its deps
-  (funcalc, ucp, d24) are CLOSED, and η is now both measurable (`eta_idempotence`)
-  and certifiable (`aic_cbnorm_certify`). See the `aic-knm` playbook below.
-- **`aic-92f`** (`assoc_ecsa`, almost-idempotent ε-C* via Φ̃=θ(2Φ−1)) — unblocked
-  once `aic-knm` lands. η measurable/certifiable now (Julia+MOSEK + the arb certifier).
+- **`aic-b7c` (P1) — RUN FIRST.** The deferred Cycle-2 hostile review (interrupted
+  by the outage); its bead description is the full review brief. Blocks `aic-knm`
+  closure. Fix any findings, then `bd close aic-knm`.
+- **`aic-knm` (P2, in_progress)** — `ecstar`: Cycles 1+2 committed & green; remaining
+  to close = `aic-b7c` (review) passes. Cycle 3 (certified SDP UPPER bound) is the
+  separate `aic-0at`. See the playbook below.
+- **`aic-92f`** (`assoc_ecsa`, almost-idempotent ε-C* via Φ̃=θ(2Φ−1)) — **the next
+  headline step**, unblocked by `aic-knm`'s deliverables. Builds A=ImgΦ̃ (θ on the
+  superoperator 2Φ−1, reuse `funcalc`), feeds the `ecstar` estimators, and finally
+  exercises the Π_A teeth (`aic-3qq`) + the real O(η) canary (`aic-4c7`). η
+  measurable/certifiable now (Julia+MOSEK + the arb certifier).
 - **`aic-ssu` (P2, NEW)** — Julia end-to-end `certify(kraus)→(lo,hi)` wrapper:
   solve MAX primal + MIN dual (already in `src/sdp.jl`), ccall `aic_cbnorm_certify_d`,
   return the rigorous bracket; test vs the wolframscript oracle on live channels.
