@@ -369,19 +369,141 @@ near-singular inversion or spectral gap arises (this rung is deliberately
 eig/SDP-free). The arb balls are the rigorous object; the bound holds by ball
 monotonicity at any `prec`.
 
-**Deferred.** The TIGHT certified ball (ratio `-> 1`) is a later aic-m24
-increment — the credible route is solve-in-double then a verified-SDP / KKT
-duality-gap certificate in arb (same blocker noted for the cb-ball above). This
-eig-free bracket is the always-valid fallback the tight certifier dispatches to
-near `eta=0`.
+**Deferred (now BUILT).** The TIGHT certified ball (ratio `-> 1`) is the next
+subsection (`cbnorm tight certifier`, aic-m24 incr. 3). It takes the
+solve-in-double (MOSEK) feasible points and restores them to exact feasibility in
+arb (the "verified-SDP" route). This eig-free bracket is the always-valid
+fallback the tight certifier dispatches to near `eta=0` and when the MOSEK points
+cannot be restored.
+
+### cbnorm tight certifier — MOSEK feasible points + arb restoration (bead aic-m24, incr. 3b)
+
+The TIGHT certified two-sided ball `[lo,hi]` on `eta = ||Phi^2-Phi||_cb`
+(`.tex:347-354`), `arb_lower(lo) <= eta <= arb_upper(hi)`, gap `~` MOSEK duality
+gap `+` arb radius — orders of magnitude tighter than the eig-free `2n`-wide
+bracket. Files: `include/aic_cbnorm.h` (`aic_cbnorm_certify` decl),
+`src/aic_cbnorm_certify.c` (114 LOC, the dispatcher),
+`src/aic_cbnorm_certify_restore.c` (165 LOC, the two restoration recipes),
+`src/aic_cbnorm_internal.h` (the split's internal header, also the surface the
+GAP-2 tests use to read the restoration defects),
+`tests/test_certify.c` (34 checks), and the flat-double `aic_cbnorm_certify_d`
+shim in `src/aic_ucp_shim.c` (exported in `libaic.so` for the 3c Julia ccall).
+Design doc: `docs/cbnorm_tight_certifier.md`. NO Julia run here — the C/arb
+certifier consumes the committed golden-master feasible points (step 3a).
+
+**Strategy.** Two INDEPENDENT MOSEK feasible points bracket `eta` by weak
+duality: the Watrous MAX-primal `(X,P,Q)` -> LOWER, the QETLAB/Watrous MIN-dual
+`(Y0,Y1)` -> UPPER. Each MOSEK point is only APPROXIMATELY feasible, so each is
+RESTORED to EXACT feasibility in arb before its objective is read off; only then
+is the bound rigorous. Every PSD test is the ONE-SIDED `aic_mat_herm_max_eig(-M)`
+global enclosure (degeneracy-robust; NO full eig, dodging the aic-w4o.1 wall).
+
+**LOWER recipe (convex-combination restoration toward the Slater center
+`(0, I/2, I/2)`).** `max Re tr(J^dag X)` s.t. `[[P,X],[X^dag,Q]] >= 0`,
+`P+Q = I_{n^2}`; `eta = (2/n)*optval` (Convention-A trace-`n` calibration).
+1. symmetrize the equality: `E = P+Q-I`; `P' = P-E/2`, `Q' = Q-E/2` (so `P'+Q'=I`
+   exactly in arb).
+2. `delta =` rigorous UPPER bound on `max(0, -lambda_min(block'))`,
+   `block' = [[P',X],[X^dag,Q']]`, via `herm_max_eig(-block')` (arb_upper, clamp 0).
+3. `t = 1/(1 + 2*delta)`; the convex point `(tX, tP'+(1-t)I/2, tQ'+(1-t)I/2)` is
+   FEASIBLE (`lambda_min(t*block' + (1-t)I/2) >= -t*delta + (1-t)/2 >= 0`;
+   equality holds; block PSD => diagonal blocks PSD).
+4. `lo = t*(2/n)*Re tr(J^dag X)` (`<= eta`).
+
+**UPPER recipe (eigenvalue-shift restoration).** `min (1/2)(||Tr_2 Y0||_inf +
+||Tr_2 Y1||_inf)` s.t. `[[Y0,-J],[-J^dag,Y1]] >= 0`, `Y0,Y1 >= 0`;
+`eta = optval/2` (QETLAB convention).
+1. `eps =` rigorous UPPER bound on `max(0, -lambda_min(block_D))`,
+   `block_D = [[Y0,-J],[-J^dag,Y1]]`.
+2. `(Y0+eps I, Y1+eps I)` is dual-feasible. `Tr_2 = aic_mat_partial_trace_right`
+   (RIGHT/MINOR input factor, PINNED in 3a). The marginal is Hermitian PSD, so
+   `||.||_inf = lambda_max = herm_max_eig`.
+3. `Tr_2(Y0+eps I_{n^2}) = Tr_2(Y0) + eps*n*I_n`, so
+   `hi = (1/2)(lambda_max(Tr_2 Y0) + lambda_max(Tr_2 Y1)) + eps*n` (`>= eta`).
+
+**Dispatch / fail-loud (Rule 4).** `||J||_F < ~1e-9*n` (eta=0 regime) ->
+`aic_cbnorm_eigfree_ball_choi` (~`[0,0]`). `delta` or `eps > 0.1` (MOSEK badly
+off / precision wall) OR `arb_lower(lo) > arb_upper(hi)` (inverted) -> eig-free
+bracket as the rigorous fallback; if even THAT straddles, ABORT with
+`eta/n/prec` (the restoration recipe is wrong; orchestrator re-derives).
+
+**Measured results (per fixture, prec=128).** Containment holds for all 5
+fixtures; widths are tiny:
+- `phi_t_0p3`  (n=2): `[0.31499999999, 0.31500000000]`, width `5.8e-13`, eta_ref `0.315`.
+- `complex_qubit` (n=2): `[1.28000000000, 1.28000000000]`, width `6.9e-14`, eta_ref `1.28`.
+- `phi_t4_0p2` (n=4): `[0.29999999994, 0.30000000001]`, width `6.0e-12`, eta_ref `0.300`.
+- `paper_0p1` (n=2, ASYMMETRIC): `[0.094868329805, 0.094868329805]`, width `4.5e-14`,
+  eta_ref `0.1*sqrt(0.9) = 0.0948683`. THE direction-teeth fixture (see below).
+- `id_2` (eta=0): `[0,0]` exactly (eig-free dispatch), `hi < 1e-9`.
+
+On the natural MOSEK feasible points the solution is so accurate that `delta = 0`
+and `eps <= 7e-16` for the whole corpus: the restoration corrections (`t ~ 1`,
+`eps*n ~ 1e-16`) are NEGLIGIBLE, well below the `1e-7` containment slack. The
+corrections are EXERCISED by synthetic perturbation in test family (G), not by
+the natural corpus (see the GAP-2 closure below). **Universality canary:** the
+relative width `(hi-lo)/eta_ref` is `1.8e-12` (n=2) vs `2.0e-11` (n=4) — it does
+NOT grow with `n` (the bound's dimension-independence is preserved, `.tex:484`).
+**double-vs-arb:** prec=64 and prec=256 give the SAME width (`5.98e-12`) on
+`phi_t4_0p2` — the floor is the DOUBLE MOSEK feasible point, NOT the arb prec, so
+higher prec does not tighten further (consistent with the design-doc
+double-Kraus-floor caveat).
+
+**Mutation-proof results (Rule 7; RESTORED after each).**
+- *(3a) drop `(2/n)` in LOWER* -> RED, caught by `phi_t_0p3` (tightness: width
+  jumps to `0.55` as `lo` becomes `2*Re tr ~ 2*eta`).
+- *(3b) use `optval` not `optval/2` in UPPER* (drop the `/2`) -> RED, caught by
+  `phi_t_0p3` (tightness: width `0.315` as `hi` becomes `2*eta`).
+
+**GAP 1 CLOSED — partial-trace DIRECTION teeth (asymmetric fixture).** The earlier
+4-channel corpus had NUMERICALLY SYMMETRIC dual marginals
+(`||Tr_R(Y0) - Tr_L(Y0)||_F ~ 1e-13` for all four), so swapping
+`partial_trace_right -> partial_trace_left` was SILENT — the load-bearing
+direction (design-doc Risk #5) had no teeth. The `paper_0p1` fixture (the paper
+example `Phi(X)=P0 Tr(g0 X)+P1 Tr(g1 X)`, `.tex:367-378`, `etap=0.1`) has a
+GENUINELY ASYMMETRIC MIN-dual optimum: `||Tr_R(Y0)-Tr_L(Y0)||_F = 1.342e-01`
+(vs the symmetric corpus' `1e-13`..`1e-16`), measured in test family (F) and
+asserted there (`paper_0p1` asym `>= 0.05`; the other fixtures asym `< 1e-9`).
+With this fixture present:
+  - *swap `partial_trace_right -> partial_trace_left` in `aic_cbnorm_int_upper`*
+    -> **RED**, caught by `paper_0p1` tightness (B): `Tr_L` gives `hi = 2*eta`, so
+    width jumps to `9.487e-02 ~ eta_ref` (`!< 1e-4`). The symmetric fixtures stay
+    tight, so `paper_0p1` is the channel that catches the direction. Restored.
+  The generator (`tools/gen_fixtures_certify.jl`) re-asserts the asymmetry (`>0.05`)
+  on any `paper*` fixture before emitting, so a future regen that loses it fails
+  loud rather than silently disarming the teeth.
+
+**GAP 2 CLOSED — restoration-correction teeth (synthetic perturbation).** MOSEK is
+too accurate to hand us an infeasible point, so test family (G) MANUFACTURES one
+in-test (calling the internal `aic_cbnorm_int_lower`/`_upper` to read `delta`/`eps`):
+  - *LOWER:* scale `X -> 2X`. The primal block goes non-PSD by a known amount:
+    `delta = 0.5` (so `t = 1/(1+2*0.5) = 0.5`). The raw `(2/n)Re tr(J^dag 2X) =
+    0.63 = 2*eta` would EXCEED eta; the `t`-scaling pulls `lo` back to `0.315 =
+    eta_ref` EXACTLY. Asserts `delta > 0`, `lo < raw` (t<1), `lo <= eta_ref`.
+    *Mutation: set `t=1` (drop the t-scaling)* -> **RED** (`lo=0.63 !< raw`, then
+    `lo > eta_ref`). Restored.
+  - *UPPER:* shift `Y0,Y1 -> Y0-sI, Y1-sI` with `s=0.05`. `block_D` goes non-PSD:
+    `eps = 0.05`. The marginal `lambda_max` drops by `s*n=0.1` to `0.215`; the
+    `+eps*n` shift restores `hi = 0.315 = eta_ref` EXACTLY. Asserts `eps > 0`,
+    `hi >= eta_ref`. *Mutation: drop the `+eps*n` shift* -> **RED**
+    (`hi=0.215 < eta_ref=0.315`). Restored.
+  Both corrections are now PROVEN: the defect goes `>0`, the correction activates,
+  rigor is preserved, and dropping each correction breaks the rigor assertion.
+
+**Precision argument.** The bounds are differences/sums of `O(1)` quantities
+(`Re tr(J^dag X)`, marginal `lambda_max`) plus the tiny restoration corrections;
+no near-singular inversion arises (the restoration AVOIDS the `(L+R)^{-1}` route).
+`prec=53..128` resolves everything to `~1e-13`; the floor is the double MOSEK
+input, not arb. The arb balls are the rigorous object; the bound holds by ball
+monotonicity at any `prec`.
 
 ### ucp shim / libaic.so — flat-double ccall surface (bead aic-m24, incr. 2a)
 
 The C substrate for the reusable `eta_idempotence(kraus)` entry point. A
 FLAT-double ABI over the arb cores so the (later, increment 2b) Julia package can
 `ccall` them WITHOUT any FLINT type crossing the language boundary. Files:
-`include/aic_ucp_shim.h`, `src/aic_ucp_shim.c` (141 LOC, arb path internally),
-`tests/test_shim.c` (170 checks), plus the `lib` target in the `Makefile`.
+`include/aic_ucp_shim.h`, `src/aic_ucp_shim.c` (206 LOC, arb path internally; the
+incr.-3b `aic_cbnorm_certify_d` was added here), `tests/test_shim.c` (170 checks),
+plus the `lib` target in the `Makefile`.
 
 **Why a shim (the ccall contract).** Julia `ccall` passes `int` / `double` /
 `Ptr{Cdouble}` cleanly, but NOT FLINT structs — `acb_mat_t` is an opaque array
@@ -407,6 +529,12 @@ marshalling — NO new math.
   `ARF_RND_FLOOR`/`ARF_RND_CEIL`) — the only rounding directions that keep
   `*lo <= eta <= *hi` after the double conversion. Julia gets a certified bracket
   via `ccall` with NO SDP solver.
+- `int aic_cbnorm_certify_d(lo, hi, J_*, X_*, P_*, Q_*, Y0_*, Y1_*, n, prec)`
+  (incr. 3b) wraps `aic_cbnorm_certify`: loads the flat `N x N` `[p*N+q]` (re,im)
+  arrays for `J` and the two MOSEK feasible points into `acb_mat`, runs the TIGHT
+  certifier, and converts the balls with the SAME rigorous FLOOR/CEIL rounding.
+  Julia (3c) gets the MOSEK-tight certified bracket via `ccall`. Exported in
+  `libaic.so` (verified: `nm -D` shows `aic_cbnorm_certify_d`).
 
 **`libaic.so`.** `make lib` -> `build/libaic.so` via a dedicated recipe that
 adds `-fPIC -shared` LOCALLY (NOT to the global `CFLAGS`, to keep the test/bench

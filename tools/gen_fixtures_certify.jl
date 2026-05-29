@@ -83,6 +83,28 @@ function phit_kraus(d, t)  # Phi_t = (1-t) id + t Dep_d
     return K
 end
 complex_qubit_kraus() = [ComplexF64[0.6 0; 0.8im 0], ComplexF64[0 0.8im; 0 0.6]]
+# Paper example (.tex:367-378): Phi(X) = P0 Tr(g0 X) + P1 Tr(g1 X) on C^2 (verbatim
+# from tools/gen_fixtures_d24.jl / runtests.jl). ASYMMETRIC channel: its MIN-dual
+# optimum has marginals with ||Tr_R(Y)-Tr_L(Y)||_F ~ 0.134 (>> the symmetric corpus'
+# ~1e-13), so the partial-trace DIRECTION (Risk #5) acquires teeth — swapping
+# partial_trace_right->left doubles hi (Tr_L gives hi = 2*eta), breaking tightness.
+function paper_example_kraus(etap)
+    g0 = ComplexF64[1-etap sqrt(etap*(1-etap)); sqrt(etap*(1-etap)) etap]
+    g1 = ComplexF64[0 0; 0 1]
+    P0 = ComplexF64[1 0; 0 0]; P1 = ComplexF64[0 0; 0 1]
+    function prep(P, g)
+        j = findfirst(c -> norm(P[:, c]) > 0, 1:2)
+        u = P[:, j] / norm(P[:, j])
+        ev = eigen(Hermitian(g))
+        Ks = Matrix{ComplexF64}[]
+        for k in 1:2
+            ev.values[k] <= 1e-14 && continue
+            push!(Ks, sqrt(ev.values[k]) * (ev.vectors[:, k] * u'))
+        end
+        return Ks
+    end
+    return vcat(prep(P0, g0), prep(P1, g1))
+end
 
 # ---- partial trace over sys 2 (minor/input factor) for a plain N x N matrix ----
 # Tr_2(M)[i,j] = sum_a M[(i-1)n+a, (j-1)n+a]. Used only to re-verify the dual bound.
@@ -93,6 +115,16 @@ function ptrace2(M::Matrix{ComplexF64}, n::Int)
     end
     return R
 end
+# ---- partial trace over sys 1 (major/output factor) — the WRONG direction; used
+# ONLY to MEASURE the marginal asymmetry ||Tr_R - Tr_L||_F that gives the direction
+# its teeth. Tr_1(M)[a,b] = sum_i M[(i-1)n+a, (i-1)n+b].
+function ptrace1(M::Matrix{ComplexF64}, n::Int)
+    R = zeros(ComplexF64, n, n)
+    for a in 1:n, b in 1:n, i in 1:n
+        R[a, b] += M[(i - 1) * n + a, (i - 1) * n + b]
+    end
+    return R
+end
 maxeig_herm(M) = maximum(real.(eigvals(Hermitian((M + M') / 2))))
 
 # ---- fixture corpus: representative + adversarial subset (design doc validation) ----
@@ -100,6 +132,9 @@ maxeig_herm(M) = maximum(real.(eigvals(Hermitian((M + M') / 2))))
 # complex_qubit n=2 conjugation guard (genuinely complex J^dag, Tr_2)
 # phi_t4_0p2   n=4 dimension canary (largest n -> 16x16 blocks)
 # id_2         eta=0 oracle (LOWER bound must be ~0; dispatch boundary)
+# paper_0p1    n=2 ASYMMETRIC-marginal fixture (closes GAP 1): the MIN-dual optimum
+#              has ||Tr_R(Y)-Tr_L(Y)||_F ~ 0.134, giving the partial-trace DIRECTION
+#              its teeth (Risk #5); swapping right->left makes hi = 2*eta.
 struct CFix
     name::String
     n::Int
@@ -112,6 +147,7 @@ fixtures = CFix[
     CFix("phi_t_0p3",     2, phit_kraus(2, 0.3),    0.3 * 0.7 * dep_id_norm(2), false),
     CFix("complex_qubit", 2, complex_qubit_kraus(), 1.28,                       false),
     CFix("phi_t4_0p2",    4, phit_kraus(4, 0.2),    0.2 * 0.8 * dep_id_norm(4), false),
+    CFix("paper_0p1",     2, paper_example_kraus(0.1), 0.1 * sqrt(0.9),         false),
     CFix("id_2",          2, identity_kraus(2),     0.0,                        true),
 ]
 
@@ -141,8 +177,17 @@ function solve_and_check(f::CFix)
     # the SOLVED optvals must also agree (catches a normalization drift)
     abs(ep - f.eta_ref) <= tol || error("FIXTURE POISON $(f.name): eta_primal=$ep ref=$(f.eta_ref)")
     abs(ed - f.eta_ref) <= tol || error("FIXTURE POISON $(f.name): eta_dual=$ed ref=$(f.eta_ref)")
-    @printf("  %-14s n=%d  eta_ref=%.6e  LOWER(X)=%.6e  UPPER(Y)=%.6e  gap=%.2e\n",
-            f.name, n, f.eta_ref, lo, hi, abs(ep - ed))
+    # MARGINAL ASYMMETRY of the MIN-dual optimum (the partial-trace DIRECTION teeth,
+    # Risk #5 / GAP 1): ||Tr_R(Y)-Tr_L(Y)||_F. ~1e-13 on a symmetric channel (the
+    # swap is then SILENT); paper_0p1 must be >> that or the direction test has no
+    # teeth. We POISON-GUARD any fixture whose name advertises asymmetry.
+    asym = norm(ptrace2(Y0, n) - ptrace1(Y0, n)) + norm(ptrace2(Y1, n) - ptrace1(Y1, n))
+    if startswith(f.name, "paper")
+        asym > 0.05 || error("ASYMMETRY POISON $(f.name): marginal asym=$asym <= 0.05 " *
+                             "(the direction-swap teeth would be inert)")
+    end
+    @printf("  %-14s n=%d  eta_ref=%.6e  LOWER(X)=%.6e  UPPER(Y)=%.6e  gap=%.2e  asym=%.4e\n",
+            f.name, n, f.eta_ref, lo, hi, abs(ep - ed), asym)
     return Solved(f, J, X, P, Q, Y0, Y1, lo, hi)
 end
 

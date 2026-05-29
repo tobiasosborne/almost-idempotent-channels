@@ -54,6 +54,26 @@ int aic_cbnorm_eigfree_d(double *lo, double *hi,
                          const double *kraus_re, const double *kraus_im,
                          int n, int r, int prec);
 
+/* TIGHT certified two-sided bracket on eta = ||Phi^2-Phi||_cb, returned as two
+ * RIGOROUS doubles (*lo <= eta <= *hi). Flat-double ABI over aic_cbnorm_certify
+ * (include/aic_cbnorm.h; docs/cbnorm_tight_certifier.md) for the 3c Julia ccall:
+ * J and the two MOSEK feasible points (MAX-primal X,P,Q; MIN-dual Y0,Y1) are
+ * passed as flat N x N [p*N+q] (re,im) arrays (N=n*n); the routine loads them to
+ * acb_mat, runs the arb certifier, and converts the balls with the rigorous
+ * rounding *lo = floor(arb_lower), *hi = ceil(arb_upper). The bracket is the
+ * MOSEK-tight ball (gap ~ solver tol + arb radius), not the eig-free 2n-wide
+ * one; it dispatches to the eig-free fallback near eta=0 or when the MOSEK points
+ * cannot be restored. Returns 0 on success; fail-loud asserts on bad shape
+ * (n>=1) or a null array. `lo`, `hi` are caller-owned scalars. */
+int aic_cbnorm_certify_d(double *lo, double *hi,
+                         const double *J_re, const double *J_im,
+                         const double *X_re, const double *X_im,
+                         const double *P_re, const double *P_im,
+                         const double *Q_re, const double *Q_im,
+                         const double *Y0_re, const double *Y0_im,
+                         const double *Y1_re, const double *Y1_im,
+                         int n, int prec);
+
 #ifdef __cplusplus
 }
 #endif

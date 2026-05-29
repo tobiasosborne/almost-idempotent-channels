@@ -50,6 +50,29 @@ void aic_cbnorm_eigfree_ball_choi(arb_t lo, arb_t hi, const acb_mat_t J,
 void aic_cbnorm_eigfree_ball(arb_t lo, arb_t hi, const aic_ucp_kraus *phi,
                              slong prec);
 
+/* TIGHT certified two-sided bracket on eta = ||Phi^2-Phi||_cb (bead aic-m24,
+ * increment 3b). Inputs: J = Choi(Phi^2 - Phi) (n^2 x n^2, Convention A) and TWO
+ * SDP feasible points produced by the Julia+MOSEK solves of step 3a, each
+ * n^2 x n^2:
+ *   - MAX-primal (X,P,Q): max Re tr(J^dag X) s.t. [[P,X],[X^dag,Q]]>=0,
+ *     P+Q=I_{n^2}; gives the rigorous LOWER bound eta >= (2/n) Re tr(J^dag X).
+ *   - MIN-dual (Y0,Y1): min (1/2)(||Tr_2 Y0||_inf + ||Tr_2 Y1||_inf) s.t.
+ *     [[Y0,-J],[-J^dag,Y1]]>=0, Y0,Y1>=0; gives the rigorous UPPER bound
+ *     eta <= (1/2)(||Tr_2 Y0||_inf + ||Tr_2 Y1||_inf), Tr_2 = partial_trace_right.
+ * Both feasible points are RESTORED to exact feasibility in arb (convex-
+ * combination toward the Slater center for the primal; eigenvalue shift for the
+ * dual) so the returned ball is RIGOROUS: arb_lower(lo) <= eta <= arb_upper(hi),
+ * and TIGHT (gap ~ MOSEK duality gap + arb radius, much tighter than the
+ * eig-free 2n-wide bracket). Dispatches to aic_cbnorm_eigfree_ball_choi in the
+ * eta=0 regime (||J||_F < ~1e-9*n) or when the MOSEK points are too far off to
+ * restore cleanly; fails loud (Rule 4) if even the eig-free fallback straddles.
+ * All ONE-SIDED herm_max_eig(-M) PSD tests (no full eig; dodges aic-w4o.1).
+ * See docs/cbnorm_tight_certifier.md. `lo`, `hi` are caller-initialised arb_t. */
+void aic_cbnorm_certify(arb_t lo, arb_t hi, const acb_mat_t J,
+                        const acb_mat_t X, const acb_mat_t P, const acb_mat_t Q,
+                        const acb_mat_t Y0, const acb_mat_t Y1,
+                        slong n, slong prec);
+
 #ifdef __cplusplus
 }
 #endif
