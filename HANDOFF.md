@@ -1,13 +1,42 @@
 # HANDOFF.md — almost-idempotent-channels
 
 Orientation for a fresh agent. Last updated **2026-05-29**, after the
-`ucp → idemp_structure → cbnorm` session (the **η=0 vertical-slice milestone
-`aic-9kk` is achieved**). Current state: `master` clean, **9 test binaries green,
-zero warnings**, 13 beads closed of 49. The next step toward the paper's headline
-(the almost-idempotent factorization) is **`aic-knm` (`ecstar`)** — see the
-playbook below. Read §"Channel-module conventions" before touching `ucp`/`idemp`/
-`cbnorm` or building `assoc_ecsa`; those conventions are load-bearing and a prior
-session-mate (and three hostile reviews) learned them the hard way.
+**`cbnorm` certifier session** (the entire η-defect cb-norm stack — eig-free
+bracket → Julia value entry point → tight certified-arb ball — is built;
+**`aic-m24` is CLOSED**). Current state: `master` clean, **13 test binaries green,
+zero warnings**, 15 beads closed of 51. The η=0 vertical-slice milestone
+(`aic-9kk`) was achieved the prior session. The next step toward the paper's
+headline (the almost-idempotent factorization) is **`aic-knm` (`ecstar`)** — its
+only dep was `aic-m24`-adjacent work, and η is now both *measurable*
+(`eta_idempotence`) and *certifiable* (`aic_cbnorm_certify`). See the playbook
+below. Read §"Channel-module conventions" before touching `ucp`/`idemp`/`cbnorm`
+or building `assoc_ecsa`; those conventions are load-bearing and a prior
+session-mate (and four hostile reviews) learned them the hard way.
+
+**cb-norm / η-defect stack (this session, `aic-m24` CLOSED + `aic-cne`).** The
+central quantity η = ‖Φ²−Φ‖_cb now has a full certified pipeline:
+- **eig-free bracket** `[‖J‖_F/n, 2‖J‖_F]` (`src/aic_cbnorm.c`) — always-valid,
+  no solver, no eig (dodges `aic-w4o.1`); the fallback near η=0.
+- **value entry point** `eta_idempotence(kraus)` (`julia/AlmostIdempotentChannels.jl`,
+  ccalls the `libaic.so` shim `aic_ucp_choi_diff_d` then solves the Watrous SDP via
+  Convex+MOSEK) — downstream modules MEASURE η through this.
+- **tight certified-arb ball** `aic_cbnorm_certify` (`src/aic_cbnorm_certify*.c`) —
+  rigorous `[lo,hi]`, widths ~1e-12 (~10¹²× tighter than eig-free), from two MOSEK
+  feasible points (MAX primal + MIN dual solved separately in Julia, `src/sdp.jl`)
+  via arb feasibility-restoration (convex-combination LOWER toward the Slater
+  center; eigenvalue-shift UPPER; one-sided `herm_max_eig` PSD certs; dispatch +
+  fail-loud). Hostile-reviewed (no blockers); all load-bearing choices
+  mutation-proven (`tests/test_certify.c` + `tests/test_certify_teeth.c`).
+- **independent oracle** `tools/diamond_oracle.wls` (wolframscript / Mathematica
+  `SemidefiniteOptimization`, complex-native) confirms the MOSEK golden master to
+  ≤1.1e-7. KEY: Mathematica SDP is **machine-precision only** (no `WorkingPrecision`)
+  — certified high-precision η must come from the FLINT/arb route, not Mathematica.
+- Design contract: `docs/cbnorm_tight_certifier.md` (TIB-grounded: Jansson SIAM
+  2008, Watrous 1207.5726/TQI Ch.3, QETLAB). Follow-up `aic-ssu` (Julia end-to-end
+  `certify(kraus)→(lo,hi)` wrapper). **Partial-trace direction in the dual is the
+  load-bearing convention** (`aic_mat_partial_trace_right` / Convex sys 2, the
+  MINOR/input factor) — pinned empirically by the asymmetric paper-example anchor;
+  the design doc's first draft had it wrong.
 
 ## What this project is
 
@@ -35,8 +64,10 @@ whose outputs meet the paper's `O(ε)`/`O(η)` bound, which the arb path certifi
 ## How to build & test
 
 ```bash
-make test     # 9 test binaries (mat/funcalc/contraction/harness/latd/smoke/
-              #   ucp/idemp/ucp_d24), all green, zero warnings (strict flags)
+make test     # 13 test binaries (mat/funcalc/contraction/harness/latd/smoke/
+              #   ucp/idemp/ucp_d24/cbnorm/shim/certify/certify_teeth), all green
+make lib      # build/libaic.so (shim symbols for the Julia ccall package)
+              # zero warnings throughout (strict flags)
 make bench    # ns/op microbenchmarks (double-vs-arb head-to-heads)
 make fixtures # OPTIONAL: regenerate tests/fixtures_d24.inc.h via Julia+MOSEK
               #   (the committed .inc.h means `make test` does NOT need Julia)
@@ -179,16 +210,21 @@ but start from here.
 ## What's next (ready work — `bd ready`)
 
 Issue tracker is **beads**, prefix `aic` (persistent across sessions; JSONL at
-`.beads/issues.jsonl` is committed). `bd ready` for the live list. `aic-c7n` (ucp),
-`aic-wuh` (idemp), `aic-9kk` (η=0 milestone), `aic-d24` (cbnorm incr.1) all CLOSED
-this session.
+`.beads/issues.jsonl` is committed). `bd ready` for the live list. **This session
+CLOSED `aic-m24`** (the full certified-arb cb-ball + value entry point, 5
+increments) **and `aic-cne`** (the wolframscript oracle); `aic-ssu` filed (Julia
+end-to-end certify wrapper, follow-up). Prior session closed `aic-c7n`/`aic-wuh`/
+`aic-9kk`/`aic-d24`.
 
 - **`aic-knm` (P2)** — ε-C* algebra data model + axiom-defect estimators (`ecstar`).
-  The ONLY remaining blocker for `aic-92f` (assoc_ecsa, the almost-idempotent
-  headline path): `aic-92f`'s other 3 deps (funcalc, ucp, d24) are now CLOSED. This
-  is the clear next step toward the headline.
+  The clear next step toward the headline (`aic-92f` assoc_ecsa): all its deps
+  (funcalc, ucp, d24) are CLOSED, and η is now both measurable (`eta_idempotence`)
+  and certifiable (`aic_cbnorm_certify`). See the `aic-knm` playbook below.
 - **`aic-92f`** (`assoc_ecsa`, almost-idempotent ε-C* via Φ̃=θ(2Φ−1)) — unblocked
-  once `aic-knm` lands. η is measurable now via the Julia+MOSEK golden master.
+  once `aic-knm` lands. η measurable/certifiable now (Julia+MOSEK + the arb certifier).
+- **`aic-ssu` (P2, NEW)** — Julia end-to-end `certify(kraus)→(lo,hi)` wrapper:
+  solve MAX primal + MIN dual (already in `src/sdp.jl`), ccall `aic_cbnorm_certify_d`,
+  return the rigorous bracket; test vs the wolframscript oracle on live channels.
 - **`aic-w4o.1` (P1)** — certified degenerate Hermitian eig (arb). The main
   certified-path debt: gates the certified extraction deferred in `ucp` (Kraus),
   `idemp` (M, A subspaces), and `projection`. Tooling: `acb_mat_eig_multiple_rump`
