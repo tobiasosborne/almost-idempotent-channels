@@ -1,6 +1,13 @@
 # HANDOFF.md — almost-idempotent-channels
 
-Five-minute orientation for a fresh agent. Last updated 2026-05-28.
+Orientation for a fresh agent. Last updated **2026-05-29**, after the
+`ucp → idemp_structure → cbnorm` session (the **η=0 vertical-slice milestone
+`aic-9kk` is achieved**). Current state: `master` clean, **9 test binaries green,
+zero warnings**, 13 beads closed of 49. The next step toward the paper's headline
+(the almost-idempotent factorization) is **`aic-knm` (`ecstar`)** — see the
+playbook below. Read §"Channel-module conventions" before touching `ucp`/`idemp`/
+`cbnorm` or building `assoc_ecsa`; those conventions are load-bearing and a prior
+session-mate (and three hostile reviews) learned them the hard way.
 
 ## What this project is
 
@@ -28,12 +35,18 @@ whose outputs meet the paper's `O(ε)`/`O(η)` bound, which the arb path certifi
 ## How to build & test
 
 ```bash
-make test     # 6 test binaries, all green, zero warnings (strict flags)
+make test     # 9 test binaries (mat/funcalc/contraction/harness/latd/smoke/
+              #   ucp/idemp/ucp_d24), all green, zero warnings (strict flags)
 make bench    # ns/op microbenchmarks (double-vs-arb head-to-heads)
+make fixtures # OPTIONAL: regenerate tests/fixtures_d24.inc.h via Julia+MOSEK
+              #   (the committed .inc.h means `make test` does NOT need Julia)
 make clean
 ```
-Deps: gcc/C11, FLINT 3.0.1 (arb/acb bundled), LAPACK+LAPACKE+BLAS (installed
-2026-05-28). `make` links `-lflint -llapacke -llapack -lblas -lm`.
+Deps: gcc/C11, FLINT 3.0.1 (arb/acb bundled), LAPACK+LAPACKE+BLAS. `make` links
+`-lflint -llapacke -llapack -lblas -lm`. For `make fixtures` only: Julia
+(`~/.juliaup`) with the committed `julia/env` (Convex 0.16 + Mosek 11.2 +
+MosekTools), MOSEK 11.1 at `~/mosek` + license `~/mosek/mosek.lic`. **No Python
+anywhere** (user rule — Julia or C only; consumer Python bindings come later).
 
 ## What's built (all green, committed)
 
@@ -105,6 +118,63 @@ Deps: gcc/C11, FLINT 3.0.1 (arb/acb bundled), LAPACK+LAPACKE+BLAS (installed
   with zero defect. Every evil sweep should reduce to it continuously as knob→0.
 - **`factorize` and `cstar_build` are the most at-risk modules** (end-of-pipeline,
   outline proof, near-singular inversions, the composite constant).
+- **The recurring failure mode is a test that *cannot fail*, not wrong math.**
+  All three channel-module hostile reviews caught one: a Choi matrix that was the
+  conjugate of the cited convention but passed every transpose-invariant check
+  (`ucp`); a "Γ is CP" certificate that never read the stored Γ (`idemp`); a
+  golden-master corpus of only real Kraus that could not catch a conjugation bug
+  (`cbnorm`). **Always run a hostile review of a new core module, and demand each
+  test be mutation-proven** (perturb the impl → RED → restore). The math is usually
+  right; the test's *teeth* are what's missing.
+
+## Channel-module conventions (ucp / idemp / cbnorm) — LOAD-BEARING, don't relearn
+
+These pin the data model the headline path is built on. Verify against the `.tex`,
+but start from here.
+
+- **Heisenberg picture (observables), pinned.** A UCP map is `Φ: B(K)→B(H)`,
+  `Φ(X)=Σ_a K_a† X K_a`, with `K_a: H→K` stored as a `dim_K × dim_H` `acb_mat`
+  (`aic_ucp_kraus`). Unital ⇔ `Σ_a K_a†K_a = 1_H` (tex:1571). The state/Schrödinger
+  dual is `T=Φ*`, `T(ρ)=Σ_a K_a ρ K_a†` — getting the dual backwards silently
+  transposes everything (CLAUDE.md callout).
+- **Choi Convention A (the bug that bit).** `C_Φ = Σ_ij E_ij ⊗ Φ(E_ij)`, K-factor
+  MAJOR/LEFT: `C[i*dim_H+a, j*dim_H+b] = Φ(E_ij)[a,b] = Σ_x conj(K_x[i,a])·K_x[j,b]`
+  — **the conjugation is on the FIRST (i,a) factor.** The first ucp impl conjugated
+  the second factor (building `conj(C_Φ)=C_Φᵀ`); it passed unital/CP/round-trip
+  (all transpose-invariant) and was caught only by the oracle test asserting a Choi
+  block equals `aic_ucp_apply(Φ, E_ij)`. That oracle + a complex-Kraus fixture now
+  guard it. Unital check via `aic_mat_partial_trace_left` (traces out the LEFT/K
+  factor → keeps H).
+- **Carrier `M = range(Q)`, `Q = Σ_a K_a K_a† = Φ*(1)`** (lem_carrier tex:1724).
+  `M ⊊ H ⇔ Φ is NOT trace-preserving` (i.e. `Q≠I`). Do NOT assume `M=H` (a web
+  source wrongly claimed "carrier=H for UCP" — it confused `Φ(I)=I` with the
+  carrier). The certified rank of `Q` is gap-dependent → `aic-w4o.1`.
+- **`idemp` (th_idemp_structure, the η=0 oracle).** `A = ImgΦ` is built by the
+  **column-image SVD** (apply `Φ` to all `E_ij`, SVD the stacked outputs) — NOT the
+  `n²×n²` superoperator matrix (that route risks a vec-convention bug; the
+  column-image route reuses the tested `aic_ucp_apply`). `Γ` is built via the
+  **`Λ=ΔΓ` factorization** (`Λ(Y)=Φ(J_M Y J_M†)`, `Γ=Δ†Λ` since `Δ` has orthonormal
+  columns), NOT a `w`-pseudoinverse — this `Γ` is UCP by construction (tex:2088).
+  `A`'s basis has a **unitary gauge freedom** → cross-check `A` as a SUBSPACE
+  (`Π_A=ΔΔ†`), never operator-by-operator.
+- **cb-norm / η-defect (Route B, no Python).** `η = ‖Φ²−Φ‖_cb`; `Λ=Φ²−Φ` is
+  Hermiticity-preserving but **NOT CP**, so the CP closed form `‖Φ‖_cb=‖Φ(1)‖`
+  does NOT apply — a **Watrous diamond-norm SDP** is required (tex:352). Split: the
+  **C core** computes `Choi(Φ²−Φ)` (`aic_ucp_compose` gives `Φ²` Kraus `{K_bK_a}`;
+  `aic_ucp_choi_diff`); the **SDP lives in Julia+MOSEK** (`tools/gen_fixtures_d24.jl`).
+  **Load-bearing normalization: `‖Λ‖_⋄ = (2/n)·SDP_optval`** because Convention-A
+  Choi has trace `n` (the Watrous SDP is trace-1 calibrated) — verified across
+  n=2,3,4 (the dimension canary pins it). Analytic anchors for tests:
+  `‖Dep_d−id_d‖_⋄ = 2(1−1/d²)`; `Φ_t=(1−t)id+t·Dep ⇒ ‖Φ_t²−Φ_t‖_⋄ = t(1−t)·2(1−1/d²)`;
+  the paper's own example (tex:367) `‖Φ²−Φ‖_cb = η√(1−η)`.
+- **The certified-arb degenerate-eig wall (`aic-w4o.1`) is the recurring deferral.**
+  FLINT's certified eig (`acb_mat_eig_simple`) needs a SIMPLE spectrum; the project's
+  spectra are degenerate (projections 0/1, `⊕B(L_j)`). So the *certified* halves of
+  Kraus-extraction (`ucp`), `M`/`A`-subspace extraction (`idemp`), and `projection`
+  all use the LAPACK double path now and defer certification to `aic-w4o.1`
+  (tooling: `acb_mat_eig_multiple_rump`, `acb_mat_eig_global_enclosure`, or an
+  eig-free Cholesky route). The *checks* that avoid full eig (PSD via
+  `herm_max_eig(−C)`, relation defects) are already certified.
 
 ## What's next (ready work — `bd ready`)
 
@@ -135,25 +205,93 @@ this session.
   decomposition + prop_Gamma explicit form + Δ/Γ Kraus reps); `aic-kyj` (P3, idemp
   test teeth: single-split block-diag channel + genuine double-vs-arb subspace
   oracle when `aic-w4o.1` lands).
-- Housekeeping: `aic-w4o.4` (split oversized test files: test_mat/funcalc/
-  contraction/latd all > 200 LOC); `aic-w4o.2` (full arb SVD); `aic-w4o.3`
-  (opnorm power-iteration audition); `aic-f9u.1` (shared corpus); `aic-f9u.2`
-  (multi-dim Pareto bench reporting).
+- Housekeeping: `aic-w4o.4` (split oversized test files — `test_mat/funcalc/
+  contraction/latd/idemp` and `test_idemp.h` (208 LOC) all > 200 LOC); `aic-w4o.2`
+  (full arb SVD); `aic-w4o.3` (opnorm power-iteration audition); `aic-f9u.1`
+  (shared corpus); `aic-f9u.2` (multi-dim Pareto bench reporting).
+
+## Next-step playbook — `aic-knm` (`ecstar`), the chosen next module
+
+Goal: the **ε-$C^*$ algebra data model + axiom-defect estimators** (shard A; defs
+at `tex:403–492`, the approximate axioms at `tex:407–439`). This is the last
+blocker for `aic-92f` (`assoc_ecsa`), so it is the direct route to the headline.
+
+- **Research first** (the discipline): one paper-leg (Sonnet) on shard A + `tex:403–492`
+  — the exact ε-$C^*$ axioms (associativity, `‖XY‖≤(1+ε)‖X‖‖Y‖`, the $C^*$ identity,
+  unit laws — ALL only up to ε), the δ-homomorphism defs (`tex:443–455`; keep ε vs δ
+  distinct), and what an "axiom-defect estimator" must compute; plus one web-leg
+  (best-in-class: estimating the associativity/multiplicativity defect of a finite-dim
+  near-algebra — operator norm of the associator trilinear map; how to take the sup
+  over the unit ball — basis sweep vs power iteration). Decide the route, then implement.
+- **Data model.** An ε-$C^*$ algebra here is a subspace `A ⊆ M_N` with the
+  **Choi–Effros star** `X⋆Y = Φ(XY)` (NOT plain `XY`; the product leaves `ImgΦ`),
+  involution `X↦X†`, norm inherited from `M_N`. For the exact case `A = ImgΦ`
+  (reuse `aic_idemp`); for the almost-idempotent case (built by `assoc_ecsa`)
+  `A = ImgΦ̃`, `Φ̃ = θ(2Φ−1)` (reuse `funcalc` θ on the **superoperator** `2Φ−1`).
+  Store `A` as its orthonormal operator basis (the `aic_idemp` `A_basis` shape).
+- **Defect estimators** (return certified arb balls): associativity
+  `‖(X⋆Y)⋆Z − X⋆(Y⋆Z)‖` over the unit ball; submultiplicativity slack
+  `sup ‖X⋆Y‖−(1+ε)‖X‖‖Y‖`; $C^*$-identity `‖X⋆X†‖` vs `‖X‖²`; unit-law defect
+  (the exact unit only exists after `prop_unit`, `tex:672` — `unitfix`, a sibling
+  bead). Each star multiplication goes through `aic_ucp_apply`.
+- **η=0 oracle** (mandatory): for an EXACT idempotent Φ, `A=ImgΦ` is a genuine
+  $C^*$ algebra → all defects must be **machine-zero**. Reuse the six `test_idemp`
+  channels. Then an ε-sweep (perturb toward almost-idempotent) must show every
+  defect growing `= O(ε)`, and the **dimension sweep** must show the constant does
+  NOT grow with `dim A` (the universality canary, `aic-dbo.3`).
+- **Reuse** `aic_ucp` (the star), `aic_mat` (`opnorm`/`herm_max_eig`), `aic_idemp`
+  (the exact-case `A`). η is measurable via the `aic-d24` Julia+MOSEK golden master.
+- `bd show aic-knm` for the bead; then `bd update aic-knm --claim`.
 
 ## Orchestration mode (how this was run, to continue it)
 
-The user runs this serially: each module is delegated to a **subagent** (Opus
-for coding, Sonnet for research/summarization), the orchestrator **verifies the
-build independently** (don't trust the report — re-run `make test`), files beads
-for issues that arise, commits atomically per closed bead with `.tex`-line
-provenance, and reports at epic milestones. **No parallel Julia.** `TaskCreate`
-is fine for ephemeral in-session tracking; beads is the only persistent tracker.
-**No GitHub CI; no remote configured** (commit locally, don't push).
+The user runs this as a serial orchestration: the orchestrator stays in the loop,
+delegates each step to a **subagent** (Opus for coding/hostile-review, Sonnet for
+research/summarization), and **independently verifies** (don't trust a subagent
+report — re-run `make clean && make test`, read the diff, check zero warnings).
+The per-module pipeline used this session, which works:
+
+1. **Research (parallel OK)** — for every core module, a paper-constructivization
+   leg (shard + `.tex`) **and** a web-leg surveying best-in-class published
+   algorithms/impls. *Web-research EVERY algorithm* (user directive) — cb-norm,
+   fixed-point structure, etc. **Research may run in parallel; Julia may NOT.**
+2. **Decide the route** (orchestrator), recording the audition slate (Law 4).
+3. **Implement** (Opus subagent), tests-first TDD, both number paths, ≤200 LOC/file.
+4. **Independent build-verify** (orchestrator).
+5. **Hostile review** (Opus subagent) — ALWAYS for a core module; it has caught a
+   real defect every single time (see the "tests that can't fail" note above).
+6. **Fix pass** (Opus), mutation-proving the new teeth.
+7. **Commit atomically** per closed bead with `.tex`-line provenance; file beads
+   for every deferral as it arises.
+
+Standing directives (also in the harness memory dir): **No Python in the codebase**
+— Julia or C only (consumer Python bindings come later). **Golden masters** are
+encouraged as an independent cross-check rung — MOSEK/Gurobi (local) for SDPs,
+Mathematica/`wolframscript` (needs the user's VPN) for exact fun-calc, driven from
+Julia or C. **No parallel Julia** (precompile/env fragility — one Julia process at
+a time). `TaskCreate` is fine for ephemeral in-session tracking; **beads is the
+only persistent tracker** (`bd ready`/`bd show`; export to `.beads/issues.jsonl`
+before committing — the pre-commit hook also syncs it). **No GitHub CI; no remote
+configured** (commit locally; do NOT push — the auto-block's push step is N/A).
 
 ## Conventions / gotchas
 
 - Cite `approximate_algebras.tex:<line>` + the verbatim equation in every math
-  routine. `≤200 LOC` per source file (several test files violate this →
-  `aic-w4o.4`). Arb path never links LAPACK. Fail-loud on precondition violation
-  / LAPACK `info!=0` / lost precision. `acb_mat_eig_simple` needs a simple
-  spectrum; `LAPACKE_zheev` does not. Conversions in `latd` are row-major.
+  routine (Law 1). `≤200 LOC` per **source** file (several test files exceed it →
+  `aic-w4o.4`). Arb-path `.c` files never *call* LAPACK (the link line bundles both
+  for tests; the rule is about which library each routine calls). Fail-loud on
+  precondition violation / LAPACK `info!=0` / lost precision / an arb ball that
+  straddles a decision boundary (e.g. PSD: `herm_max_eig(−C)` ball straddling 0).
+- `acb_mat_eig_simple` needs a SIMPLE spectrum; `LAPACKE_zheev` does not. Vec/Choi
+  is **row-major** (`vec(X)[a*n+b]=X[a,b]`; Choi K-major); `latd` conversions are
+  row-major. The Choi conjugation is on the FIRST factor (see Channel-module
+  conventions — this is the bug that bit).
+- `tests/fixtures_d24.inc.h` is **generated but committed** (so `make test` needs
+  no Julia); regenerate with `make fixtures` after touching the SDP/corpus, and the
+  Makefile makes `tests/*.inc.h` a test prerequisite so a stale fixture forces a
+  rebuild. Julia work is **serial** (no parallel Julia). **No Python.**
+- Before committing, `bd export > .beads/issues.jsonl` so the bead state lands with
+  the commit (the pre-commit hook in `core.hooksPath=.beads/hooks` also syncs it).
+  Close beads with a detailed `--reason`; force-close (`--force`) only when a
+  deliverable ships but a DAG dep is a deferred remainder (tracked elsewhere) — as
+  `aic-wuh` was (its certified-extraction half is on `aic-w4o.1`).
