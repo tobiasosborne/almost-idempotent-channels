@@ -1198,6 +1198,184 @@ rigor lives in T3/T6, not the trend).
 
 ### Deferred (beaded)
 
-- `A = Img Φ̃` extraction, the Choi-Effros star `X⋆Y = Φ̃(XY)`, ecstar axiom-defect
-  wiring, the dimension-sweep canary → Increment 2 of `aic-92f`.
 - Out-of-basin globally-convergent `sgn` (η near 1/4 / large n) → bead **aic-8hz**.
+
+## Module `assoc_ecsa` (Increment 2) — A = Img Φ̃, the Choi–Effros star, th_almost_idemp (bead aic-92f)
+
+Increment 2 completes `th_almost_idemp` (`.tex:2184-2237`): build `A = Img Φ̃ =
+Ker(1−Φ̃)` (`.tex:2185-2186`), the approximate Choi–Effros product `X⋆Y = Φ̃(XY)`
+(`.tex:2189`), and CERTIFY that `(A, ⋆, ‖·‖, †, I)` is an extended `O(η)`-`C*`
+algebra by running the `ecstar` axiom-defect estimators on the genuinely `η>0` `A`.
+
+### A-extraction via oblique-projector SVD (Route-B1)
+
+`Φ̃` is the `n²×n²` superoperator `S̃` (Increment 1). `A = range(S̃)` is extracted
+(`src/aic_assoc_extract.c`) as a Frobenius-orthonormal operator basis `{B_k}`:
+
+- `dim_A = round(Re Tr S̃)`. `S̃²=S̃` ⇒ eigenvalues `∈ {0,1}` ⇒ `Tr S̃ = #(unit
+  eigenvalues) = rank = dim A` (an integer). CROSS-CHECKED against the thin-SVD gap:
+  the count of singular values above `0.5` must equal `round(trace)` or **fail loud**
+  (Rule 4). The gap genuineness is also asserted (`σ[dim_A−1] > 0.5 > σ[dim_A]`).
+- `B_k = reshape_row-major(top-k LEFT singular vector of S̃)`. Left singular vectors
+  are orthonormal in `C^{n²}` = Frobenius-orthonormal as operators (asserted,
+  `‖⟨B_j,B_k⟩_F − δ_jk‖ ≤ 1e-9`).
+
+**The projector-SVD subtlety (load-bearing).** `S̃` is idempotent (`S̃²=S̃`) but in
+general NOT Hermitian (`Φ̃` is HP but not always HS-self-adjoint, Increment 1's
+non-normality note). For an idempotent the nonzero SINGULAR values are `≥ 1`, with
+EQUALITY (all `= 1`, an ORTHOGONAL projector, SVD spectrum exactly `{1,…,1,0,…}`)
+when `Φ̃` IS HS-self-adjoint — the self-dual channels: **dephasing**, AND (a FINDING,
+test U5) the η>0 **`dep(d)+conj(dep(d))`** family, since a convex mix of HS-self-adjoint
+maps stays HS-self-adjoint, so its `S̃` is ORTHOGONAL with `σ_max = 1`. The sigmas are
+STRICTLY `> 1` only when `Φ̃` is genuinely OBLIQUE (non-HS-self-adjoint), e.g. the
+compression channel **`compress_idemp(4,2)`**, whose `S̃` inflates `σ_max = √3 ≈ 1.732`
+(measured, U5). The earlier note that `dep+conj` is "oblique" was WRONG — its `σ_max`
+is exactly 1; that family is the U2/U3/U4 *non-associativity* witness, which is a
+SEPARATE property from obliqueness. Either way `rank = trace` still holds, `range(S̃)`
+is correctly spanned by the top-`dim_A` LEFT singular vectors, and the `0.5` gap
+separates nonzero (`≥ 1`) from zero (`~0`) cleanly in both cases. Extraction is the
+fast DOUBLE path (LAPACK `zgesvd` via `aic_latd_svd`; certified degenerate eig/SVD is
+the deferred `aic-w4o.1` wall — extraction is double, the DEFECT checks are
+arb-certified), the basis returned as `acb_mat` at `prec`.
+
+### The star + the ecstar generalization (the apply-fn seam)
+
+`Φ̃` is a superoperator, NOT a UCP/Kraus map (`.tex:363` — not even CP), but the
+`ecstar` star was hardwired to a Kraus `Φ` via `aic_ucp_apply`. The star is
+generalized through the apply-fn seam `aic_ecstar.h` already shipped, MINIMALLY and
+BACKWARD-COMPATIBLY: two optional fields `star_phi`/`star_ctx`. `aic_ecstar_star`:
+if `star_phi != NULL`, compute `XY` then `star_phi(out, XY, star_ctx)`; else the
+existing `aic_ucp_apply(A->phi, XY)`. `aic_ecstar_init` sets `star_phi=star_ctx=NULL`
+so the Kraus path is byte-identical (test_ecstar n=109, **unchanged**, is the
+regression guard). `aic_ecstar_defect_involution` routes through `star_phi` when set
+(for the superop case `Φ̃` is HP, so the residual stays ~0, but it is MEASURED through
+the generic core, not assumed). The HOPM double-path engine (`aic_ehk`) gains a
+superop field `S` (built once from `star_phi` applied to the n² matrix units in
+`aic_ecstar_setup.c`, fully decoupling the engine from the assoc module); `aic_ehk_star`
+dispatches on `S != NULL`.
+
+The assoc owner `aic_assoc_ecstar` (`src/aic_assoc_algebra.c`) holds the OWNED `S̃` +
+ctx + the embedded `aic_ecstar` whose `star_phi` = a superop-apply thunk over `S̃`
+(via the tested `aic_assoc_superop_apply`), `phi = NULL`. `aic_ecstar` only BORROWS
+`star_phi/star_ctx` (mirroring its borrowed-`phi` rule), so the owner frees them in
+`aic_assoc_ecstar_clear`.
+
+**The midpoint-`S̃` decision (load-bearing, NOT a bandaid).** The regularized `S̃`
+carries Newton–Schulz error balls (~5e-75 radius at prec=256). The defect estimators
+apply `S̃` to a product and feed the result to `aic_mat_opnorm`, which forms the Gram
+`M†M`; squaring a ~5e-75 radius exceeds `aic_mat_opnorm`'s strict Hermiticity tol
+`2^-(prec-8) ≈ 2.2e-75` (the asymmetry is an `acb_mat_mul` artifact, not real
+non-Hermiticity). So `A` is built from the MIDPOINT of `S̃` (a zero-radius idempotent
+superop): the estimators then return certified balls of a well-defined exact-idempotent
+superop, exactly as `B_k` is a zero-radius double-path extraction. The certified rigor
+of the regularization itself is Increment 1's T3/T6 cross-checks (a separate ladder
+rung); tightening to a radius-aware opnorm is the same deferral as Increment 1's
+inflated-radius wall.
+
+### The η=0 consistency oracle (U1) — the headline cross-check
+
+For each of 8 exact-idempotent channels, `Φ̃=Φ`, so `A = Img Φ̃` must MATCH `ecstar`'s
+`A = Img Φ` (`aic_ecstar_from_idemp`): same `dim_A`; same SUBSPACE (the gauge-invariant
+projectors `Π_A = Σ_k vec(B_k)vec(B_k)†` agree — `A` has unitary gauge freedom, so
+compared as subspaces, never operator-by-operator); ALL FIVE axiom defects (basis-sweep
++ assoc/cstar HOPM) machine-zero. **Measured:** subspace diff `0` (≤ 8.5e-16 for the
+irrational-Kraus `noiseless_subsystem`); all five defects `≤ 1.69e-32` (machine-zero;
+the `noiseless` cstar/unit floor `~3-6e-16` is the double-path SVD floor). This ties
+Increment 2 to the trusted η=0 oracle.
+
+**A genuine finding.** `A = Img Φ̃` with `X⋆Y = Φ̃(XY)` is an EXACTLY idempotent
+structure, so its associator is exactly zero for ANY family whose `Φ̃` image happens to
+be a real algebra. Most natural perturbation families (`compress+dephasing`,
+`block_cond_exp+trace_replace`, `id+dephasing`) "snap" to a real `C*` algebra under
+`θ(2Φ−1)` ⇒ associator ~0 even at η>0. A genuinely-nonzero associator needs two
+DIFFERENT (incompatible) algebras mixed: `dep(d) ⊕ conj(dep(d))` (a diagonal algebra
+and a unitarily-rotated diagonal) is the chosen `η>0` family — `Φ̃`'s image is then a
+genuine NON-algebra and the associator is nonzero `O(η)`.
+
+### The O(η) results (U2) + the universality canary (U3)
+
+U2 (`dep(4)+conj(dep(4))`, t-sweep): the five defects are `≤ C·η`, vanish as `t→0`,
+NONZERO for `t>0` (genuinely approximate — teeth). Both the associator AND the
+`C*`-identity (`.tex:2233-2236`) are now ASSERTED at η>0 (FIX A): **measured** assoc
+HOPM `3.7e-5 → 1.5e-3` (`t=0.01→0.06`, `assoc/η ∈ [0.005,0.037]`, bounded, monotone
+up); cstar HOPM `6.0e-3 → 3.4e-2` — a GENUINE strong tooth (`Φ̃` is HP but NOT
+positive, `.tex:363`, so `‖X†⋆X‖` drops `O(η)` below `‖X‖²` for the worst-case X),
+with `cstar/η ∈ [0.75,0.82]` (bounded `≤ 1.5`, monotone up, vanishing at `t→0`, SAME
+η proxy as assoc — apples-to-apples); submult slack stays ~0 (`≤ 2e-3`, the star is
+submultiplicative, `.tex:2216-2219`); involution exactly 0 (`Φ̃` HP, `.tex:2182`);
+unit `~1e-16`. The cstar assertion is mutation-proven: `aic_ecstar_defect_cstar_hopm`
+→ `return 0` fires the `c > 1e-6` tooth RED.
+
+U3 THE UNIVERSALITY CANARY (`aic-dbo.3`): at fixed `t=0.05` across a WIDE sweep
+`dim_A = 4,6,8,10,12,16` (FIX B — widened from `4,6,8,10` so a dim-dependent constant
+is amplified across a factor-4 span), HOPM `assoc/η` does NOT grow with `dim_A`.
+**Measured `assoc/η ∈ [0.033,0.047]`, real spread factor 1.42** — flat,
+dimension-independent (the naive Haar route fails `∝ dim`, `.tex:484`); per-dim η is
+`~constant` (`3.52e-2 → 3.76e-2`, ~7% over the sweep — so the ratio's flatness is the
+DEFECT's, apples-to-apples). The threshold is **2.0** (a modest margin above the real
+1.42), mutation-proven to CATCH both pathologies: injecting a LINEAR `∝ dim/4` factor
+drives the spread to **4.67** (RED); a milder `∝ sqrt(dim/4)` factor drives it to
+**2.33** (RED). The upper end `dim_A=16` is bounded by the Newton–Schulz regularization
+cost (~68s at a 256×256 superop, prec=128 — the dominant cost, NOT the HOPM search), so
+the intermediate `dim_A=14` is dropped; six points still trace a genuine sweep at
+prec=128 (lower prec destabilizes the HOPM worst-case search and INFLATES the spread, a
+false trip — so prec=128 is kept). INTEGRITY guard: the STRUCTURAL witness (which
+search-count noise cannot fake) is that `dim_A` genuinely SPANS a range (`dA_max >
+dA_min`); a dim-trivial family collapses it to `[4,4]` ⇒ RED.
+
+U5 THE PROJECTOR-SVD SPECTRUM (FIX C): confirms the two extraction regimes. For an
+idempotent `S̃` the nonzero singular values are `≥ 1`: `σ_max = 1` (orthogonal) for
+HS-self-adjoint `Φ̃` — **dephasing(4)** AND **`dep(4)+conj(dep(4))`** both measure
+`1.000000` (a FINDING: the η>0 family is a convex mix of HS-self-adjoint maps, hence
+itself HS-self-adjoint, hence an ORTHOGONAL projector — it is NOT oblique, contrary to
+an earlier docstring; it is the *non-associativity* witness, a separate property); and
+`σ_max > 1` (genuinely oblique) for non-HS-self-adjoint `Φ̃` — **`compress_idemp(4,2)`**
+measures `1.732051 = √3`, exercising the strictly->1 extraction path.
+
+### U4 — the Π_A accept-guard on a non-polar-closed A (`aic-3qq`)
+
+The η>0 `A` is genuinely NOT polar/von-Neumann closed (a real `C*` algebra is; ours is
+only ε-close), so the HOPM block step's `Π_A(polar(C))` + monotone-accept CORRECTNESS
+half is finally exercised (structurally untestable while only the polar-closed η=0 `A`
+existed). **Measured:** the assoc-HOPM witness is IN `A` (`proj_residual < 5.9e-16`,
+certified arb) and `lo = ratio@witness = 1.55e-3`; AND `‖polar(wX) − Π_A polar(wX)‖ =
+1.86e-2 > 0`, proving `A` is non-polar-closed so `Π_A` is doing real work (without it
+the iterate would leave `A`).
+
+### Mutation proofs (Rule 7 — the genuinely new teeth)
+
+- (a) BOTTOM-`dim_A` left singular vectors in `aic_assoc_extract_range` (the wrong
+  subspace) → U1 subspace match RED (`‖dΠ‖=1.0`). Restored.
+- (b) `star_phi` applying `S̃` to `X` instead of `XY` (broken Choi–Effros product) →
+  U1 η=0 oracle RED (unit defect `1.6`). Restored.
+- (c) dim-TRIVIAL canary family (`make_eta_family` forced to `d=4`) → U3 integrity
+  guard RED (`dim_A range [4,4]`; the `dim_A`-span guard is the load-bearing teeth —
+  ratio-noise alone would NOT catch it). Restored.
+- (FIX A) `aic_ecstar_defect_cstar_hopm` → `arb_zero(lo); return;` → U2 `c > 1e-6`
+  cstar tooth RED (`cstar ~0 at t=0.01`). Estimator restored byte-identical.
+- (FIX B-i) inject a LINEAR `∝ dim/4` factor into the U3 assoc/η ratio → spread `4.67
+  ≥ 2.0` → RED. Restored.
+- (FIX B-ii) inject a `∝ sqrt(dim/4)` factor → spread `2.33 ≥ 2.0` → RED (the milder
+  pathology is caught by the factor-4 dim span + threshold 2.0). Restored.
+
+### Files + numbers
+
+- `include/aic_assoc.h`, `src/aic_assoc_extract.c`, `src/aic_assoc_algebra.c` (113
+  LOC); `tests/test_assoc2.c` (n=139). The ecstar generalization touched
+  `include/aic_ecstar.h`, `src/aic_ecstar.c` (178), `src/aic_ecstar_involution.c`,
+  `src/aic_ecstar_setup.c`, `src/aic_ecstar_hopm.{c,h}` (all `≤ 200`; the Kraus path
+  byte-identical — `test_ecstar` n=109 unchanged).
+- U1 max axiom defect `1.69e-32`, subspace diff `≤ 8.5e-16` across 8 channels. U2
+  `assoc/η ∈ [0.005,0.037]`, `cstar/η ∈ [0.75,0.82]` over t (both asserted). U3
+  `assoc/η ∈ [0.033,0.047]`, real spread 1.42 over `dim_A=4..16`, threshold 2.0 (the
+  universality canary; linear injection → 4.67, sqrt injection → 2.33). U4 witness
+  `proj_residual < 5.9e-16`, `‖polar(wX)−Π_A polar(wX)‖ = 1.86e-2`. U5 `σ_max(S̃)`:
+  dephasing `1.0`, dep+conj `1.0` (both orthogonal), compress_idemp `1.732` (oblique).
+
+### Deferred (beaded)
+
+- Certified cb-norm `η` (not the op-norm proxy) for the U2/U3 ratios → the
+  Julia+MOSEK `eta_idempotence` / `aic_cbnorm_certify` route (`aic-m24`/`aic-ssu`).
+- Radius-aware opnorm so the defect estimators consume the full certified `S̃` ball
+  (not the midpoint) → same deferral as the inflated-radius wall (`aic-w4o.1`).
+- The downstream channel factorization (`th_factorization`) → `aic-tff`.

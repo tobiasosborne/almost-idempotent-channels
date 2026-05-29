@@ -1,30 +1,76 @@
 # HANDOFF.md — almost-idempotent-channels
 
 Orientation for a fresh agent. Last updated **2026-05-29**, after the
-**`ecstar` session** (the ε-$C^*$ algebra data model + axiom-defect estimators,
-bead `aic-knm`, built in two committed increments). Current state: `master`
-clean, **14 test binaries green, zero warnings**, 17 beads closed of 57. Prior
-session built the η-defect cb-norm stack (`aic-m24` CLOSED). The η=0
-vertical-slice milestone (`aic-9kk`) was achieved earlier. Read §"Channel-module
-conventions" before touching `ucp`/`idemp`/`cbnorm` or building `assoc_ecsa`;
-those conventions are load-bearing and prior hostile reviews learned them hard.
+**`assoc_ecsa` session** (Kitaev's `th_almost_idemp`, bead `aic-92f`, built in two
+committed increments). Current state: `master` clean, **16 test binaries green,
+zero warnings**, 19 beads closed of 59. NOTE `make test` is now **~3.5 min** (was
+seconds): the cost is the n=16 universality-canary regularization in
+`test_assoc2` U3 — cutting it is bead `aic-erz` (per-binary fast loops stay quick;
+`make build/test_X && ./build/test_X`). Read §"Channel-module conventions" before
+touching `ucp`/`idemp`/`cbnorm`/`ecstar`/`assoc_ecsa`; those conventions are
+load-bearing and prior hostile reviews learned them hard.
 
-**⚠️ RESUME HERE — `aic-knm` (`ecstar`) is CLOSED; next is `aic-92f`
-(`assoc_ecsa`), the headline step.** The session ended mid-orchestration when an
-internet outage made subagent spawns unsafe (a half-spawned agent had already
-left the tree dirty twice). `aic-knm` is complete: Cycles 1+2 committed & green,
-Cycle 2's hostile review done inline (bead `aic-b7c`, CLOSED — all 7 surfaces
-PASS, no blockers, the canary mutation-proven to fire on a d^{3/2} injection).
-The next step toward the paper's headline is **`aic-92f` (`assoc_ecsa`)** —
-Φ̃=θ(2Φ−1) on the superoperator `2Φ−1` (reuse `funcalc` θ), A=ImgΦ̃, the
-approximate Choi–Effros star, `th_almost_idemp` (extended O(η)-$C^*$), proofs at
-`.tex:2208/2239/2639`. It is unblocked (all four deps closed) and able to
-MEASURE/CERTIFY η (`eta_idempotence` / `aic_cbnorm_certify`). assoc_ecsa is a
-large module — START IT WITH A STABLE CONNECTION (research leg first: θ on the
-non-Hermitian superoperator `2Φ−1`, its CP-ness / Hermicity, the Φ_assoc1/2
-identities). It will also finally exercise the deferred `aic-3qq` (Π_A teeth, an
-η>0 A) and `aic-4c7` (real O(η) canary). The `ecstar` estimators (`aic_ecstar_*`)
-are the verification tooling assoc_ecsa feeds.
+**⚠️ RESUME HERE — `aic-92f` (`assoc_ecsa`, `th_almost_idemp`) is CLOSED; the
+paper's `th_almost_idemp` is now VERIFIED end-to-end.** This session built
+Φ̃=θ(2Φ−1) (regularization to an exact-idempotent superoperator), A=ImgΦ̃, the
+Choi–Effros star X⋆Y=Φ̃(XY), and the full extended-O(η)-$C^*$ axiom verification —
+including the **dimension-independence universality canary** (flat, so the paper's
+universal-constant claim `.tex:2193` HOLDS; no stop-condition). Two Opus hostile
+reviews each caught a "test that cannot fail" (untested foundational
+`aic_mat_herm_max_eig` near-zero fallback; toothless canary threshold; unasserted
+C* defect); all fixed + mutation-proven. Closed `aic-3qq` (Π_A teeth on the η>0
+non-polar-closed A, `test_assoc2` U4) along the way.
+
+**The paper's FINAL headline is `aic-tff` (`factorize`, `th_factorization`
+`.tex:2730`)** — the approximate factorization Φ*≈Enc∘Dec through a genuine $C^*$
+algebra B. It is **NOT directly unblocked**: th_factorization Step 3 invokes
+`th_main_ext`, i.e. the entire incremental $C^*$-algebra construction (E2-eps:
+`unitfix`/`unitary`/`projection`/`corner`; E3-mainthm: `dhom`/`errreduce`/
+`cstar_build`; §10 `opspace`), and its proof is an OUTLINE with open escalations
+(shard H §"Open implementation questions"; MODULE_PLAN escalations 1,4,5). So the
+real next constructive frontier is the **th_main pipeline**. `bd ready` P1: the
+recurring `aic-w4o.1` (certified DEGENERATE Hermitian eig — gates the certified
+halves of `projection`/Kraus/subspace extraction, deferred all session) and
+`aic-dbo.2` (adversarial instance generators). New this session: `aic-8hz`
+(globally-convergent matrix-sign for the NON-NORMAL superoperator — funcalc's
+Frobenius basin trips near η→1/4 / large n), `aic-erz` (cut the canary runtime),
+and `aic-4c7` stays open (the U2/U3 O(η) sweep used an op-norm η-PROXY; closing it
+needs the certified cb-η normalization to rule out a proxy↔cb-η dimension factor).
+
+**`assoc_ecsa` (this session, `aic-92f` Increments 1+2, commits `96f381e` + this
+one).** Realizes `th_almost_idemp` (`.tex:2162-2237`) as a finite-dim algorithm.
+- **Φ̃=θ(2Φ−1)** is `prop_P` applied to Φ at the **n²×n² superoperator** level:
+  build S_Φ column-by-column via the tested `aic_ucp_apply` on E_pq (row-major
+  vec; oracle-tested + Kronecker cross-check `S_Φ=Σ K_a†⊗K_aᵀ`), then
+  `aic_assoc_regularize`=`aic_prop_P(S_Φ)` (reuse `funcalc`; default sgn=
+  Newton-Schulz, eig-free → sound on the NON-NORMAL superoperator). Φ̃ is NOT CP
+  (`.tex:363`). `include/aic_assoc.h`, `src/aic_assoc_superop.c`,
+  `src/aic_assoc_regularize.c`; `tests/test_assoc.c` n=93.
+- **A=ImgΦ̃** = range of the OBLIQUE idempotent S̃, extracted by thin SVD
+  (`dim_A=round(trace)` cross-checked vs SVD-gap@0.5; top-dim_A left singular
+  vectors → Frobenius-ON basis {B_k}). Nonzero σ(S̃)≥1, =1 iff Φ̃ HS-self-adjoint
+  (self-dual Φ), >1 genuinely oblique (`compress_idemp`, σ=√3). `aic_assoc_extract.c`.
+- **Star + verification:** the `ecstar` data model was generalized BACKWARD-
+  COMPATIBLY (`star_phi`/`star_ctx` apply-fn seam; Kraus path byte-identical →
+  `test_ecstar` n=109 unchanged) so X⋆Y=Φ̃(XY) feeds the existing axiom-defect
+  estimators. `aic_assoc_algebra.c`; `tests/test_assoc2.c` n=139: U1 η=0 oracle
+  (machine-zero, A matches `aic_idemp`'s ImgΦ), U2 real η>0 (assoc+cstar O(η),
+  vanishing, teeth), U3 universality canary (flat over dim_A=4..16, threshold 2.0,
+  mutation-proven vs linear+√(dim) injection), U4 Π_A on non-polar-closed A, U5
+  oblique σ_max.
+- **Load-bearing decisions/findings:** (i) funcalc's sgn asserts the FROBENIUS
+  basin 4‖S²−S‖_F<1 — dimension-dependent, holds at η=0/small η, TRIPS near η→1/4
+  / large n → bead `aic-8hz`. (ii) A is built from the MIDPOINT of S̃ (funcalc-
+  iteration balls ~5e-75 trip `aic_mat_opnorm`'s Hermiticity tol when squared into
+  the Gram); rigor lives in I1's η=0 + non-normal A1-vs-A2 cross-checks (same class
+  as the double-extraction / `aic-w4o.1` deferral). (iii) A=ImgΦ̃ is EXACTLY
+  idempotent, so its associator vanishes for self-dual/compatible families —
+  genuine non-associativity needs two INCOMPATIBLE algebras mixed (the η>0 family
+  is dep(d)⊕conj(dep(d)); obliqueness ≠ non-associativity, distinct properties).
+  (iv) A foundational fix landed in `src/aic_mat_spectral.c`: `aic_mat_herm_max_eig`
+  falls back to the rigorous eig-free [−‖H‖_F,‖H‖_F] on a non-finite certifier
+  radius (near-zero degenerate Gram), now with a direct mutation-proof test in
+  `test_mat.c` n=23. Research: `docs/research/assoc_ecsa_research.md`.
 
 **`ecstar` (this session, `aic-knm` Cycles 1+2, committed `124ed68`/`4c623bf`).**
 A = subspace of $M_n$ as an orthonormal operator basis {B_k} (reshaped from

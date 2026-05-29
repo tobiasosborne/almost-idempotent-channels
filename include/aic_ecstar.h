@@ -39,6 +39,21 @@
  * LOAD-BEARING vec CONVENTION (matches aic_idemp.h). An n x n matrix X is
  * vectorized ROW-MAJOR: vec(X)[i*n+j] = X[i,j]. aic_ecstar_from_idemp reshapes
  * column k of d->Delta this way: B_k[i,j] = Delta[i*n+j, k].
+ *
+ * THE STAR'S MAP: KRAUS Phi -OR- A GENERIC SUPEROPERATOR (Increment 2 of
+ * assoc_ecsa, bead aic-92f). The exact-idempotent case (aic_ecstar_from_idemp)
+ * has the star X*Y=Phi(XY) with Phi a UCP Kraus map (the `phi` field). The
+ * almost-idempotent case A = Img Phi_tilde (Phi_tilde = theta(2 Phi - 1),
+ * .tex:2171-2174, :2189) needs the star X*Y = Phi_tilde(XY) where Phi_tilde is a
+ * SUPEROPERATOR (an n^2 x n^2 matrix S_tilde, NOT a UCP/Kraus map: Phi_tilde is
+ * Hermicity-preserving but NOT completely positive, .tex:363). So the star is
+ * generalised through the apply-fn seam this header already ships: two OPTIONAL
+ * fields `star_phi` / `star_ctx`. aic_ecstar_star: if star_phi != NULL it computes
+ * XY then star_phi(out, XY, star_ctx, prec); ELSE the Kraus path Phi(XY) via
+ * aic_ucp_apply on `phi`. aic_ecstar_init sets star_phi = star_ctx = NULL so the
+ * Kraus path is byte-identical (existing tests are the regression guard). The
+ * superop constructor lives in the assoc module: aic_assoc_ecstar_from_phi
+ * (include/aic_assoc.h), which sets phi = NULL, star_phi to a superop-apply thunk.
  */
 #ifndef AIC_ECSTAR_H
 #define AIC_ECSTAR_H
@@ -53,16 +68,31 @@
 extern "C" {
 #endif
 
+/* A generic linear map B(C^n) -> B(C^n): out = T(X). `ctx` carries T's data
+ * (e.g. the aic_ecstar* whose phi is applied, or a synthetic non-HP map, or a
+ * superoperator matrix). Used as the "star's Phi" by the shared involution-
+ * residual core AND (when set on the struct below) by the star itself. */
+typedef void (*aic_ecstar_apply_fn)(acb_mat_t out, const acb_mat_t X, void *ctx,
+                                    slong prec);
+
 /* An eps-C* algebra A <= M_n with a Frobenius-orthonormal basis and the star's
- * Phi. The Phi pointer is BORROWED: the caller owns the aic_ucp_kraus and MUST
- * keep it alive for the entire lifetime of this struct (the estimators call
- * aic_ucp_apply through it). aic_ecstar_clear frees only the B[] basis, never
- * phi. */
+ * map. TWO mutually-exclusive ways to define the star X*Y:
+ *   (Kraus)   star_phi == NULL: X*Y = Phi(XY) with Phi the BORROWED `phi` (the
+ *             aic_ucp_kraus the caller owns and MUST keep alive for the lifetime
+ *             of this struct; the estimators call aic_ucp_apply through it).
+ *   (superop) star_phi != NULL: X*Y = star_phi(XY, star_ctx) with star_phi a
+ *             generic apply (e.g. an n^2 x n^2 superoperator Phi_tilde). `phi`
+ *             is then NULL. star_phi/star_ctx are BORROWED too; the assoc-module
+ *             constructor (aic_assoc_ecstar_from_phi) owns them and supplies an
+ *             aic_assoc_ecstar_clear that frees the superop + ctx + the basis.
+ * aic_ecstar_clear frees only the B[] basis (never phi, star_phi, or star_ctx). */
 typedef struct {
     slong n;                  /* A <= M_n (n x n complex)                       */
     slong dim_A;              /* d = dim A                                      */
     acb_mat_t *B;             /* d operators, each n x n, <B_j,B_k>_F = delta_jk */
-    const aic_ucp_kraus *phi; /* BORROWED; the star's Phi (dim_K==dim_H==n)     */
+    const aic_ucp_kraus *phi; /* BORROWED; the Kraus star's Phi, or NULL        */
+    aic_ecstar_apply_fn star_phi; /* OPTIONAL generic star map; NULL => use phi */
+    void *star_ctx;           /* BORROWED ctx for star_phi (e.g. the superop)   */
 } aic_ecstar;
 
 /* Allocate B[0..dim_A-1], each an n x n zeroed acb_mat_t; set n, dim_A, phi.
@@ -138,13 +168,6 @@ void aic_ecstar_defect_cstar(arb_t out, const aic_ecstar *A, slong prec);
  * the core's residual GROWS with the non-HP-ness (O(t)). That teeth, not this
  * always-zero call, is what protects the residual computation. */
 void aic_ecstar_defect_involution(arb_t out, const aic_ecstar *A, slong prec);
-
-/* A generic linear map B(C^n) -> B(C^n): out = T(X). `ctx` carries T's data
- * (e.g. the aic_ecstar* whose phi is applied, or a synthetic non-HP map). Used
- * as the "star's Phi" by the shared involution-residual core so the SAME code
- * path is exercised by both the production (HP) thunk and a non-HP teeth. */
-typedef void (*aic_ecstar_apply_fn)(acb_mat_t out, const acb_mat_t X, void *ctx,
-                                    slong prec);
 
 /* Shared involution-residual core (the metric of aic_ecstar_defect_involution,
  * generalised in the map). Returns

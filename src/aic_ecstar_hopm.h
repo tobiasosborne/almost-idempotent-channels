@@ -15,15 +15,22 @@
 
 typedef double _Complex cx;
 
-/* Double-path snapshot of an aic_ecstar: Kraus ops K[a] (n x n row-major) define
- * Phi(X)=sum K_a^dag X K_a, and B[k] (n x n row-major) is the Frobenius-ONB of A.
- * All buffers are BORROWED (owned by the driver). */
+/* Double-path snapshot of an aic_ecstar. TWO mutually-exclusive star maps,
+ * mirroring the public struct (include/aic_ecstar.h "THE STAR'S MAP"):
+ *   (Kraus, S == NULL)   Kraus ops K[a] (n x n row-major) define the star's
+ *                        Phi(X) = sum_a K_a^dag X K_a; r = #Kraus.
+ *   (superop, S != NULL) S is an n^2 x n^2 row-major double matrix (the
+ *                        superoperator Phi_tilde of assoc_ecsa); the star's
+ *                        Phi_tilde(X) = reshape(S vec_r(X)). K is NULL, r = 0.
+ * B[k] (n x n row-major) is the Frobenius-ONB of A. All buffers are BORROWED
+ * (owned by the driver / the snapshot lifecycle). */
 typedef struct {
     slong n;            /* A <= M_n                         */
     slong d;            /* dim A                            */
-    slong r;            /* number of Kraus ops              */
-    cx **K;             /* r Kraus ops, each n*n row-major  */
+    slong r;            /* number of Kraus ops (0 if superop) */
+    cx **K;             /* r Kraus ops, each n*n row-major; NULL if superop */
     cx **B;             /* d basis ops,  each n*n row-major */
+    cx *S;              /* n^2 x n^2 row-major superop, or NULL (Kraus path) */
 } aic_ehk;
 
 /* C = A*B (n x n). */
@@ -32,6 +39,9 @@ void aic_ehk_matmul(cx *C, const cx *A, const cx *B, slong n);
 /* out = Phi(X) = sum_a K_a^dag X K_a. t1,t2 scratch n*n. */
 void aic_ehk_phi(cx *out, const cx *const *K, slong r, const cx *X, slong n,
                  cx *t1, cx *t2);
+
+/* out = reshape(S vec_r(X)) for an n^2 x n^2 row-major superop S. */
+void aic_ehk_superop(cx *out, const cx *S, const cx *X, slong n);
 
 /* out = X*Y = Phi(X.Y). xy,t1,t2 scratch n*n. */
 void aic_ehk_star(cx *out, const aic_ehk *h, const cx *X, const cx *Y,

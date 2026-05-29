@@ -84,7 +84,15 @@ static void apply_phi(acb_mat_t out, const acb_mat_t X, void *ctx, slong prec)
 
 void aic_ecstar_defect_involution(arb_t out, const aic_ecstar *A, slong prec)
 {
-    assert(A != NULL && A->phi != NULL);
-    aic_ecstar_involution_core(out, (const acb_mat_t *) A->B, A->dim_A, A->n,
-                               apply_phi, (void *) A->phi, prec);
+    assert(A != NULL && (A->star_phi != NULL || A->phi != NULL));
+    /* Route through the generic core with the SAME map the star uses. For the
+     * superop case star_phi IS Hermicity-preserving (Phi_tilde is HP, .tex:2182),
+     * so the residual stays ~0 -- but we do NOT assume it, we measure it through
+     * the generic core (Rule 4 / Rule 7). */
+    if (A->star_phi != NULL)
+        aic_ecstar_involution_core(out, (const acb_mat_t *) A->B, A->dim_A, A->n,
+                                   A->star_phi, A->star_ctx, prec);
+    else
+        aic_ecstar_involution_core(out, (const acb_mat_t *) A->B, A->dim_A, A->n,
+                                   apply_phi, (void *) A->phi, prec);
 }

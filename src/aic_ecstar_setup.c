@@ -8,6 +8,9 @@
  */
 #include <complex.h>
 
+#include <flint/acb.h>
+#include <flint/acb_mat.h>
+
 #include "aic_ecstar.h"
 #include "aic_ecstar_setup.h"
 #include "aic_latd.h"
@@ -19,21 +22,64 @@ static cx *mat_to_cx(const acb_mat_t M, slong n)
     return buf;
 }
 
+/* Build the n^2 x n^2 double superop S of a generic star map by applying it to
+ * the n^2 matrix units E_{pq}: column (p*n+q) of S is vec_r(star_phi(E_{pq})).
+ * This decouples the generic HOPM engine from the assoc module: it works for ANY
+ * aic_ecstar_apply_fn (the superop, a synthetic map, ...), converting it to the
+ * double-path superop the kernel's aic_ehk_superop consumes. O(n^2) applies. */
+static cx *build_superop_cx(const aic_ecstar *A, slong n)
+{
+    slong nn = n * n;
+    cx *S = flint_malloc((size_t) (nn * nn) * sizeof(cx));
+    acb_mat_t E, img;
+    acb_mat_init(E, n, n);
+    acb_mat_init(img, n, n);
+    for (slong p = 0; p < n; p++)
+        for (slong q = 0; q < n; q++) {
+            acb_mat_zero(E);
+            acb_set_si(acb_mat_entry(E, p, q), 1);
+            A->star_phi(img, E, A->star_ctx, 53); /* double-path snapshot prec */
+            for (slong a = 0; a < n; a++)
+                for (slong b = 0; b < n; b++) {
+                    double re = arf_get_d(arb_midref(acb_realref(
+                                    acb_mat_entry(img, a, b))), ARF_RND_NEAR);
+                    double im = arf_get_d(arb_midref(acb_imagref(
+                                    acb_mat_entry(img, a, b))), ARF_RND_NEAR);
+                    S[(a * n + b) * nn + (p * n + q)] = re + im * I;
+                }
+        }
+    acb_mat_clear(img);
+    acb_mat_clear(E);
+    return S;
+}
+
 void aic_ehk_snapshot(aic_ehk *h, const aic_ecstar *A)
 {
-    slong n = A->n, d = A->dim_A, r = A->phi->r;
-    h->n = n; h->d = d; h->r = r;
-    h->K = flint_malloc((size_t) r * sizeof(cx *));
+    slong n = A->n, d = A->dim_A;
+    h->n = n; h->d = d;
     h->B = flint_malloc((size_t) d * sizeof(cx *));
-    for (slong a = 0; a < r; a++) h->K[a] = mat_to_cx(A->phi->K[a], n);
     for (slong k = 0; k < d; k++) h->B[k] = mat_to_cx(A->B[k], n);
+    if (A->star_phi != NULL) {       /* superop star (assoc_ecsa) */
+        h->r = 0;
+        h->K = NULL;
+        h->S = build_superop_cx(A, n);
+    } else {                         /* Kraus star (exact-idempotent ecstar) */
+        slong r = A->phi->r;
+        h->r = r;
+        h->S = NULL;
+        h->K = flint_malloc((size_t) r * sizeof(cx *));
+        for (slong a = 0; a < r; a++) h->K[a] = mat_to_cx(A->phi->K[a], n);
+    }
 }
 
 void aic_ehk_snapshot_free(aic_ehk *h)
 {
-    for (slong a = 0; a < h->r; a++) flint_free(h->K[a]);
+    if (h->K != NULL) {
+        for (slong a = 0; a < h->r; a++) flint_free(h->K[a]);
+        flint_free(h->K);
+    }
+    if (h->S != NULL) flint_free(h->S);
     for (slong k = 0; k < h->d; k++) flint_free(h->B[k]);
-    flint_free(h->K);
     flint_free(h->B);
 }
 

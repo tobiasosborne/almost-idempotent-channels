@@ -37,6 +37,11 @@ void aic_ecstar_init(aic_ecstar *out, slong n, slong dim_A,
     out->n = n;
     out->dim_A = dim_A;
     out->phi = phi;
+    /* Kraus path by default: the generic-superop seam is OFF, so the existing
+     * aic_ucp_apply star is byte-identical (the regression guard). The assoc-
+     * module superop constructor sets these directly (and phi=NULL) instead. */
+    out->star_phi = NULL;
+    out->star_ctx = NULL;
     out->B = (acb_mat_t *) flint_malloc((size_t) dim_A * sizeof(acb_mat_t));
     assert(out->B != NULL || dim_A == 0);
     for (slong k = 0; k < dim_A; k++) {
@@ -121,7 +126,8 @@ void aic_ecstar_from_idemp(aic_ecstar *out, const aic_idemp_decomp *d,
 void aic_ecstar_star(acb_mat_t out, const aic_ecstar *A, const acb_mat_t X,
                      const acb_mat_t Y, slong prec)
 {
-    assert(A != NULL && A->phi != NULL);
+    /* exactly one of the two star maps must be present (fail loud, Rule 4). */
+    assert(A != NULL && (A->star_phi != NULL || A->phi != NULL));
     slong n = A->n;
     assert(acb_mat_nrows(X) == n && acb_mat_ncols(X) == n);
     assert(acb_mat_nrows(Y) == n && acb_mat_ncols(Y) == n);
@@ -130,7 +136,10 @@ void aic_ecstar_star(acb_mat_t out, const aic_ecstar *A, const acb_mat_t X,
     acb_mat_t XY;
     acb_mat_init(XY, n, n);
     acb_mat_mul(XY, X, Y, prec);          /* ordinary product X . Y         */
-    aic_ucp_apply(out, A->phi, XY, prec); /* Phi(XY) = X * Y (.tex:341-342) */
+    if (A->star_phi != NULL)
+        A->star_phi(out, XY, A->star_ctx, prec); /* generic Phi_tilde(XY)   */
+    else
+        aic_ucp_apply(out, A->phi, XY, prec);     /* Kraus Phi(XY) (.tex:341)*/
     acb_mat_clear(XY);
 }
 

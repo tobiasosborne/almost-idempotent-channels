@@ -57,12 +57,30 @@ void aic_ehk_phi(cx *out, const cx *const *K, slong r, const cx *X, slong n,
     }
 }
 
-/* out = X * Y = Phi(X.Y). Scratch xy,t1,t2 caller-provided n*n. */
+/* out = reshape(S vec_r(X)) for an n^2 x n^2 row-major superop S:
+ *   out[a*n+b] = sum_{p,q} S[(a*n+b)*n*n + (p*n+q)] X[p*n+q]
+ * (the aic_assoc_superop_apply convention; vec_r(X)[p*n+q] = X[p,q]). */
+void aic_ehk_superop(cx *out, const cx *S, const cx *X, slong n)
+{
+    slong nn = n * n;
+    for (slong row = 0; row < nn; row++) {
+        cx s = 0.0;
+        for (slong col = 0; col < nn; col++) s += S[row * nn + col] * X[col];
+        out[row] = s;
+    }
+}
+
+/* out = X * Y = Phi_star(X.Y), Phi_star = Kraus Phi (h->S==NULL) or the superop
+ * (h->S!=NULL). Scratch xy,t1,t2 caller-provided n*n. */
 void aic_ehk_star(cx *out, const aic_ehk *h, const cx *X, const cx *Y,
                   cx *xy, cx *t1, cx *t2)
 {
     aic_ehk_matmul(xy, X, Y, h->n);
-    aic_ehk_phi(out, (const cx *const *) h->K, h->r, xy, h->n, t1, t2);
+    if (h->S != NULL)
+        aic_ehk_superop(out, h->S, xy, h->n);
+    else
+        aic_ehk_phi(out, (const cx *const *) h->K, h->r, xy, h->n, t1, t2);
+    (void) t1; (void) t2; /* unused in the superop branch */
 }
 
 /* out = h(X,Y,Z) = (X*Y)*Z - X*(Y*Z). Scratch a,b,xy,t1,t2 caller-provided. */
