@@ -375,6 +375,74 @@ duality-gap certificate in arb (same blocker noted for the cb-ball above). This
 eig-free bracket is the always-valid fallback the tight certifier dispatches to
 near `eta=0`.
 
+### ucp shim / libaic.so — flat-double ccall surface (bead aic-m24, incr. 2a)
+
+The C substrate for the reusable `eta_idempotence(kraus)` entry point. A
+FLAT-double ABI over the arb cores so the (later, increment 2b) Julia package can
+`ccall` them WITHOUT any FLINT type crossing the language boundary. Files:
+`include/aic_ucp_shim.h`, `src/aic_ucp_shim.c` (141 LOC, arb path internally),
+`tests/test_shim.c` (170 checks), plus the `lib` target in the `Makefile`.
+
+**Why a shim (the ccall contract).** Julia `ccall` passes `int` / `double` /
+`Ptr{Cdouble}` cleanly, but NOT FLINT structs — `acb_mat_t` is an opaque array
+type, `slong` is FLINT's machine-word int. So the public boundary uses `int`
+dimensions and `Ptr{Cdouble}` arrays only; the shim converts to/from the internal
+`aic_ucp_kraus` / `acb_mat` AT the boundary, runs the SAME cores the C tests
+exercise (`aic_ucp_compose` + `aic_ucp_choi_diff`; `aic_cbnorm_eigfree_ball`),
+and writes the result back into caller-owned flat double arrays. Pure
+marshalling — NO new math.
+
+**ABI / layout (matches `fixtures_d24.inc.h` and Convention-A, `aic_ucp.h:23-42`).**
+- `kraus_re[a*n*n + i*n + j]`, `kraus_im[...]` — `r` ops, each `n x n` (`K_a`).
+- `choi_re[p*N + q]`, `choi_im[...]` — `N = n*n`, row-major.
+- `int aic_ucp_choi_diff_d(choi_re, choi_im, kraus_re, kraus_im, n, r, prec)`
+  builds `Phi`, `Phi^2 = compose(Phi,Phi)`, `J = choi_diff(Phi^2, Phi) =
+  Choi(Phi^2 - Phi)` (Convention-A, `n^2 x n^2`), extracts `J` to the double
+  arrays (`arf_get_d` on the real/imag midpoints). Returns 0; fail-loud asserts
+  on bad shape (`n>=1`, `r>=1`, `prec>=2`, non-null arrays).
+- `int aic_cbnorm_eigfree_d(lo, hi, kraus_re, kraus_im, n, r, prec)` wraps
+  `aic_cbnorm_eigfree_ball` and converts the arb balls to a RIGOROUS double
+  bracket: `*lo = FLOOR(arb_lower(lo_ball))`, `*hi = CEIL(arb_upper(hi_ball))`
+  (`arb_get_lbound_arf`/`arb_get_ubound_arf` -> `arf_get_d` with
+  `ARF_RND_FLOOR`/`ARF_RND_CEIL`) — the only rounding directions that keep
+  `*lo <= eta <= *hi` after the double conversion. Julia gets a certified bracket
+  via `ccall` with NO SDP solver.
+
+**`libaic.so`.** `make lib` -> `build/libaic.so` via a dedicated recipe that
+adds `-fPIC -shared` LOCALLY (NOT to the global `CFLAGS`, to keep the test/bench
+builds untouched). `$(SRC)` globs all `src/*.c`, so the shim is auto-included.
+Verified: `nm -D build/libaic.so | grep aic_ucp_choi_diff_d` shows
+`T aic_ucp_choi_diff_d` (and `T aic_cbnorm_eigfree_d`).
+
+**Round-trip cross-check (`test_shim.c`, all 17 d24 fixtures).** For each
+fixture the shim's double-out Choi is compared against BOTH:
+- (RT-golden) the fixture's stored golden `choi_re/choi_im` (the Julia/MOSEK
+  Convention-A Choi) — worst max abs entry diff `5.551e-16` over the corpus;
+- (RT-arb) the pure-arb path (build Kraus as `acb`, `compose` + `choi_diff`,
+  extract to double) at `prec=53` — worst diff `0.000e+00` (the shim runs the
+  identical arb cores, so the marshalling adds no error). This is the
+  double-vs-arb@53 ladder rung 2 isolating the shim's own marshalling.
+
+Plus the BONUS `aic_cbnorm_eigfree_d`: its `(lo,hi)` bracket contains `eta_ref`
+(slack `1e-7` for the SDP tol) on every fixture, and its rounded doubles match
+the C-level `aic_cbnorm_eigfree_ball` endpoints to `1e-12`.
+
+**Mutation proof (Rule 7).** Negate the imaginary part on extraction
+(`choi_im = -arf_get_d(...)`, i.e. DROP the Convention-A conjugation sign):
+caught by the `complex_qubit` fixture (the only fixture with nonzero imaginary
+Choi entries) — `shim Choi vs golden max-diff = 1.229e+00 > 1e-12`, abort. The
+real-only fixtures do NOT catch it (their `choi_im` is all zero, so the sign flip
+is a no-op), confirming `complex_qubit` is the load-bearing conjugation guard
+(the documented Choi-conjugation bug class, `aic_ucp.h:104-107`). Restored to
+GREEN (170 checks).
+
+**Precision argument.** The shim adds no numerical error of its own beyond the
+double round-trip at the boundary: it runs the certified arb cores at `prec`
+(default callers pass 106 for headroom; the test uses 53 for the rung-2 anchor),
+then `arf_get_d` rounds the `O(1)` Choi midpoints to double (`~1e-16`). The
+cbnorm bracket stays rigorous after the double conversion by the FLOOR/CEIL
+rounding above.
+
 ---
 
 ## Module `idemp_structure` — structure of exactly-idempotent UCP maps (bead aic-wuh)

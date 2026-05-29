@@ -35,7 +35,7 @@ BENCH_BIN := $(patsubst bench/%.c,$(BUILD)/%,$(BENCH_SRC))
 # rebuild — otherwise a stale binary would test against old golden values.
 TEST_INC := $(wildcard tests/*.inc.h)
 
-.PHONY: all test bench clean fixtures
+.PHONY: all test bench clean fixtures lib
 
 all: $(TEST_BIN)
 
@@ -88,6 +88,15 @@ bench: $(BENCH_BIN)
 # the julia/env environment instantiated and a MOSEK license.
 fixtures:
 	julia --project=julia/env tools/gen_fixtures_d24.jl
+
+# Shared library for the Julia ccall surface (bead aic-m24, increment 2a). The
+# flat-double shim (src/aic_ucp_shim.c) is the ccall entry point; $(SRC) already
+# globs all src/*.c so it is auto-included. -fPIC is kept LOCAL to this recipe
+# (NOT added to the global CFLAGS) to minimize blast radius on the test/bench
+# builds. The Julia package (increment 2b) dlopen's build/libaic.so.
+lib: $(BUILD)/libaic.so
+$(BUILD)/libaic.so: $(SRC) | $(BUILD)
+	$(CC) $(CFLAGS) -fPIC -shared $(SRC) $(LIBS) -o $@
 
 clean:
 	rm -rf $(BUILD)
