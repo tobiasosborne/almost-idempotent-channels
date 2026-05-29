@@ -3,21 +3,28 @@
 Orientation for a fresh agent. Last updated **2026-05-29**, after the
 **`ecstar` session** (the ε-$C^*$ algebra data model + axiom-defect estimators,
 bead `aic-knm`, built in two committed increments). Current state: `master`
-clean, **14 test binaries green, zero warnings**, 15 beads closed of 55. Prior
+clean, **14 test binaries green, zero warnings**, 17 beads closed of 57. Prior
 session built the η-defect cb-norm stack (`aic-m24` CLOSED). The η=0
 vertical-slice milestone (`aic-9kk`) was achieved earlier. Read §"Channel-module
 conventions" before touching `ucp`/`idemp`/`cbnorm` or building `assoc_ecsa`;
 those conventions are load-bearing and prior hostile reviews learned them hard.
 
-**⚠️ RESUME HERE (interrupted by an internet outage mid-session):** `aic-knm`
-Cycle 2 (HOPM, commit `4c623bf`) shipped green but its **mandated hostile review
-was interrupted** → tracked as **`aic-b7c` (P1)**, which now blocks `aic-knm`
-closure. **Run `aic-b7c` first** (its bead description IS the review brief —
-attack the rigorous-lower-bound/off-A-witness, the un-cross-checked double kernel,
-and the canary teeth), fix any findings, then close `aic-knm`. After that, the
-next step toward the paper's headline is **`aic-92f` (`assoc_ecsa`)** —
-Φ̃=θ(2Φ−1), A=ImgΦ̃, `th_almost_idemp` — now unblocked by `aic-knm`'s deliverables
-and able to MEASURE/CERTIFY η (`eta_idempotence` / `aic_cbnorm_certify`).
+**⚠️ RESUME HERE — `aic-knm` (`ecstar`) is CLOSED; next is `aic-92f`
+(`assoc_ecsa`), the headline step.** The session ended mid-orchestration when an
+internet outage made subagent spawns unsafe (a half-spawned agent had already
+left the tree dirty twice). `aic-knm` is complete: Cycles 1+2 committed & green,
+Cycle 2's hostile review done inline (bead `aic-b7c`, CLOSED — all 7 surfaces
+PASS, no blockers, the canary mutation-proven to fire on a d^{3/2} injection).
+The next step toward the paper's headline is **`aic-92f` (`assoc_ecsa`)** —
+Φ̃=θ(2Φ−1) on the superoperator `2Φ−1` (reuse `funcalc` θ), A=ImgΦ̃, the
+approximate Choi–Effros star, `th_almost_idemp` (extended O(η)-$C^*$), proofs at
+`.tex:2208/2239/2639`. It is unblocked (all four deps closed) and able to
+MEASURE/CERTIFY η (`eta_idempotence` / `aic_cbnorm_certify`). assoc_ecsa is a
+large module — START IT WITH A STABLE CONNECTION (research leg first: θ on the
+non-Hermitian superoperator `2Φ−1`, its CP-ness / Hermicity, the Φ_assoc1/2
+identities). It will also finally exercise the deferred `aic-3qq` (Π_A teeth, an
+η>0 A) and `aic-4c7` (real O(η) canary). The `ecstar` estimators (`aic_ecstar_*`)
+are the verification tooling assoc_ecsa feeds.
 
 **`ecstar` (this session, `aic-knm` Cycles 1+2, committed `124ed68`/`4c623bf`).**
 A = subspace of $M_n$ as an orthonormal operator basis {B_k} (reshaped from
