@@ -1,0 +1,32 @@
+name = "AlmostIdempotentChannels"
+uuid = "6bf14b85-acf1-40b3-a7a0-aef96f56c734"
+authors = ["Tobias Osborne <tobias.j.osborne@gmail.com>"]
+version = "0.1.0"
+
+# Julia ccall surface over the C/arb UCP + cb-norm cores (build/libaic.so), plus
+# the Watrous diamond-norm SDP (Convex.jl + MOSEK). Reusable eta_idempotence(kraus)
+# = ||Phi^2-Phi||_diamond value entry point (bead aic-m24, increment 2b). Mirrors
+# the ../su2-fft/julia ccall-C package pattern. NO PYTHON (user directive).
+#
+# Convex 0.16 + Mosek 11 + MosekTools 0.15/0.16 are PINNED to match the fixture
+# generator (julia/env), so the SDP value here equals the committed golden master.
+
+[deps]
+Convex = "f65535da-76fb-5f13-bab9-19810c17039a"
+Libdl = "8f399da3-3557-5675-b5ff-fb832c97cbdb"
+LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
+Mosek = "6405355b-0ac2-5fba-af84-adbd65488c0e"
+MosekTools = "1ec41992-ff65-5c91-ac43-2df89e9693a4"
+
+[compat]
+Convex = "0.16"
+Mosek = "11"
+MosekTools = "0.15, 0.16"
+julia = "1.10"
+
+[extras]
+Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
+Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
+
+[targets]
+test = ["Test", "Random"]

@@ -443,6 +443,66 @@ then `arf_get_d` rounds the `O(1)` Choi midpoints to double (`~1e-16`). The
 cbnorm bracket stays rigorous after the double conversion by the FLOOR/CEIL
 rounding above.
 
+### AlmostIdempotentChannels.jl (Julia entry point) — bead aic-m24, incr. 2b
+
+The Julia package `julia/AlmostIdempotentChannels.jl/` exposes the reusable
+eta-idempotence VALUE entry point `eta_idempotence(kraus) -> Float64`
+= `||Phi^2-Phi||_diamond` (`.tex:347-354`) that downstream modules
+(`assoc_ecsa`, `factorize`) consume. It `ccall`s the flat-double shim in
+`build/libaic.so` (`aic_ucp_choi_diff_d`, `aic_cbnorm_eigfree_d`) for the
+certified arb `Choi(Phi^2-Phi)` and the eig-free bracket, then solves the Watrous
+diamond-norm SDP in Julia + MOSEK. The certified TIGHT cb-ball is a later
+increment (the SDP value is the golden-master rung here). NO PYTHON. Mirrors the
+`../su2-fft/julia` ccall-C package pattern exactly.
+
+**Layout.** `Project.toml` (deps Convex/Libdl/LinearAlgebra/Mosek/MosekTools;
+PINNED `Convex = "0.16"`, `Mosek = "11"`, `MosekTools = "0.15, 0.16"` to match
+`julia/env` so the SDP value equals the committed fixtures); `Manifest.toml`
+(seeded from `julia/env/Manifest.toml`, resolved — Convex 0.16.6, Mosek 11.2.0,
+MosekTools 0.15.10, identical to the fixture generator); `deps/build.jl`
+(`make -C <repo_root> lib`, then writes `deps/deps.jl` with the abspath
+`LIBAIC`; the repo root is THREE levels up — the package sits two levels deep,
+one more `..` than su2-fft); `src/sdp.jl` (the Watrous SDP, verbatim from
+`tools/gen_fixtures_d24.jl`, with the load-bearing `(2/n)` normalization);
+`src/AlmostIdempotentChannels.jl` (the module); `test/runtests.jl`.
+
+**dlopen / ABI.** `__init__` PRE-LOADS the system `libgmp.so.10`
+(`RTLD_NOW|RTLD_GLOBAL`, full path then bare-name fallback, in try/catch) BEFORE
+`dlopen(LIBAIC, RTLD_NOW|RTLD_GLOBAL|RTLD_DEEPBIND)` and `dlsym` of the two shim
+symbols into `Ref{Ptr{Cvoid}}`. This is the su2-fft fix for the Julia
+bundled-libgmp ABI clash with FLINT: `RTLD_DEEPBIND` on libaic alone is
+insufficient because libflint resolves `__gmpn_*` against the already-loaded
+Julia-bundled libgmp; pre-loading the system libgmp keeps its definitions in the
+global symbol table first. On this system (Julia 1.12.5, FLINT 18, libgmp.so.10
+at `/lib/x86_64-linux-gnu/`) the flags worked on the FIRST try — no further ABI
+work needed.
+
+**Marshalling.** `choi_diff(kraus, n; prec=106)` flattens the `r` Kraus matrices
+into the C row-major layout `kraus[a*n*n + i*n + j]` (1-based Julia -> 0-based C
+explicitly, NOT a column-major reinterpret), `ccall`s the shim, and unflattens
+`choi[p*N + q]` (`N=n*n`) into a Julia `N x N` `ComplexF64`. `eta_eigfree(kraus)`
+returns the rigorous `(lo, hi)` bracket. `eta_idempotence(kraus)` =
+`diamond_norm_watrous(choi_diff(kraus, n), n)`, asserting SDP status `OPTIMAL`.
+
+**Cross-check ladder (`test/runtests.jl`, 14/14 pass, ~52 s).**
+- (T1) ccall ROUND-TRIP: `choi_diff(kraus, n)` (C/arb via ccall) vs a pure-Julia
+  `Choi(Phi^2-Phi)` (`choi_A` + `compose_self`, copied from the fixture
+  generator) for `identity(2)` and `phi_t(2,0.3)` — worst max-entry diff
+  `8.33e-17`. Exercises the marshalling end-to-end.
+- (T2) ANALYTIC anchors: `eta_idempotence` vs the EXACT closed forms —
+  `id(2) -> 0` (got `0.0`); `phi_t(2,0.3) -> 0.315` (got `0.31499999928`);
+  `phi_t(2,0.1) -> 0.135` (got `0.13499998256`); paper example `0.1 ->
+  0.1*sqrt(0.9) = 0.0948683` (got `0.09486832704`). All within `1e-6`.
+- (T3) the certified eig-free bracket BRACKETS the SDP value across the ccall
+  boundary: `lo <= eta_idempotence <= hi` for `phi_t(2,0.3)`, `phi_t(2,0.1)`,
+  `paper_ex(0.1)`, `dep_2`, `phi_t(3,0.2)`. Tightest below-margin
+  `eta - lo = 0.0278` (paper_ex_0p1), tightest above-margin `hi - eta = 0.173`
+  (paper_ex_0p1) — loose by design (ratio `~2n`), it certifies the MOSEK value
+  rather than competing with it.
+- (T4) GADC (live, non-fixture, from `tools/smoke_gadc_cbnorm.jl`):
+  `eta_idempotence` at `gamma=0` (`2.9e-28`) and `gamma=1` (`7.3e-29`) ~0
+  (the two idempotent endpoints), interior `gamma=0.5 -> 0.332 > 1e-3`.
+
 ---
 
 ## Module `idemp_structure` — structure of exactly-idempotent UCP maps (bead aic-wuh)
