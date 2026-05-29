@@ -70,6 +70,9 @@ function gadc_kraus(gamma::Float64, p::Float64)
     A3 = ComplexF64[0 0; sq*sg 0]
     return Matrix{ComplexF64}[A0, A1, A2, A3]
 end
+# Complex asymmetric unital qubit channel (verbatim from gen_fixtures_d24.jl).
+complex_qubit_kraus() =
+    [ComplexF64[0.6 0; 0.8im 0], ComplexF64[0 0.8im; 0 0.6]]
 
 @testset "AlmostIdempotentChannels" begin
 
@@ -130,6 +133,57 @@ end
         @test eta1 ≈ 0.0 atol = 1e-7
         @test etamid > 1e-3
         @info "T4 GADC (p=0.5)" eta_gamma0 = eta0 eta_gamma1 = eta1 eta_gamma0p5 = etamid
+    end
+
+    @testset "T5 strong duality: eta_primal == eta_dual == eta_ref (pins dual norm)" begin
+        # The cross-check that PINS the QETLAB MIN-dual normalization (direction +
+        # constant, bead aic-m24 step 3a). For every analytic anchor + the complex
+        # fixture, the MAX primal value (diamond_norm_watrous_primal) and the MIN
+        # dual value (diamond_norm_dual) must BOTH equal the exact closed-form
+        # eta_ref. The ASYMMETRIC paper example is the discriminating anchor: the
+        # dual normalization is sys-2 partial trace + 1/2; a wrong direction (sys 1)
+        # gives the paper ratio 4.0, not 2.0, and turns this RED.
+        dep_id_norm(d) = 2 * (1 - 1 / d^2)
+        cases = Tuple{String,Matrix{ComplexF64},Int,Float64}[
+            ("id_2",          lambda_choi(identity_kraus(2), 2),       2, 0.0),
+            ("dep2-id2",      choi_A(depolarizing_kraus(2), 2) - choi_A(identity_kraus(2), 2), 2, dep_id_norm(2)),
+            ("dep3-id3",      choi_A(depolarizing_kraus(3), 3) - choi_A(identity_kraus(3), 3), 3, dep_id_norm(3)),
+            ("dep4-id4",      choi_A(depolarizing_kraus(4), 4) - choi_A(identity_kraus(4), 4), 4, dep_id_norm(4)),
+            ("phi_t2_0p3",    lambda_choi(phit_kraus(2, 0.3), 2),      2, 0.3 * 0.7 * dep_id_norm(2)),
+            ("phi_t3_0p05",   lambda_choi(phit_kraus(3, 0.05), 3),     3, 0.05 * 0.95 * dep_id_norm(3)),
+            ("phi_t4_0p2",    lambda_choi(phit_kraus(4, 0.2), 4),      4, 0.2 * 0.8 * dep_id_norm(4)),
+            ("paper_0p1",     lambda_choi(paper_example_kraus(0.1), 2), 2, 0.1 * sqrt(0.9)),
+            ("paper_0p01",    lambda_choi(paper_example_kraus(0.01), 2), 2, 0.01 * sqrt(0.99)),
+            ("complex_qubit", lambda_choi(complex_qubit_kraus(), 2),   2, 1.28),
+        ]
+        rows = NamedTuple[]
+        maxgap = 0.0
+        for (name, J, n, eref) in cases
+            ep, _X, _P, _Q, ps = diamond_norm_watrous_primal(J, n)
+            ed, _Y0, _Y1, ds = diamond_norm_dual(J, n)
+            gap = abs(ep - ed)
+            maxgap = max(maxgap, gap)
+            @test ps in ("OPTIMAL", "SLOW_PROGRESS")
+            @test ds in ("OPTIMAL", "SLOW_PROGRESS")
+            @test isapprox(ep, eref; atol = 1e-6)
+            @test isapprox(ed, eref; atol = 1e-6)   # pins the dual normalization
+            @test isapprox(ep, ed;   atol = 1e-6)
+            push!(rows, (name = name, eta_primal = ep, eta_dual = ed,
+                         eta_ref = eref, gap = gap))
+        end
+        @info "T5 strong-duality table (eta_primal, eta_dual, eta_ref, gap)" rows maxgap
+        # Print a concrete table to stdout (CLAUDE.md Rule 12: concrete numbers).
+        println("\nT5 strong-duality / dual-normalization table:")
+        println(rpad("channel", 16), rpad("eta_primal", 16), rpad("eta_dual", 16),
+                rpad("eta_ref", 16), "gap")
+        for r in rows
+            println(rpad(r.name, 16),
+                    rpad(string(round(r.eta_primal; sigdigits = 9)), 16),
+                    rpad(string(round(r.eta_dual; sigdigits = 9)), 16),
+                    rpad(string(round(r.eta_ref; sigdigits = 9)), 16),
+                    string(round(r.gap; sigdigits = 3)))
+        end
+        println("max primal-dual gap = ", round(maxgap; sigdigits = 3), "\n")
     end
 
 end

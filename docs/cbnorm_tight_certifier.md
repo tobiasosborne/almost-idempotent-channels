@@ -30,8 +30,12 @@ Two INDEPENDENT feasible points, each certified in arb (weak duality brackets et
   `[[Y0,-J],[-J^dag,Y1]]>=0, Y0,Y1>=0`.
   A dual-feasible `(Y0,Y1)` gives a **rigorous UPPER bound**
   `eta <= (1/2)(||Tr_Y(Y0)||_inf + ||Tr_Y(Y1)||_inf)`  (no `2/n` here — QETLAB
-  convention already absorbs it; `eta = optval_dual/2`). `Tr_Y` traces the LEFT
-  (K) factor -> `aic_mat_partial_trace_left`, yielding an `n x n` Hermitian PSD.
+  convention already absorbs it; `eta = optval_dual/2`). **`Tr_Y` traces the
+  RIGHT/MINOR (input H) factor, KEEPING the LEFT (output K) factor ->
+  `aic_mat_partial_trace_right`** (= Convex `partialtrace(.,2,[n,n])`), yielding an
+  `n x n` Hermitian PSD. EMPIRICALLY PINNED in 3a: the asymmetric paper anchor gives
+  ratio 4.0 for the LEFT/sys-1 trace (WRONG) vs 2.0 == eta_ref for sys-2 (RIGHT).
+  (An earlier draft of this doc said LEFT/`partial_trace_left` — that was wrong.)
 
 Strong duality holds (Slater: `P=Q=I/2, X=0` strictly feasible), so the two
 bounds meet at the true `eta`; the gap is the MOSEK duality gap (~solver tol).
@@ -72,7 +76,8 @@ LOWER: `Jdag=adjoint(J)`; `M=Jdag*X` (`acb_mat_mul`); `re=Re(acb_mat_trace(M))`;
 `lo_raw=(2/n)*re`; certify `[[P,X],[X^dag,Q]]>=0` and `||P+Q-I||_F<tol`; apply the
 Jansson correction if the block isn't certified PSD.
 
-UPPER: `P0=partial_trace_left(Y0)`, `P1=partial_trace_left(Y1)` (n x n Herm PSD);
+UPPER: `P0=partial_trace_right(Y0)`, `P1=partial_trace_right(Y1)` (n x n Herm PSD;
+traces the MINOR/input factor = Convex sys 2, pinned by the paper anchor in 3a);
 `s0=herm_max_eig(P0)`, `s1=herm_max_eig(P1)` (op-norm = max eig for PSD);
 `hi_raw=(s0+s1)/2`; certify `[[Y0,-J],[-J^dag,Y1]]>=0`, `Y0,Y1>=0`; apply the
 `+mu*n` correction if a shift was needed.
@@ -116,8 +121,11 @@ Return `[arb_lower(lo), arb_upper(hi)]`.
 4. **MOSEK tolerance** too loose for the slack PSD cert: tighten
    `MSK_DPAR_INTPNT_CO_TOL_DFEAS` to 1e-12; the Jansson correction term keeps the
    bound rigorous regardless. Escalate if the correction exceeds 50% of eta.
-5. **Partial-trace direction** (`Tr_Y` over the LEFT K-factor): mutation-test
-   left-vs-right on `complex_qubit`; a wrong direction must turn the test RED.
+5. **Partial-trace direction** — `Tr_Y` over the RIGHT/MINOR (input H) factor
+   (`aic_mat_partial_trace_right`), EMPIRICALLY PINNED in 3a (asymmetric paper
+   anchor: sys-1 ratio 4.0 WRONG vs sys-2 ratio 2.0 == eta_ref). Mutation-test
+   left-vs-right on an ASYMMETRIC channel (`complex_qubit`/`paper`) — a wrong
+   direction must turn the test RED (a symmetric channel cannot catch it).
 
 ## Build order (connection-aware; "no parallel Julia")
 - **3a (Julia):** add the QETLAB MIN dual solve to `AlmostIdempotentChannels.jl`

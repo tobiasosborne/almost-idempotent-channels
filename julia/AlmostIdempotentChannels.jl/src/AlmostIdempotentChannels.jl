@@ -68,7 +68,8 @@ function __init__()
     _SYM_CBNORM_EIGFREE_D[] = Libdl.dlsym(_LIBAIC_HANDLE[], :aic_cbnorm_eigfree_d)
 end
 
-export choi_diff, eta_eigfree, eta_idempotence, diamond_norm_watrous, libaic_path
+export choi_diff, eta_eigfree, eta_idempotence, diamond_norm_watrous,
+       diamond_norm_watrous_primal, diamond_norm_dual, libaic_path
 
 # ----- marshalling helpers (Julia ComplexF64 matrices <-> flat C arrays) -----
 
