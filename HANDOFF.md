@@ -27,7 +27,13 @@ findings this session: §A1 (`tex:1109` `lem_alpha` β subscript `Q_j`→`Q_k`) 
 §A2 (`tex:1254` direct-sum diagonal is non-central for the finite Pauli design;
 the correct one is the embedded sum `Σ_l D_l`).
 
-Current state: `master` clean (pushed to `origin`), **22 test binaries green,
+**LATEST (2026-05-30, cstar_build session):** `th_main` master loop now **40%
+built** — `cstar_build` I1/I2/I3 of 5 increments landed (see the RESUME section
+just below for the exact pickup: hostile-review I3, then build I4 `lem_extension`,
+then I5 the loop). 3 new test binaries (`test_cstar`/`test_cstar_merge`/
+`test_cstar_merging`, n=35/29/27). Everything else below is the prior session.
+
+Current state: `master` clean (pushed to `origin`), **25 test binaries green,
 zero warnings**, 28 beads closed of 62. `make test` ~5 min (the n=16 canary in
 `test_assoc2` U3, bead `aic-erz`; per-binary `make build/test_X && ./build/test_X`
 stays quick). Read §"Channel-module conventions" before touching
@@ -39,55 +45,88 @@ opnorm Gram false-fail).
 
 ---
 
-## ⚠️ RESUME HERE — `cstar_build` (§9 master loop, bead `aic-097`) = the proof of `th_main`
+## ⚠️ RESUME HERE — `cstar_build` (§9 master loop, bead `aic-097`, IN PROGRESS) = the proof of `th_main`
 
-This is the **only remaining `th_main` step** and the culmination: it assembles
-the four modules above into the constructive `O(ε)`-isomorphism `v: B → A`. The
-proof structure is in **shard E** (`paper/shards/shard-E-delta-homs-main-proof.md`,
-"The master loop") and `tex:1414-1444`; read that first, plus `MODULE_PLAN.md`
-L5. The 3-stage loop:
-1. **Stage 1 (commutative skeleton):** repeatedly apply `projection` (aic-mqf) to
-   split A; force the projections to be 1-dimensional (`lem_1d_proj`, in `corner`);
-   classify into equivalence classes (`lem_PQR` transitivity, in `corner`); merge
-   via `cor_merge_sum` + reset error via `errreduce` (aic-t81).
-2. **Stage 2 (extend each class to a full matrix block):** the inductive
-   `lem_extension` (`tex:1378`) — uses the **Ha-map** `Ha^Q_{P,P}` (already built
-   in `corner`, the homomorphism), `lem_approx` (dhom), and `lem_merging`; then
-   `errreduce` after each step.
-3. **Stage 3 (merge blocks):** `cor_merge_sum` over the equivalence classes +
-   `errreduce`, giving `B = ⊕_C M_{|C|}` and the `c₀ε`-isomorphism `v`.
+**Updated 2026-05-30 (orchestrated cstar_build session).** `cstar_build` is the
+**only remaining `th_main` step**: it assembles the four CLOSED modules below into
+the constructive `O(ε)`-isomorphism `v: B → A`. Being built as **5 increments**
+(I1–I5) per the design doc **`docs/research/cstar_build_design.md`** — READ THAT
+FIRST (it verifies the data model against the `.tex` and maps every assembly lemma
+to existing-API call sequences), plus shard E (`paper/shards/shard-E-…`) and
+`tex:1321-1446`. **THE DATA-MODEL LINCHPIN (design §1):** compressed subalgebras
+`S_P` are re-presented as derived `aic_ecstar` objects (star = compressed product
+`Co_P(Φ̃(XY))`, unit `Ptilde`, basis = corner-extract) via the `star_phi`/`star_ctx`
+seam, so `projection`/`corner`/`dhom`/`errreduce` recurse on `S_P` UNCHANGED. The
+running iso is an `aic_dhom_v` over `B = ⊕_l M_{d_l}`.
 
-**What `cstar_build` must still BUILD (not yet implemented):** the §9 assembly
-lemmas `lem_merging` (`tex:1325`), `cor_merge_sum` (`tex:1352`), `lem_add_dim`
-(`tex:1363`), `lem_extension` (`tex:1378`) — all on top of the existing
-`corner` (`S_{P,Q}`/compressed product/`lem_alpha`/Ha-map), `projection`, `dhom`,
-`errreduce`. These are **constructive** (shard E marks them so) but `lem_extension`
-is the substantive one (Ha-map linearization + `lem_approx` inside + `lem_merging`
-assembly). It is a LARGE module — budget a focused session; research shard E +
-`tex:1321-1446` first, decide the loop's data model (how to thread `B`'s growing
-block structure + the running `v`), then build the assembly lemmas, then the loop.
+**DONE this session (committed + pushed to `origin/master`, working tree clean):**
+- `284b11f` **design doc** (`docs/research/cstar_build_design.md`).
+- `4d40af2` **I1** — `aic_cstar_subalgebra` (S_P-as-ecstar wrapper, `src/aic_cstar_subalg.c`)
+  + `aic_cstar_matrix_algebra` (genuine M_d ecstar, `src/aic_cstar_matalg.c`).
+  Hostile-reviewed (Opus); F1/F2/F3 fixed (F2 = `star_ctx` decoupled to a heap block
+  so the owner is RELOCATION-SAFE for the I5 array of wrappers; F1 = independent
+  plain-matmul oracle; F3 = genuinely-oblique `mixconj` teeth). `test_cstar` n=35.
+- `f95a060` **I2** — `aic_cstar_lem_add_dim` (`tex:1363`) + `aic_cstar_off_diag_zero`
+  (Stage-3 `S_{P_C,P_D}=0`) + `aic_cstar_merge_sum` (`cor_merge_sum`, `tex:1352`),
+  in `src/aic_cstar_merge.c`. `test_cstar_merge` n=29.
+- `ae48fe3` **I3** — `aic_cstar_lem_merging` (`tex:1325`, general 2×2 block assembly),
+  `src/aic_cstar_merging.c`. `test_cstar_merging` n=27. **⚠️ HOSTILE REVIEW PENDING**
+  (implementation is green + subagent-self-verified, but did NOT get the mandatory
+  independent hostile review — the session was wound up here). Surfaced FINDINGS §C9
+  (the `two_block` subtlety: `B` is `M_{n1+n2}` single-block with LIVE off-diagonal
+  γ for lem_extension, vs `M_{n1}⊕M_{n2}` two-block = cor_merge_sum; a single block
+  with zeroed off-diagonal is an INVALID input).
 
-**Reuse map (all CLOSED + green):** `aic_projection_nontrivial` (the nontrivial
-projection), `aic_corner_*` (Co/S/cdot/alpha/ip_1d/**ha**/dim_S/equiv_1d),
-`aic_dhom_approx`+`aic_dhom_prop_bounds` (lem_approx/prop_delta_hominc),
-`aic_errreduce` (the error reset), `aic_dhom_v_sigma_min` (the true inclusion
-lower bound). The η=0 oracle: an exact-idempotent Φ → A a genuine C* algebra →
-`cstar_build` must recover `B≅A` with `v` an **exact** isomorphism (zero defect).
-The universality canary (c₀ not growing with dim A) is the headline test — the
-`errreduce`/`dhom` canaries already pass; `cstar_build` must preserve it
-end-to-end.
+**▶ NEXT AGENT PICKS UP HERE (in order):**
+1. **Hostile-review I3** (`src/aic_cstar_merging.c` + `tests/test_cstar_merging.c`) —
+   the mandatory Core-tier review that was deferred. Hunt the routing convention
+   (`route_unit`, the single off-by-one risk), the merging-condition guards, and any
+   "test that can't fail." Fix + mutation-prove, then amend/commit.
+2. **I4 — `lem_extension`** (`tex:1378`, `src/aic_cstar_extension.c`), THE SUBSTANTIVE
+   lemma + highest risk. 6 steps (design §4.4): (1) `dim S_{P,Q}=n` via lem_add_dim;
+   (2) the Ha-maps `h_{jk}=Ha^Q_{P_j,P_k}` (`aic_corner_ha`); (3) approximate `h_11∘v`
+   by an exact hom `μ_11` via `lem_approx` (`aic_dhom_approx`) with codomain
+   `B(S_{P,Q})≅M_n` = `aic_cstar_matrix_algebra(n)` (built in I1); (4) `U_1` from the
+   polar/SVD of `μ_11` (`aic_latd_svd` + a ~10-LOC polar extractor); (5) the four
+   `γ_{jk}` (`tex:1405-1410`: γ_11=v, γ_12=U_1, γ_21=(U_1(·†))†, γ_22=·Qtilde);
+   (6) assemble via `aic_cstar_lem_merging` (I3, `two_block=0`). **Highest-risk: the
+   Ha-map index bookkeeping** (`aic_corner.h` flags it; swap-P-and-R mutation MUST be
+   RED). Hostile review MANDATORY.
+3. **I5 — the master loop** (`tex:1414`, `src/aic_cstar_build.c` + the public entry in
+   `include/aic_cstar.h`): Stage 1 greedy projection→1d skeleton + equivalence classes
+   (`aic_corner_equiv_1d`), Stage 2 per-class inductive `lem_extension`+`errreduce`,
+   Stage 3 merge classes via `cor_merge_sum`+`errreduce`. Headline tests: η=0 oracle
+   (zero defect, `th_idemp_structure` block sizes) + the **universality canary** (c₀
+   flat over dim A — inherits `errreduce` T4). Carry FINDINGS §C8 (merged-`v` defect
+   teeth need the `c=defect/η` MAGNITUDE bound, not just the η-shrink direction) and
+   §G1/§C7 (`aic_projection_nontrivial`'s internal nontriviality assert uses the
+   ambient `1_n`, vacuous on an S_P wrapper — check `||Ptilde−P'||` externally; I1 T3
+   shows the pattern). Hostile review MANDATORY.
+
+In-session increment tracking was via TaskCreate (ephemeral): I1/I2 completed,
+I3 done-pending-review, I4/I5 pending. Bead `aic-097` stays **in_progress**.
+
+**The 3-stage loop (the I5 target, `tex:1414-1444`):**
+1. **Stage 1 (commutative skeleton):** repeatedly apply `projection` (aic-mqf) on the
+   `S_{P_m}` wrappers to split A; force projections 1-dimensional (`lem_1d_proj`);
+   classify into equivalence classes (`lem_PQR` transitivity); merge via
+   `cor_merge_sum` (I2) + reset error via `errreduce`.
+2. **Stage 2:** the inductive `lem_extension` (I4) per class + `errreduce` after each.
+3. **Stage 3:** `cor_merge_sum` (I2) over classes + `errreduce` → `B = ⊕_C M_{|C|}`.
+
+**Reuse map (all CLOSED + green):** `aic_projection_nontrivial`, `aic_corner_*`
+(Co/S/cdot/alpha/ip_1d/**ha**/dim_S/equiv_1d/Ptilde), `aic_dhom_approx`, `aic_errreduce`,
+`aic_dhom_v_sigma_min`, `aic_latd_svd`. PLUS the new cstar I1–I3 helpers above.
+The η=0 oracle: exact-idempotent Φ → A genuine C* → `v` an **exact** iso (zero defect).
 
 **Known open escalations feeding cstar_build** (see `paper/FINDINGS.md` §D):
-`aic-3qv` (does an Ω(1) gap always exist for `projection`? — per-instance
-certified now, universal guarantee open); `aic-1bc` (the analytic `c₀` from
-`cor_improvement` — only the *measured* c₀ exists today); `aic-w4o.1` (certified
-degenerate eig — corner `dim S`, projection gap *enclosure*, errreduce σ_min are
-double-path now). None block starting cstar_build (the constructive double-path
-route works; certification defers).
+`aic-3qv` (Ω(1) gap for `projection` — per-instance certified, universal open);
+`aic-1bc` (analytic `c₀` — only the *measured* c₀ exists); `aic-w4o.1` (certified
+degenerate eig — extraction is double-path, defects arb-certified). None block the
+constructive double-path route; certification defers.
 
-**th_main_ext (§10, `opspace`, bead `aic-zwo`) and the headline `factorize`
-(`th_factorization`, `aic-tff`) come AFTER cstar_build** — the user scoped this
-work to plain `th_main`, not the tensor extension.
+**th_main_ext (§10, `opspace`, `aic-zwo`) and `factorize` (`th_factorization`,
+`aic-tff`) come AFTER cstar_build** — user scoped this work to plain `th_main`.
 
 ---
 
