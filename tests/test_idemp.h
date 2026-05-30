@@ -163,6 +163,40 @@ static void make_conjugated(aic_ucp_kraus *out, const aic_ucp_kraus *base,
     acb_mat_clear(V);
 }
 
+/* Convex mix of make_compress_idemp(d,m) with its unitary conjugate (mirrors the
+ * test_corner make_eta_family Kraus-union pattern): Phi_t = (1-t) Phi_compress +
+ * t (V^dag Phi_compress V), realised as the Kraus union {sqrt(1-t) K_a} U
+ * {sqrt(t) V^dag K_a V}. This is a GENUINELY eta>0 (eta proxy ~ 6.5 t for d=5,m=3),
+ * NON-COMMUTATIVE, OBLIQUE almost-idempotent channel whose associated algebra A
+ * has genuine 1d delta-projections with a dim S_{P,Q}=2 corner (P = projector onto
+ * span(e1,e2), Q = |e1><e1|): the regime lem_extension needs (Ha^Q_{P,P} a
+ * homomorphism on a >1-dim corner at eta>0). At t=0.02: eta ~ 1.30e-2, P/Q in-A
+ * residuals ~ 9.2e-3 / 4.8e-3, dim S_{P,Q}=2, dim S_Q=1, lem_PQ_Hilb Gram
+ * off-diagonal G[0,1] ~ 1.7e-6, ||G-I|| ~ 1.3e-5 (trivially in-basin). The bare
+ * aic_mat_opnorm ||G-I|| guard SIGABRTs on this corner (the near-zero off-diagonal
+ * false-fails the Gram Hermiticity check, bead aic-2yo); aic_corner_ha now uses the
+ * certified mid+radius upper bound, so it runs. `out` is aic_ucp_kraus_init'd here. */
+__attribute__((unused))
+static void make_mixconj(aic_ucp_kraus *out, slong d, slong m, double t, slong prec)
+{
+    aic_ucp_kraus base, conj;
+    make_compress_idemp(&base, d, m);
+    make_conjugated(&conj, &base, prec);
+    slong n = base.dim_H;
+    aic_ucp_kraus_init(out, n, n, base.r + conj.r);
+    arb_t s;
+    arb_init(s);
+    arb_set_d(s, sqrt(1.0 - t));
+    for (slong a = 0; a < base.r; a++)
+        acb_mat_scalar_mul_arb(out->K[a], base.K[a], s, prec);
+    arb_set_d(s, sqrt(t));
+    for (slong b = 0; b < conj.r; b++)
+        acb_mat_scalar_mul_arb(out->K[base.r + b], conj.K[b], s, prec);
+    arb_clear(s);
+    aic_ucp_kraus_clear(&conj);
+    aic_ucp_kraus_clear(&base);
+}
+
 /* ---- shared cross-check harness ---- */
 
 /* Pi_A = Delta Delta^dag (the gauge-invariant subspace projector for A).

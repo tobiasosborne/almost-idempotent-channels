@@ -214,6 +214,93 @@ void aic_corner_alpha_dims(slong *N_out, slong *dPQ_out, const aic_ecstar *A,
                            const acb_mat_t *Q_parts, slong q, const acb_mat_t Q,
                            slong prec);
 
+/* ============================ Increment 2b ============================== *
+ * One-dimensional-Q machinery: the lem_PQ_Hilb inner product (the Hilbert
+ * structure on S_{P,Q} for 1d Q), the Ha-map (the implicit-equation solve that
+ * lem_extension depends on), lem_PQR (norm multiplicativity), lem_1d_proj and
+ * the 1d-equivalence predicate. The full why lives in src/aic_corner_hilbert.c
+ * (the Hilbert-space results) and src/aic_corner_ha.c (the Ha-map).
+ * approximate_algebras.tex:1123-1187.
+ */
+
+/* lem_PQ_Hilb (.tex:1123-1132). The inner product <Y,X> on S_{P,Q} for a ONE-
+ * DIMENSIONAL delta-projection Q, defined by Y^dag . X = <Y,X> Qtilde where
+ *   Y^dag . X = Co_Q(Y^dag * X)   (the STAR Y^dag * X = aic_ecstar_star, then Co_Q),
+ *   Qtilde   = Co_Q(Q)  (an operator in A; pass it PREBUILT, = aic_corner_Ptilde
+ *              on Q, an element of S_Q),
+ * and S_Q = C Qtilde is one-dimensional. The scalar is then
+ *   <Y,X> = <Qtilde, W>_F / <Qtilde, Qtilde>_F,   W = Co_Q(Y^dag * X).
+ * Writes the COMPLEX scalar to `out` (caller-init'd acb_t). `CoQ` = Co_{Q,Q}
+ * (d x d, prebuilt by aic_corner_Co with both args Q). X, Y are n x n elements of
+ * S_{P,Q}. The 1d-Q precondition (dim S_Q == 1) is the CALLER's to assert (see
+ * aic_corner_dim_S); this routine asserts only that <Qtilde,Qtilde>_F is bounded
+ * away from 0 (fail loud, Rule 4). The inner product is conjugate-linear in Y,
+ * linear in X, Hermitian-symmetric, and |<X,X> - ||X||^2| <= O(delta+eps)||X||^2
+ * (.tex:1130, the Hilbert-norm closeness; tests report the constant). At eta=0 on
+ * M_n it recovers the GNS inner product Tr(Y^dag X) restricted to S_{P,Q}. */
+void aic_corner_ip_1d(acb_t out, const aic_ecstar *A, const acb_mat_t Qtilde,
+                      const acb_mat_t CoQ, const acb_mat_t X, const acb_mat_t Y,
+                      slong prec);
+
+/* The Ha-map Ha^Q_{P,R}(Z) (.tex:1146-1160, eqs Ha_def/Ha_dag/Ha_prod), a linear
+ * map S_{R,Q} -> S_{P,Q} for Z in S_{P,R} and a ONE-DIMENSIONAL Q. Returned as a
+ * d_PQ x d_RQ matrix `Ha` in the EXTRACTED corner bases {C^{PQ}_l} of S_{P,Q}
+ * (rows) and {C^{RQ}_m} of S_{R,Q} (columns): column m is the coords of
+ * Ha^Q_{P,R}(Z)(C^{RQ}_m) in {C^{PQ}_l}. Solves the implicit Ha_def
+ *   (Y^dag . Z) . X + Y^dag . (Z . X) = 2 <Y, Ha(Z)(X)> Qtilde   (all Y in S_{P,Q})
+ * by the Gram system: with G_{lm} = <C^{PQ}_l, C^{PQ}_m> (the lem_PQ_Hilb inner
+ * product, NOT the Frobenius ip; G = I + O(delta+eps), ASSERTED ||G-I||<1 fail
+ * loud) and b_l = (1/2)[scalar((C^{PQ}_l^dag . Z) . X) + scalar(C^{PQ}_l^dag .
+ * (Z . X))] for input X = C^{RQ}_m, Ha(Z)(C^{RQ}_m) = sum_l (G^{-1} b)_l C^{PQ}_l
+ * (acb_mat_solve, certified). scalar(W in S_Q) = <Qtilde,W>_F/<Qtilde,Qtilde>_F.
+ *
+ * THE Co-INDEX BOOKKEEPING (the module's highest convention-risk; each cdot's
+ * target corner is the Co passed):
+ *   Y^dag . Z      : S_{Q,P} x S_{P,R} -> S_{Q,R}   via Co_{Q,R}
+ *   (Y^dag.Z) . X  : S_{Q,R} x S_{R,Q} -> S_Q       via Co_Q
+ *   Z . X          : S_{P,R} x S_{R,Q} -> S_{P,Q}   via Co_{P,Q}
+ *   Y^dag . (Z.X)  : S_{Q,P} x S_{P,Q} -> S_Q       via Co_Q
+ * Y^dag = C^{PQ}_l^dag (acb_mat_conjugate_transpose, lands in S_{Q,P}).
+ *
+ * The exact identity Ha^Q_{R,P}(Z^dag) = Ha^Q_{P,R}(Z)^dag (.tex:1153) holds by
+ * the symmetric definition; ||Ha(Z)(X) - Z.X||_Euc <= O(delta+eps)||Z||||X||_Euc
+ * (.tex:1155); Ha^Q_{P,P} is an O(delta+eps)-HOMOMORPHISM (.tex:1157, the
+ * downstream-critical property for lem_extension). Tests assert all three.
+ *
+ * `Ha` must be init'd d_PQ x d_RQ (d_PQ = dim S_{P,Q}, d_RQ = dim S_{R,Q};
+ * query via aic_corner_dim_S). Z is n x n in S_{P,R}. P,R,Q are n x n Hermitian
+ * delta-projections; Q one-dimensional (dim S_Q == 1 ASSERTED). All Co's and
+ * bases are built INTERNALLY from P,R,Q. */
+void aic_corner_ha(acb_mat_t Ha, const aic_ecstar *A, const acb_mat_t Z,
+                   const acb_mat_t P, const acb_mat_t R, const acb_mat_t Q,
+                   slong prec);
+
+/* lem_PQR defect (.tex:1162-1177). For a ONE-DIMENSIONAL Q, the maximum over the
+ * extracted bases X in S_{P,Q}, Y in S_{Q,R} of the norm-multiplicativity defect
+ *   | ||X . Y||_op - ||X||_op ||Y||_op |   (NO eigenproblem; pure norm test),
+ * returned as a certified arb ball in `out` (caller-init'd). X . Y via
+ * aic_corner_cdot with Co_{P,R}. Bounded by O(delta+eps)||X||||Y|| (the spec);
+ * machine-zero at eta=0 (||X.Y|| = ||X|| ||Y|| exactly). Builds all Co's/bases
+ * from P,Q,R internally; asserts dim S_Q == 1 (fail loud). */
+void aic_corner_pqr_defect(arb_t out, const aic_ecstar *A, const acb_mat_t P,
+                           const acb_mat_t Q, const acb_mat_t R, slong prec);
+
+/* dim S_{P,Q} (.tex:1064-1066): build Co_{P,Q} and return round(Re Tr Co)
+ * CROSS-CHECKED against the SVD-gap count (the same fail-loud cross-check as
+ * aic_corner_extract; this is the cheap query that does not allocate the basis).
+ * P,Q n x n Hermitian. */
+slong aic_corner_dim_S(const aic_ecstar *A, const acb_mat_t P, const acb_mat_t Q,
+                       slong prec);
+
+/* 1d-equivalence predicate (lem_1d_proj + .tex:1187). Returns 1 iff
+ * dim S_{P,Q} == 1 (the paper's definition of equivalent one-dimensional
+ * delta-projections P ~ Q), else 0. For one-dimensional P and Q, dim S_{P,Q} <= 1
+ * (lem_1d_proj, .tex:1179); the relation is reflexive, symmetric (via the
+ * involution Co_{P,Q}^dag = Co_{Q,P}) and transitive (via lem_PQR). P,Q n x n
+ * Hermitian. Thin wrapper over aic_corner_dim_S. */
+int aic_corner_equiv_1d(const aic_ecstar *A, const acb_mat_t P, const acb_mat_t Q,
+                        slong prec);
+
 #ifdef __cplusplus
 }
 #endif

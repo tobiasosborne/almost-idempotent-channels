@@ -125,6 +125,29 @@ static double mid_opnorm_d(const acb_mat_t Aop, slong prec)
     return v;
 }
 
+/* |z| of a complex acb scalar as a double (ball midpoint). Used by the Increment-2b
+ * tests where the inner product / scalar differences are complex numbers. */
+static double abs_acb(const acb_t z)
+{
+    arb_t m;
+    arb_init(m);
+    acb_abs(m, z, 53);
+    double r = dd(m);
+    arb_clear(m);
+    return r;
+}
+
+/* arb ball certainly <= t? (mirrors AIC_CHECK arb_le idiom for a double bound). */
+static int arb_le_dbl(const arb_t x, double t)
+{
+    arb_t tt;
+    arb_init(tt);
+    arb_set_d(tt, t);
+    int r = arb_le(x, tt);
+    arb_clear(tt);
+    return r;
+}
+
 /* n x n diagonal projector with the first `k` diagonal entries 1 (rest 0). */
 static void diag_proj(acb_mat_t P, slong n, slong k)
 {
@@ -1517,6 +1540,1099 @@ static void test_t9(void)
     t9_entry_check_aborts(1.0, 1, "swap cols 0,1 (breaks reconstruction (b))");
 }
 
+/* ===================== Increment 2b: §7 one-dimensional-Q machinery ======== *
+ * T10 lem_PQ_Hilb inner product (.tex:1123-1132): Hermitian symmetry, linearity,
+ *     |<X,X>-||X||^2| <= c(delta+eps)||X||^2 (report c), eta=0 GNS oracle, and the
+ *     OBLIQUE star-vs-plain non-vacuity gap (the star is load-bearing).
+ * T11 Ha-map (.tex:1146-1160): Ha_dag EXACT identity (with non-vacuity + a closed-
+ *     form eta=0 cross-check so the identity has TEETH), ||Ha(Z)(X)-Z.X||_Euc bound
+ *     (report c), and Ha^Q_{P,P} the O(delta+eps)-HOMOMORPHISM (the downstream-
+ *     critical property; report c) with ||Ha(Ptilde)-1|| small.
+ * T12 lem_PQR (.tex:1162-1177): | ||X.Y||-||X||||Y|| | <= c(delta+eps) (report c),
+ *     machine-zero at eta=0.
+ * T13 lem_1d_proj + equivalence (.tex:1179-1187): dim S_{P,Q} <= 1 for 1d P,Q;
+ *     reflexive, symmetric, transitive.
+ *
+ * MUTATION-PROOFS (manual source perturbations, RED values documented; mirrors the
+ * T8(a) star mutation discipline since these are NUMERICAL RED, not SIGABRT):
+ *   - ip_1d star-drop (aic_ecstar_star -> acb_mat_mul in aic_corner_ip_1d): T10's
+ *     oblique oracle goes RED at the non-vacuity gap (see test_t10 result line).
+ *   - Ha cdot wrong-Co (CoQR -> CoPQ in the Y^dag.Z step of aic_corner_ha): T11's
+ *     eta=0 Ha=Z. oracle goes RED (CONFIRMED, see test_t11 comment).
+ *   - Ha Gram with the FROBENIUS ip instead of lem_PQ_Hilb ip: documented blind/RED
+ *     verdict in test_t11 (the two ip's differ only at eta>0).
+ *   All three confirmed below and restored. */
+
+/* apply the Ha matrix (d_PQ x d_RQ in {C^{PQ}},{C^{RQ}} coords) to the m-th basis
+ * element of S_{R,Q}: out = sum_l Ha[l,m] C^{PQ}_l. (The m-th input is C^{RQ}_m,
+ * whose coord vector is the unit vector e_m, so the output is column m of Ha
+ * re-expanded in the S_{P,Q} basis.) `out` init'd n x n. */
+static void ha_apply_col(acb_mat_t out, const acb_mat_t Ha, acb_mat_t *CPQ,
+                         slong dPQ, slong m, slong n, slong prec)
+{
+    acb_mat_zero(out);
+    acb_t t;
+    acb_init(t);
+    for (slong l = 0; l < dPQ; l++)
+        for (slong a = 0; a < n; a++)
+            for (slong b = 0; b < n; b++) {
+                acb_mul(t, acb_mat_entry(Ha, l, m), acb_mat_entry(CPQ[l], a, b), prec);
+                acb_add(acb_mat_entry(out, a, b), acb_mat_entry(out, a, b), t, prec);
+            }
+    acb_clear(t);
+}
+
+/* T10 lem_PQ_Hilb inner product. */
+static void test_t10(void)
+{
+    const slong prec = 256;
+    /* (i) eta=0 GNS oracle on identity(n): A=M_n, star=plain, 1d Q=|e0><e0|,
+     * P=diag(1..1) rank r => S_{P,Q} = {rows<r, col 0}, basis C_l=|e_l><e0|, so
+     * <C_l,C_m>=delta_lm and <X,X>=||X||^2 EXACTLY (GNS). */
+    {
+        slong n = 4, r = 3;
+        aic_ucp_kraus phi;
+        make_identity(&phi, n);
+        aic_assoc_ecstar ae;
+        aic_assoc_ecstar_from_phi(&ae, &phi, prec);
+        slong d = ae.A.dim_A;
+        acb_mat_t P, Q;
+        diag_proj(P, n, r);
+        diag_proj_at(Q, n, 0);
+        AIC_CHECK_MSG(aic_corner_dim_S(&ae.A, Q, Q, prec) == 1,
+                      "T10: Q=|e0><e0| not 1d in M_%ld", (long) n);
+        acb_mat_t CoPQ, CoQ, Qtilde;
+        acb_mat_init(CoPQ, d, d); acb_mat_init(CoQ, d, d); acb_mat_init(Qtilde, n, n);
+        aic_corner_Co(CoPQ, &ae.A, P, Q, prec);
+        aic_corner_Co(CoQ, &ae.A, Q, Q, prec);
+        aic_corner_Ptilde(Qtilde, &ae.A, Q, prec);
+        acb_mat_t *C;
+        slong dPQ;
+        aic_corner_extract(&C, &dPQ, CoPQ, &ae.A, prec);
+        AIC_CHECK_MSG(dPQ == r, "T10: dim S_{P,Q}=%ld != r=%ld", (long) dPQ, (long) r);
+
+        double herm = 0.0, gns = 0.0, lin = 0.0;
+        acb_t ip, ipc, ipxx, ipyy, ipsum, ipsumdir, tmp;
+        acb_init(ip); acb_init(ipc); acb_init(ipxx); acb_init(ipyy);
+        acb_init(ipsum); acb_init(ipsumdir); acb_init(tmp);
+        for (slong i = 0; i < dPQ; i++)
+            for (slong j = 0; j < dPQ; j++) {
+                aic_corner_ip_1d(ip, &ae.A, Qtilde, CoQ, C[j], C[i], prec); /* <C_i,C_j> */
+                aic_corner_ip_1d(ipc, &ae.A, Qtilde, CoQ, C[i], C[j], prec);/* <C_j,C_i> */
+                acb_conj(ipc, ipc);   /* conj<C_j,C_i> should == <C_i,C_j> */
+                acb_sub(tmp, ip, ipc, prec);
+                double h = abs_acb(tmp);
+                if (h > herm) herm = h;
+                /* GNS: <C_i,C_j> == delta_ij (orthonormal C_l). */
+                if (i == j) acb_sub_si(ip, ip, 1, prec);
+                double g = abs_acb(ip);
+                if (g > gns) gns = g;
+            }
+        /* linearity in 2nd arg: <C0, C1 + 2 C2> == <C0,C1> + 2<C0,C2>. */
+        if (dPQ >= 3) {
+            acb_mat_t comb;
+            acb_mat_init(comb, n, n);
+            acb_mat_set(comb, C[1]);
+            for (slong a = 0; a < n; a++)
+                for (slong b = 0; b < n; b++) {
+                    acb_mul_si(tmp, acb_mat_entry(C[2], a, b), 2, prec);
+                    acb_add(acb_mat_entry(comb, a, b), acb_mat_entry(comb, a, b), tmp, prec);
+                }
+            aic_corner_ip_1d(ipsumdir, &ae.A, Qtilde, CoQ, comb, C[0], prec);
+            aic_corner_ip_1d(ipxx, &ae.A, Qtilde, CoQ, C[1], C[0], prec);
+            aic_corner_ip_1d(ipyy, &ae.A, Qtilde, CoQ, C[2], C[0], prec);
+            acb_mul_si(ipyy, ipyy, 2, prec);
+            acb_add(ipsum, ipxx, ipyy, prec);
+            acb_sub(tmp, ipsum, ipsumdir, prec);
+            lin = abs_acb(tmp);
+            acb_mat_clear(comb);
+        }
+        /* CONJUGATION ORDER (FIX 2, bead aic). ip_1d computes <Y,X> = scalar
+         * Co_Q(Y^dag * X): conjugate-linear in Y (the FIRST API slot), linear in X
+         * (the SECOND). The herm/lin/gns checks above are all BLIND to the slot of
+         * the conjugation -- swapping the impl to Co_Q(X^dag * Y) keeps them green
+         * (every fixture uses real-symmetric corner elements where Y^dag X = X^dag Y
+         * up to the real GNS value). We pin the order with a GENUINELY COMPLEX Y:
+         *   <i*C0, C0> = conj(i) <C0,C0> = -i <C0,C0>   (conjugate-linear in Y),
+         *   <C0, i*C0> =      i  <C0,C0> = +i <C0,C0>   (linear in X).
+         * At eta=0 GNS <C0,C0> = 1 (real), so the two land at -i and +i; the X^dag*Y
+         * swap flips both signs. MUTATION-PROVEN (source perturbation in
+         * aic_corner_ip_1d: dagger X instead of Y and star Xd*Y, i.e. compute
+         * Co_Q(X^dag*Y)): conj_err jumps from 0 to 2.000 (|-i - (+i)| = 2), RED,
+         * while herm/gns/lin stay green (blind to the swap). Restored. */
+        double conj_err = 0.0;
+        {
+            acb_mat_t C0i;
+            acb_mat_init(C0i, n, n);
+            acb_t iu, w;
+            acb_init(iu);
+            acb_init(w);
+            acb_onei(iu);                              /* i */
+            acb_mat_scalar_mul_acb(C0i, C[0], iu, prec); /* i*C0 */
+            acb_t ip00, lhs, rhs, df;
+            acb_init(ip00);
+            acb_init(lhs);
+            acb_init(rhs);
+            acb_init(df);
+            aic_corner_ip_1d(ip00, &ae.A, Qtilde, CoQ, C[0], C[0], prec); /* <C0,C0> */
+            /* (1) conjugate-linear in Y (first slot): <i*C0, C0> == -i <C0,C0>. */
+            aic_corner_ip_1d(lhs, &ae.A, Qtilde, CoQ, C[0], C0i, prec);   /* Y=i*C0,X=C0 */
+            acb_neg(w, iu);                            /* -i */
+            acb_mul(rhs, w, ip00, prec);               /* -i <C0,C0> */
+            acb_sub(df, lhs, rhs, prec);
+            double e1 = abs_acb(df);
+            if (e1 > conj_err) conj_err = e1;
+            /* (2) linear in X (second slot): <C0, i*C0> == +i <C0,C0>. */
+            aic_corner_ip_1d(lhs, &ae.A, Qtilde, CoQ, C0i, C[0], prec);   /* X=i*C0,Y=C0 */
+            acb_mul(rhs, iu, ip00, prec);              /* +i <C0,C0> */
+            acb_sub(df, lhs, rhs, prec);
+            double e2 = abs_acb(df);
+            if (e2 > conj_err) conj_err = e2;
+            acb_clear(df);
+            acb_clear(rhs);
+            acb_clear(lhs);
+            acb_clear(ip00);
+            acb_clear(w);
+            acb_clear(iu);
+            acb_mat_clear(C0i);
+        }
+        printf("T10(i) eta=0 GNS oracle (M_%ld, r=%ld): herm=%.2e |<C_i,C_j>-d_ij|"
+               "=%.2e lin=%.2e conj_order=%.2e\n", (long) n, (long) r, herm, gns,
+               lin, conj_err);
+        AIC_CHECK_MSG(herm < 1e-9, "T10: <Y,X> not Hermitian-symmetric (%.3e)", herm);
+        AIC_CHECK_MSG(gns < 1e-9, "T10: eta=0 not GNS (<C_i,C_j> != delta_ij, %.3e)", gns);
+        AIC_CHECK_MSG(lin < 1e-9, "T10: <.,.> not linear in 2nd arg (%.3e)", lin);
+        AIC_CHECK_MSG(conj_err < 1e-9,
+                      "T10: ip_1d conjugation order wrong (conj-linear-in-Y, "
+                      "linear-in-X violated, %.3e) -- Co_Q(X^dag*Y) instead of "
+                      "Co_Q(Y^dag*X)?", conj_err);
+
+        acb_clear(tmp); acb_clear(ipsumdir); acb_clear(ipsum);
+        acb_clear(ipyy); acb_clear(ipxx); acb_clear(ipc); acb_clear(ip);
+        for (slong m = 0; m < dPQ; m++) acb_mat_clear(C[m]);
+        if (C) flint_free(C);
+        acb_mat_clear(Qtilde); acb_mat_clear(CoQ); acb_mat_clear(CoPQ);
+        acb_mat_clear(Q); acb_mat_clear(P);
+        aic_assoc_ecstar_clear(&ae);
+        aic_ucp_kraus_clear(&phi);
+    }
+
+    /* (ii) OBLIQUE non-vacuity (compress_idemp(4,2), exactly idempotent => clean).
+     * The fixture must use GENUINE delta-projections IN A (the lem_PQ_Hilb
+     * hypothesis); a diagonal projector that is NOT in A (e.g. |e0><e0|, proj
+     * residual 0.667, ||Q*Q-Q|| = 1.0) gives a VACUOUS O(1) bound -- the same
+     * trap as T8(c). The in-A 1d delta-projections of compress_idemp(4,2) are the
+     * algebra elements B + B[0,0](1-Pi_M) for B a projector in B(M); we take
+     *   P = |e1><e1|              (in A: B=|e1><e1|, B[0,0]=0; proj residual 0),
+     *   Q = diag(1,0,1,1)         (in A: B=|e0><e0|, B[0,0]=1, the Mperp scalar;
+     *                              a genuine 1d delta-projection, dim S_Q = 1).
+     * Q touches the e2,e3 indices where Phi_tilde's OBLIQUE e2,e3 -> e0 coupling
+     * lives, so the plain product Y^dag X leaves A and Co_Q(star) != Co_Q(plain):
+     * measured star-vs-plain gap 0.6667 (the star is LOAD-BEARING in the inner
+     * product). At eta=0 with genuine in-A projections |<X,X>-||X||^2| = 0 exactly.
+     * MUTATION-PROVEN: replacing aic_ecstar_star with acb_mat_mul in
+     * aic_corner_ip_1d makes ip_1d == the plain surrogate, so the gap is exactly
+     * the RED amount of the (vac > 0.05) oracle. */
+    {
+        slong n = 4;
+        aic_ucp_kraus phi;
+        make_compress_idemp(&phi, 4, 2);
+        aic_assoc_ecstar ae;
+        aic_assoc_ecstar_from_phi(&ae, &phi, prec);
+        slong d = ae.A.dim_A;
+        acb_mat_t P, Q;
+        diag_proj_at(P, n, 1);             /* P = |e1><e1|, in A */
+        acb_mat_init(Q, n, n); acb_mat_zero(Q);
+        acb_set_si(acb_mat_entry(Q, 0, 0), 1);
+        for (slong i = 2; i < 4; i++) acb_set_si(acb_mat_entry(Q, i, i), 1); /* diag(1,0,1,1) */
+        AIC_CHECK_MSG(aic_corner_dim_S(&ae.A, Q, Q, prec) == 1,
+                      "T10(ii): Q=diag(1,0,1,1) not 1d in compress(4,2)");
+        acb_mat_t CoPQ, CoQ, Qtilde;
+        acb_mat_init(CoPQ, d, d); acb_mat_init(CoQ, d, d); acb_mat_init(Qtilde, n, n);
+        aic_corner_Co(CoPQ, &ae.A, P, Q, prec);
+        aic_corner_Co(CoQ, &ae.A, Q, Q, prec);
+        aic_corner_Ptilde(Qtilde, &ae.A, Q, prec);
+        acb_mat_t *C;
+        slong dPQ;
+        aic_corner_extract(&C, &dPQ, CoPQ, &ae.A, prec);
+        AIC_CHECK_MSG(dPQ >= 1, "T10(ii): empty corner");
+
+        /* ip via the production ip_1d (star) vs a PLAIN-product surrogate:
+         * ip_plain(Y,X) = <Qtilde, Co_Q(Y^dag X plain)>_F / <Qtilde,Qtilde>_F. */
+        acb_t ipstar, ipplain, den, num, t;
+        acb_init(ipstar); acb_init(ipplain); acb_init(den); acb_init(num); acb_init(t);
+        frob_ip(den, Qtilde, Qtilde, prec);
+        double vac = 0.0, x2gap = 0.0;
+        for (slong m = 0; m < dPQ; m++) {
+            aic_corner_ip_1d(ipstar, &ae.A, Qtilde, CoQ, C[m], C[m], prec);
+            /* plain surrogate */
+            acb_mat_t Yd, plain, W;
+            acb_mat_init(Yd, n, n); acb_mat_init(plain, n, n); acb_mat_init(W, n, n);
+            acb_mat_conjugate_transpose(Yd, C[m]);
+            acb_mat_mul(plain, Yd, C[m], prec);             /* NO star */
+            aic_corner_apply(W, &ae.A, CoQ, plain, prec);
+            frob_ip(num, Qtilde, W, prec);
+            acb_div(ipplain, num, den, prec);
+            acb_sub(t, ipstar, ipplain, prec);
+            double v = abs_acb(t);
+            if (v > vac) vac = v;
+            /* also report |<X,X> - ||X||^2| (the .tex:1130 closeness, eta=0 => ~0). */
+            arb_t nx; arb_init(nx);
+            aic_mat_opnorm(nx, C[m], prec);
+            double nn = dd(nx) * dd(nx);
+            double xxre = arf_get_d(arb_midref(acb_realref(ipstar)), ARF_RND_NEAR);
+            double g = fabs(xxre - nn);
+            if (g > x2gap) x2gap = g;
+            arb_clear(nx);
+            acb_mat_clear(W); acb_mat_clear(plain); acb_mat_clear(Yd);
+        }
+        printf("T10(ii) oblique non-vacuity (compress(4,2)): ||ip_star-ip_plain||"
+               "=%.4f (star load-bearing) |<X,X>-||X||^2|=%.2e (eta=0)\n", vac, x2gap);
+        AIC_CHECK_MSG(vac > 0.05,
+                      "T10(ii): star-vs-plain ip gap %.3e <= 0.05 -- star not "
+                      "exercised (fixture washes it out)", vac);
+        AIC_CHECK_MSG(x2gap < 1e-9,
+                      "T10(ii): |<X,X>-||X||^2|=%.3e not ~0 at eta=0", x2gap);
+
+        acb_clear(t); acb_clear(num); acb_clear(den); acb_clear(ipplain); acb_clear(ipstar);
+        for (slong m = 0; m < dPQ; m++) acb_mat_clear(C[m]);
+        if (C) flint_free(C);
+        acb_mat_clear(Qtilde); acb_mat_clear(CoQ); acb_mat_clear(CoPQ);
+        acb_mat_clear(Q); acb_mat_clear(P);
+        aic_assoc_ecstar_clear(&ae);
+        aic_ucp_kraus_clear(&phi);
+    }
+
+    /* (iii) eta>0 closeness constant c: |<X,X>-||X||^2| <= c(eta) on dep+conj(4). */
+    {
+        slong n = 4;
+        const double ts[] = {0.02, 0.06};
+        double cmax = 0.0;
+        for (int it = 0; it < 2; it++) {
+            aic_ucp_kraus phi;
+            make_eta_family(&phi, n, ts[it], prec);
+            double eta = eta_proxy(&phi, prec);
+            aic_assoc_ecstar ae;
+            aic_assoc_ecstar_from_phi(&ae, &phi, prec);
+            slong d = ae.A.dim_A;
+            acb_mat_t P, Q;
+            diag_proj(P, n, 2);
+            diag_proj_at(Q, n, 0);
+            if (aic_corner_dim_S(&ae.A, Q, Q, prec) != 1) {
+                acb_mat_clear(Q); acb_mat_clear(P);
+                aic_assoc_ecstar_clear(&ae); aic_ucp_kraus_clear(&phi);
+                continue;
+            }
+            acb_mat_t CoPQ, CoQ, Qtilde;
+            acb_mat_init(CoPQ, d, d); acb_mat_init(CoQ, d, d); acb_mat_init(Qtilde, n, n);
+            aic_corner_Co(CoPQ, &ae.A, P, Q, prec);
+            aic_corner_Co(CoQ, &ae.A, Q, Q, prec);
+            aic_corner_Ptilde(Qtilde, &ae.A, Q, prec);
+            acb_mat_t *C;
+            slong dPQ;
+            aic_corner_extract(&C, &dPQ, CoPQ, &ae.A, prec);
+            double worst = 0.0;
+            acb_t xx; acb_init(xx);
+            for (slong m = 0; m < dPQ; m++) {
+                aic_corner_ip_1d(xx, &ae.A, Qtilde, CoQ, C[m], C[m], prec);
+                arb_t nx; arb_init(nx);
+                aic_mat_opnorm(nx, C[m], prec);
+                double nn = dd(nx) * dd(nx);
+                double xxre = arf_get_d(arb_midref(acb_realref(xx)), ARF_RND_NEAR);
+                double g = fabs(xxre - nn);
+                if (g > worst) worst = g;
+                arb_clear(nx);
+            }
+            acb_clear(xx);
+            double c = eta > 1e-14 ? worst / eta : 0.0;
+            if (c > cmax) cmax = c;
+            printf("T10(iii) t=%.2f eta=%.4e: max|<X,X>-||X||^2|=%.4e (c=%.3f)\n",
+                   ts[it], eta, worst, c);
+            AIC_CHECK_MSG(c < 20.0, "T10(iii): closeness c=%.3f exceeds 20", c);
+            for (slong m = 0; m < dPQ; m++) acb_mat_clear(C[m]);
+            if (C) flint_free(C);
+            acb_mat_clear(Qtilde); acb_mat_clear(CoQ); acb_mat_clear(CoPQ);
+            acb_mat_clear(Q); acb_mat_clear(P);
+            aic_assoc_ecstar_clear(&ae);
+            aic_ucp_kraus_clear(&phi);
+        }
+        printf("T10(iii) -> measured closeness c max = %.3f\n", cmax);
+    }
+}
+
+/* T11 Ha-map: build Ha^Q_{P,R}(Z), test Ha_dag exact, the ||Ha(Z)(X)-Z.X|| bound,
+ * and the Ha^Q_{P,P} homomorphism property.
+ *
+ * MUTATION-PROOFS (manual, RED documented):
+ *  - wrong-Co (CoQR -> CoPQ in the Y^dag.Z cdot of aic_corner_ha): on the eta=0
+ *    M_n homomorphism oracle below, the Ha(Z)(X)=Z.X residual jumps from ~0 to O(1)
+ *    (CONFIRMED 5.00e-1 with P=R=diag(1,1,0,0),Q=e0), restored.
+ *  - Frobenius-Gram (G = I, since {CPQ_l} are Frobenius-orthonormal, instead of the
+ *    lem_PQ_Hilb Gram): at eta=0 the two Grams COINCIDE (GNS) so this is BLIND on
+ *    every eta=0 oracle (CONFIRMED: with G=I forced, T11(a/b/c) all stay machine-
+ *    zero). At eta>0 the lem_PQ_Hilb Gram deviates from I by O(eta) -- but on the
+ *    dep+conj(4) fixture dim S_{P,Q}=1 (1d Q gives a 1d corner here), so G is 1x1
+ *    and the G=I mutation only RESCALES a scalar: the Ha OUTPUT moves by < the
+ *    c<50 threshold (Ha-vs-cdot c 0.000 -> 0.004, homdef/eta -> 0.004), so the
+ *    mutation is effectively BLIND on the Ha output even at eta>0 (DOCUMENTED, not
+ *    papered over). The substantive distinction IS witnessed: T11(eta) asserts the
+ *    lem_PQ_Hilb Gram ||G-I|| is NONZERO (~1.5e-4) and O(eta), i.e. the two metrics
+ *    provably DIFFER. Full multi-dim-corner output teeth await an eta>0 fixture with
+ *    dim S_{P,Q}>1 for 1d Q (filed as a follow-up bead).
+ *  - Ha_dag teeth: the identity is structurally satisfiable by Ha==0; the non-
+ *    vacuity guard (||Ha||>0.1) + the eta=0 closed form Ha(Z)(X)=Z.X give it teeth. */
+static void test_t11(void)
+{
+    const slong prec = 256;
+
+    /* (a) eta=0 oracle on identity(4): A=M_n, star=plain. P=R=diag(1,1,0,0) (so
+     * Ha^Q_{P,P} is the homomorphism case), 1d Q=|e0><e0|. Closed form: at eta=0
+     * the algebra is an exact C* algebra, so Ha(Z)(X) = Z.X EXACTLY (the O(d+e)
+     * bound is 0). Test column-by-column: ||Ha(Z)(C^{RQ}_m) - Z.C^{RQ}_m|| ~ 0,
+     * for several Z in S_P. Also the homomorphism Ha(Z.W) = Ha(Z) Ha(W) EXACT, and
+     * ||Ha(Ptilde) - I|| ~ 0. */
+    slong n = 4;
+    aic_ucp_kraus phi;
+    make_identity(&phi, n);
+    aic_assoc_ecstar ae;
+    aic_assoc_ecstar_from_phi(&ae, &phi, prec);
+    slong d = ae.A.dim_A;
+    acb_mat_t P, Q;
+    diag_proj(P, n, 2);          /* P=R=diag(1,1,0,0) */
+    diag_proj_at(Q, n, 0);
+    AIC_CHECK_MSG(aic_corner_dim_S(&ae.A, Q, Q, prec) == 1, "T11: Q not 1d");
+
+    /* corner bases: S_{P,Q}=S_{R,Q} (P==R), S_P. */
+    acb_mat_t CoPQ, CoPP;
+    acb_mat_init(CoPQ, d, d); acb_mat_init(CoPP, d, d);
+    aic_corner_Co(CoPQ, &ae.A, P, Q, prec);
+    aic_corner_Co(CoPP, &ae.A, P, P, prec);
+    acb_mat_t *CPQ, *CP;
+    slong dPQ, dP;
+    aic_corner_extract(&CPQ, &dPQ, CoPQ, &ae.A, prec);
+    aic_corner_extract(&CP, &dP, CoPP, &ae.A, prec);
+    AIC_CHECK_MSG(dPQ >= 1 && dP >= 1, "T11: empty corner (dPQ=%ld dP=%ld)",
+                  (long) dPQ, (long) dP);
+
+    /* Ha(Z)(X) = Z.X oracle + non-vacuity (||Ha|| > 0.1). */
+    double ha_vs_cdot = 0.0, ha_norm = 0.0;
+    acb_mat_t Ha, hax, zx, dhz;
+    acb_mat_init(Ha, dPQ, dPQ);     /* P==R so d_RQ == d_PQ */
+    acb_mat_init(hax, n, n); acb_mat_init(zx, n, n); acb_mat_init(dhz, n, n);
+    for (slong zi = 0; zi < dP; zi++) {
+        aic_corner_ha(Ha, &ae.A, CP[zi], P, P, Q, prec);
+        double hn = opnorm_d(Ha, prec);
+        if (hn > ha_norm) ha_norm = hn;
+        for (slong m = 0; m < dPQ; m++) {
+            ha_apply_col(hax, Ha, CPQ, dPQ, m, n, prec);          /* Ha(Z)(C_m) */
+            aic_corner_cdot(zx, &ae.A, CoPQ, CP[zi], CPQ[m], prec); /* Z . C_m */
+            acb_mat_sub(dhz, hax, zx, prec);
+            double e = mid_opnorm_d(dhz, prec);
+            if (e > ha_vs_cdot) ha_vs_cdot = e;
+        }
+    }
+    printf("T11(a) eta=0 Ha(Z)(X)=Z.X oracle (id(4)): max||Ha(Z)(X)-Z.X||=%.3e "
+           "||Ha||_op=%.3f (non-vacuity)\n", ha_vs_cdot, ha_norm);
+    AIC_CHECK_MSG(ha_vs_cdot < 1e-9,
+                  "T11(a): Ha(Z)(X) != Z.X at eta=0 (%.3e) -- wrong Co in cdot chain?",
+                  ha_vs_cdot);
+    AIC_CHECK_MSG(ha_norm > 0.1,
+                  "T11(a): ||Ha||_op=%.3f <= 0.1 -- Ha structurally ~0, identity "
+                  "tests VACUOUS", ha_norm);
+
+    /* Ha_dag EXACT (.tex:1153): Ha^Q_{R,P}(Z^dag) = Ha^Q_{P,R}(Z)^dag. With P==R
+     * here Z^dag is in S_{R,P}=S_{P,P}=S_P, so both sides are dPQ x dPQ. Compare
+     * the matrices (the Ha-map adjoint is w.r.t. the lem_PQ_Hilb inner product, so
+     * the matrix adjoint is G^{-1} Ha^dag G; at eta=0 G=I exactly so it is the
+     * plain conjugate-transpose). NON-VACUITY: an exact identity can be a "test that
+     * can't fail" if it is M==M structurally. Here it is NOT: the Ha(Z) matrices are
+     * genuinely NON-Hermitian (asym = max||Ha(Z)-Ha(Z)^H|| measured 1.0 on this M_4
+     * fixture, dim S_{P,Q}=2), and Ha_dag relates Ha(Z^dag) to Ha(Z)^dag for DISTINCT
+     * Z, Z^dag -- a real constraint. We assert asym > 0.1 so the identity has teeth;
+     * the wrong-Co mutation (which corrupts Ha) also breaks this (CONFIRMED via
+     * T11(a)). */
+    double hadag = 0.0, asym = 0.0;
+    acb_mat_t HaZ, Zd, HaZd, HaZdag, dd_, HaH;
+    acb_mat_init(HaZ, dPQ, dPQ); acb_mat_init(Zd, n, n);
+    acb_mat_init(HaZd, dPQ, dPQ); acb_mat_init(HaZdag, dPQ, dPQ);
+    acb_mat_init(dd_, dPQ, dPQ); acb_mat_init(HaH, dPQ, dPQ);
+    for (slong zi = 0; zi < dP; zi++) {
+        aic_corner_ha(HaZ, &ae.A, CP[zi], P, P, Q, prec);    /* Ha^Q_{P,P}(Z)  */
+        acb_mat_conjugate_transpose(Zd, CP[zi]);             /* Z^dag in S_P    */
+        aic_corner_ha(HaZd, &ae.A, Zd, P, P, Q, prec);       /* Ha^Q_{P,P}(Z^dag) */
+        acb_mat_conjugate_transpose(HaZdag, HaZ);            /* Ha(Z)^dag (G=I) */
+        acb_mat_sub(dd_, HaZd, HaZdag, prec);
+        double e = opnorm_d(dd_, prec);
+        if (e > hadag) hadag = e;
+        /* non-vacuity: is Ha(Z) genuinely non-Hermitian? */
+        acb_mat_sub(HaH, HaZ, HaZdag, prec);
+        double a = opnorm_d(HaH, prec);
+        if (a > asym) asym = a;
+    }
+    printf("T11(b) Ha_dag exact (eta=0): max||Ha(Z^dag) - Ha(Z)^dag||=%.3e "
+           "(non-vacuity: max||Ha(Z)-Ha(Z)^H||=%.3f)\n", hadag, asym);
+    AIC_CHECK_MSG(hadag < 1e-9, "T11(b): Ha_dag identity violated (%.3e)", hadag);
+    AIC_CHECK_MSG(asym > 0.1,
+                  "T11(b): Ha matrices Hermitian (asym=%.3f) -- Ha_dag is M==M, "
+                  "VACUOUS; need a fixture with non-Hermitian Ha", asym);
+
+    /* Homomorphism (.tex:1157): Ha(Z.W) = Ha(Z) Ha(W) EXACT at eta=0; and
+     * ||Ha(Ptilde) - I|| ~ 0. The matrices multiply (B(S_{P,Q}) composition). */
+    double hom = 0.0;
+    acb_mat_t HaW, HaZW, ZW, prodHa, dh;
+    acb_mat_init(HaW, dPQ, dPQ); acb_mat_init(HaZW, dPQ, dPQ);
+    acb_mat_init(ZW, n, n); acb_mat_init(prodHa, dPQ, dPQ); acb_mat_init(dh, dPQ, dPQ);
+    for (slong zi = 0; zi < dP; zi++)
+        for (slong wi = 0; wi < dP; wi++) {
+            aic_corner_ha(HaZ, &ae.A, CP[zi], P, P, Q, prec);
+            aic_corner_ha(HaW, &ae.A, CP[wi], P, P, Q, prec);
+            aic_corner_cdot(ZW, &ae.A, CoPP, CP[zi], CP[wi], prec);  /* Z.W in S_P */
+            aic_corner_ha(HaZW, &ae.A, ZW, P, P, Q, prec);           /* Ha(Z.W)   */
+            acb_mat_mul(prodHa, HaZ, HaW, prec);                     /* Ha(Z)Ha(W)*/
+            acb_mat_sub(dh, HaZW, prodHa, prec);
+            double e = opnorm_d(dh, prec);
+            if (e > hom) hom = e;
+        }
+    /* ||Ha(Ptilde) - I|| (.tex:1157): Ptilde the unit of S_P. */
+    acb_mat_t Ptil, HaPt, eye, dpt;
+    acb_mat_init(Ptil, n, n); acb_mat_init(HaPt, dPQ, dPQ);
+    acb_mat_init(eye, dPQ, dPQ); acb_mat_init(dpt, dPQ, dPQ);
+    aic_corner_Ptilde(Ptil, &ae.A, P, prec);
+    aic_corner_ha(HaPt, &ae.A, Ptil, P, P, Q, prec);
+    acb_mat_one(eye);
+    acb_mat_sub(dpt, HaPt, eye, prec);
+    double hapt = opnorm_d(dpt, prec);
+    printf("T11(c) eta=0 homomorphism (id(4)): max||Ha(Z.W)-Ha(Z)Ha(W)||=%.3e "
+           "||Ha(Ptilde)-I||=%.3e\n", hom, hapt);
+    AIC_CHECK_MSG(hom < 1e-9, "T11(c): Ha^Q_{P,P} not a homomorphism at eta=0 (%.3e)", hom);
+    AIC_CHECK_MSG(hapt < 1e-9, "T11(c): ||Ha(Ptilde)-I||=%.3e not ~0 at eta=0", hapt);
+
+    acb_mat_clear(dpt); acb_mat_clear(eye); acb_mat_clear(HaPt); acb_mat_clear(Ptil);
+    acb_mat_clear(dh); acb_mat_clear(prodHa); acb_mat_clear(ZW);
+    acb_mat_clear(HaZW); acb_mat_clear(HaW);
+    acb_mat_clear(HaH); acb_mat_clear(dd_); acb_mat_clear(HaZdag); acb_mat_clear(HaZd);
+    acb_mat_clear(Zd); acb_mat_clear(HaZ);
+    acb_mat_clear(dhz); acb_mat_clear(zx); acb_mat_clear(hax); acb_mat_clear(Ha);
+    for (slong m = 0; m < dP; m++) acb_mat_clear(CP[m]);
+    if (CP) flint_free(CP);
+    for (slong m = 0; m < dPQ; m++) acb_mat_clear(CPQ[m]);
+    if (CPQ) flint_free(CPQ);
+    acb_mat_clear(CoPP); acb_mat_clear(CoPQ);
+    acb_mat_clear(Q); acb_mat_clear(P);
+    aic_assoc_ecstar_clear(&ae);
+    aic_ucp_kraus_clear(&phi);
+}
+
+/* T11(d) P != R arm (the GENERAL Ha^Q_{P,R}, .tex:1146). The homomorphism oracle
+ * test_t11 uses P==R, where S_{P,Q}==S_{R,Q} and CoPQ==CoRQ, so the Z.X-step Co
+ * confusion (CoPQ vs CoRQ) is INVISIBLE (a fixture degeneracy: that wrong-Co
+ * mutation stays GREEN under P==R). With DISTINCT P=diag(1,1,0,0), R=diag(0,0,1,1),
+ * Q=|e0><e0| on identity(4): S_{P,R} (Z's, dim 4), S_{R,Q} (X inputs, dim 2),
+ * S_{P,Q} (Ha rows, dim 2), S_Q (dim 1) are all DISTINCT corners, so every Co in
+ * the cdot chain is genuinely different. At eta=0 the C* algebra is exact so
+ * Ha^Q_{P,R}(Z)(X) = Z.X EXACTLY. MUTATION-PROVEN (both RED at 5.00e-1 here,
+ * BLIND under test_t11's P==R fixture where CoPQ==CoRQ and S_Q's corner collapses):
+ *   (A) Z.X step CoPQ -> CoRQ in aic_corner_ha,
+ *   (B) scalar term1 step CoQ -> CoQR in aic_corner_ha.
+ * Both restored. (The CoQR step is already caught by test_t11's P==R arm at 5.00e-1.) */
+static void test_t11_pneqr(void)
+{
+    const slong prec = 256, n = 4;
+    aic_ucp_kraus phi;
+    make_identity(&phi, n);
+    aic_assoc_ecstar ae;
+    aic_assoc_ecstar_from_phi(&ae, &phi, prec);
+    slong d = ae.A.dim_A;
+    acb_mat_t P, R, Q;
+    diag_proj(P, n, 2);                                   /* diag(1,1,0,0) */
+    acb_mat_init(R, n, n); acb_mat_zero(R);
+    for (slong i = 2; i < 4; i++) acb_set_si(acb_mat_entry(R, i, i), 1); /* diag(0,0,1,1) */
+    diag_proj_at(Q, n, 0);
+    AIC_CHECK_MSG(aic_corner_dim_S(&ae.A, Q, Q, prec) == 1, "T11(d): Q not 1d");
+
+    acb_mat_t CoPR, CoRQ, CoPQ;
+    acb_mat_init(CoPR, d, d); acb_mat_init(CoRQ, d, d); acb_mat_init(CoPQ, d, d);
+    aic_corner_Co(CoPR, &ae.A, P, R, prec);
+    aic_corner_Co(CoRQ, &ae.A, R, Q, prec);
+    aic_corner_Co(CoPQ, &ae.A, P, Q, prec);
+    acb_mat_t *CPR, *CRQ, *CPQ;
+    slong dPR, dRQ, dPQ;
+    aic_corner_extract(&CPR, &dPR, CoPR, &ae.A, prec);
+    aic_corner_extract(&CRQ, &dRQ, CoRQ, &ae.A, prec);
+    aic_corner_extract(&CPQ, &dPQ, CoPQ, &ae.A, prec);
+    AIC_CHECK_MSG(dPR >= 1 && dRQ >= 1 && dPQ >= 1,
+                  "T11(d): empty corner (dPR=%ld dRQ=%ld dPQ=%ld)",
+                  (long) dPR, (long) dRQ, (long) dPQ);
+
+    double worst = 0.0, hanorm = 0.0;
+    acb_mat_t Ha, hax, zx, dh;
+    acb_mat_init(Ha, dPQ, dRQ);
+    acb_mat_init(hax, n, n); acb_mat_init(zx, n, n); acb_mat_init(dh, n, n);
+    for (slong zi = 0; zi < dPR; zi++) {
+        aic_corner_ha(Ha, &ae.A, CPR[zi], P, R, Q, prec);      /* Ha^Q_{P,R}(Z) */
+        double hn = opnorm_d(Ha, prec);
+        if (hn > hanorm) hanorm = hn;
+        for (slong m = 0; m < dRQ; m++) {
+            ha_apply_col(hax, Ha, CPQ, dPQ, m, n, prec);        /* Ha(Z)(C^{RQ}_m) */
+            aic_corner_cdot(zx, &ae.A, CoPQ, CPR[zi], CRQ[m], prec); /* Z . X */
+            acb_mat_sub(dh, hax, zx, prec);
+            double e = mid_opnorm_d(dh, prec);
+            if (e > worst) worst = e;
+        }
+    }
+    printf("T11(d) P!=R eta=0 Ha^Q_{P,R}(Z)(X)=Z.X (id(4), dPR=%ld dRQ=%ld dPQ=%ld): "
+           "max||Ha(Z)(X)-Z.X||=%.3e ||Ha||_op=%.3f\n", (long) dPR, (long) dRQ,
+           (long) dPQ, worst, hanorm);
+    AIC_CHECK_MSG(worst < 1e-9,
+                  "T11(d): Ha^Q_{P,R}(Z)(X) != Z.X at eta=0 with P!=R (%.3e) -- "
+                  "wrong Co in the cdot chain (Z.X step CoPQ vs CoRQ)?", worst);
+    AIC_CHECK_MSG(hanorm > 0.1, "T11(d): ||Ha||=%.3f <= 0.1 VACUOUS", hanorm);
+
+    acb_mat_clear(dh); acb_mat_clear(zx); acb_mat_clear(hax); acb_mat_clear(Ha);
+    for (slong m = 0; m < dPQ; m++) acb_mat_clear(CPQ[m]);
+    if (CPQ) flint_free(CPQ);
+    for (slong m = 0; m < dRQ; m++) acb_mat_clear(CRQ[m]);
+    if (CRQ) flint_free(CRQ);
+    for (slong m = 0; m < dPR; m++) acb_mat_clear(CPR[m]);
+    if (CPR) flint_free(CPR);
+    acb_mat_clear(CoPQ); acb_mat_clear(CoRQ); acb_mat_clear(CoPR);
+    acb_mat_clear(Q); acb_mat_clear(R); acb_mat_clear(P);
+    aic_assoc_ecstar_clear(&ae);
+    aic_ucp_kraus_clear(&phi);
+}
+
+/* T11(disjoint) — the term2 Co-index teeth (FIX 3, bead aic). In aic_corner_ha the
+ * scalar term2 Y^dag.(Z.X) is compressed with Co_Q (a S_Q target). All other Ha
+ * fixtures (test_t11, test_t11_pneqr) have range(Q) SUBSET range(P): there
+ * Co_{P,Q} = Co_Q on Q-supported elements, so mutating that term2 Co_Q -> Co_{P,Q}
+ * is BLIND (stays green). This DISJOINT-SUPPORT fixture breaks that degeneracy:
+ *   identity(4) (A = M_4, star = plain), P = diag(0,0,1,1), Q = |e0><e0|,
+ * so range(Q) = span(e0) is DISJOINT from range(P) = span(e2,e3) -- Co_{P,Q} !=
+ * Co_Q. dim S_Q = 1, dim S_{P,Q} = 2 (verified). At eta=0 the C* algebra is exact
+ * so Ha^Q_{P,P}(Z)(X) = Z.X EXACTLY. MUTATION-PROVEN (source perturbation in
+ * aic_corner_ha: the term2 cdot Co_Q -> CoPQ): the Ha(Z)(X)=Z.X residual jumps from
+ * 0 to 5.000e-1 (RED) on THIS fixture, whereas it stays 0 under test_t11's
+ * range(Q) subset range(P) fixture. Restored. */
+static void test_t11_disjoint(void)
+{
+    const slong prec = 256, n = 4;
+    aic_ucp_kraus phi;
+    make_identity(&phi, n);
+    aic_assoc_ecstar ae;
+    aic_assoc_ecstar_from_phi(&ae, &phi, prec);
+    slong d = ae.A.dim_A;
+
+    acb_mat_t P, Q;
+    acb_mat_init(P, n, n);
+    acb_mat_zero(P);
+    acb_set_si(acb_mat_entry(P, 2, 2), 1);
+    acb_set_si(acb_mat_entry(P, 3, 3), 1);   /* P = diag(0,0,1,1) */
+    diag_proj_at(Q, n, 0);                    /* Q = |e0><e0|, range disjoint from P */
+    AIC_CHECK_MSG(aic_corner_dim_S(&ae.A, Q, Q, prec) == 1, "T11(disjoint): Q not 1d");
+    slong dSPQ = aic_corner_dim_S(&ae.A, P, Q, prec);
+    AIC_CHECK_MSG(dSPQ == 2,
+                  "T11(disjoint): dim S_{P,Q}=%ld != 2 (range(Q)=span(e0) x "
+                  "range(P)=span(e2,e3))", (long) dSPQ);
+
+    acb_mat_t CoPQ, CoPP;
+    acb_mat_init(CoPQ, d, d);
+    acb_mat_init(CoPP, d, d);
+    aic_corner_Co(CoPQ, &ae.A, P, Q, prec);
+    aic_corner_Co(CoPP, &ae.A, P, P, prec);
+    acb_mat_t *CPQ, *CP;
+    slong dPQ, dP;
+    aic_corner_extract(&CPQ, &dPQ, CoPQ, &ae.A, prec);
+    aic_corner_extract(&CP, &dP, CoPP, &ae.A, prec);
+    AIC_CHECK_MSG(dPQ == 2 && dP >= 1, "T11(disjoint): dPQ=%ld dP=%ld", (long) dPQ,
+                  (long) dP);
+
+    double worst = 0.0, hanorm = 0.0;
+    acb_mat_t Ha, hax, zx, dh;
+    acb_mat_init(Ha, dPQ, dPQ);   /* R==P so d_RQ == d_PQ */
+    acb_mat_init(hax, n, n);
+    acb_mat_init(zx, n, n);
+    acb_mat_init(dh, n, n);
+    for (slong zi = 0; zi < dP; zi++) {
+        aic_corner_ha(Ha, &ae.A, CP[zi], P, P, Q, prec);
+        double hn = opnorm_d(Ha, prec);
+        if (hn > hanorm) hanorm = hn;
+        for (slong m = 0; m < dPQ; m++) {
+            ha_apply_col(hax, Ha, CPQ, dPQ, m, n, prec);
+            aic_corner_cdot(zx, &ae.A, CoPQ, CP[zi], CPQ[m], prec);
+            acb_mat_sub(dh, hax, zx, prec);
+            double e = mid_opnorm_d(dh, prec);
+            if (e > worst) worst = e;
+        }
+    }
+    printf("T11(disjoint) term2-Co teeth (id(4), P=diag(0,0,1,1) Q=|e0><e0|, "
+           "range disjoint, dPQ=2): max||Ha(Z)(X)-Z.X||=%.3e ||Ha||=%.3f\n",
+           worst, hanorm);
+    AIC_CHECK_MSG(worst < 1e-9,
+                  "T11(disjoint): Ha(Z)(X) != Z.X at eta=0 (%.3e) -- term2 Co_Q "
+                  "wrong (e.g. CoPQ instead of CoQ), exposed by disjoint supports",
+                  worst);
+    AIC_CHECK_MSG(hanorm > 0.1, "T11(disjoint): ||Ha||=%.3f <= 0.1 VACUOUS", hanorm);
+
+    acb_mat_clear(dh);
+    acb_mat_clear(zx);
+    acb_mat_clear(hax);
+    acb_mat_clear(Ha);
+    for (slong m = 0; m < dP; m++) acb_mat_clear(CP[m]);
+    if (CP) flint_free(CP);
+    for (slong m = 0; m < dPQ; m++) acb_mat_clear(CPQ[m]);
+    if (CPQ) flint_free(CPQ);
+    acb_mat_clear(CoPP);
+    acb_mat_clear(CoPQ);
+    acb_mat_clear(Q);
+    acb_mat_clear(P);
+    aic_assoc_ecstar_clear(&ae);
+    aic_ucp_kraus_clear(&phi);
+}
+
+/* T11 eta>0 arms: ||Ha(Z)(X)-Z.X||/eta and the homomorphism defect / eta bounded
+ * (the downstream-critical O(delta+eps)-homomorphism, .tex:1157). Also the arm
+ * where the FROBENIUS-Gram mutation goes RED (its c grows). */
+static void test_t11_eta(void)
+{
+    const slong prec = 256, n = 4;
+    const double ts[] = {0.02, 0.06};
+    double cmax_prod = 0.0, cmax_hom = 0.0;
+    for (int it = 0; it < 2; it++) {
+        aic_ucp_kraus phi;
+        make_eta_family(&phi, n, ts[it], prec);
+        double eta = eta_proxy(&phi, prec);
+        aic_assoc_ecstar ae;
+        aic_assoc_ecstar_from_phi(&ae, &phi, prec);
+        slong d = ae.A.dim_A;
+        acb_mat_t P, Q;
+        diag_proj(P, n, 2);
+        diag_proj_at(Q, n, 0);
+        if (aic_corner_dim_S(&ae.A, Q, Q, prec) != 1) {
+            acb_mat_clear(Q); acb_mat_clear(P);
+            aic_assoc_ecstar_clear(&ae); aic_ucp_kraus_clear(&phi);
+            continue;
+        }
+        acb_mat_t CoPQ, CoPP, CoQ, Qtilde;
+        acb_mat_init(CoPQ, d, d); acb_mat_init(CoPP, d, d);
+        acb_mat_init(CoQ, d, d); acb_mat_init(Qtilde, n, n);
+        aic_corner_Co(CoPQ, &ae.A, P, Q, prec);
+        aic_corner_Co(CoPP, &ae.A, P, P, prec);
+        aic_corner_Co(CoQ, &ae.A, Q, Q, prec);
+        aic_corner_Ptilde(Qtilde, &ae.A, Q, prec);
+        acb_mat_t *CPQ, *CP;
+        slong dPQ, dP;
+        aic_corner_extract(&CPQ, &dPQ, CoPQ, &ae.A, prec);
+        aic_corner_extract(&CP, &dP, CoPP, &ae.A, prec);
+
+        /* GRAM-DEVIATION teeth for the lem_PQ_Hilb-vs-Frobenius distinction
+         * (.tex:1130). The extracted {CPQ_l} are Frobenius-orthonormal, so the
+         * FROBENIUS Gram is EXACTLY I; the lem_PQ_Hilb Gram G_{lm} = <C_l|C_m>
+         * deviates from I by O(eta). We measure ||G - I||_op and assert it is (i)
+         * NONZERO at eta>0 (so the two metrics genuinely DIFFER -- the substantive
+         * content the G=I mutation erases) and (ii) <= c*eta (the .tex:1130 bound).
+         * This is what gives the lem_PQ_Hilb-ip-vs-Frobenius-ip choice teeth: the
+         * G=I mutation is BLIND on the Ha OUTPUT here only because dim S_{P,Q} = 1
+         * for this 1d-Q fixture (a scalar rescaling), but the metrics provably
+         * differ. The multi-dim-corner Ha output teeth await an eta>0 fixture with
+         * dim S_{P,Q} > 1 for 1d Q (follow-up bead). */
+        double gram_dev;
+        {
+            acb_mat_t G, GmI;
+            acb_mat_init(G, dPQ, dPQ); acb_mat_init(GmI, dPQ, dPQ);
+            for (slong l = 0; l < dPQ; l++)
+                for (slong m = 0; m < dPQ; m++)
+                    aic_corner_ip_1d(acb_mat_entry(G, l, m), &ae.A, Qtilde, CoQ,
+                                     CPQ[m], CPQ[l], prec);
+            acb_mat_one(GmI);
+            acb_mat_sub(GmI, G, GmI, prec);
+            gram_dev = mid_opnorm_d(GmI, prec);
+            acb_mat_clear(GmI); acb_mat_clear(G);
+        }
+
+        acb_mat_t Ha, HaW, HaZW, ZW, prodHa, dh, hax, zx, dhz;
+        acb_mat_init(Ha, dPQ, dPQ); acb_mat_init(HaW, dPQ, dPQ);
+        acb_mat_init(HaZW, dPQ, dPQ); acb_mat_init(ZW, n, n);
+        acb_mat_init(prodHa, dPQ, dPQ); acb_mat_init(dh, dPQ, dPQ);
+        acb_mat_init(hax, n, n); acb_mat_init(zx, n, n); acb_mat_init(dhz, n, n);
+        double wprod = 0.0, whom = 0.0;
+        for (slong zi = 0; zi < dP; zi++) {
+            aic_corner_ha(Ha, &ae.A, CP[zi], P, P, Q, prec);
+            /* product closeness */
+            arb_t nz; arb_init(nz);
+            aic_mat_opnorm(nz, CP[zi], prec);
+            double znorm = dd(nz);
+            arb_clear(nz);
+            for (slong m = 0; m < dPQ; m++) {
+                ha_apply_col(hax, Ha, CPQ, dPQ, m, n, prec);
+                aic_corner_cdot(zx, &ae.A, CoPQ, CP[zi], CPQ[m], prec);
+                acb_mat_sub(dhz, hax, zx, prec);
+                arb_t nxm; arb_init(nxm);
+                aic_mat_opnorm(nxm, CPQ[m], prec);
+                double e = mid_opnorm_d(dhz, prec) / (znorm * dd(nxm) + 1e-300);
+                arb_clear(nxm);
+                if (e > wprod) wprod = e;
+            }
+            /* homomorphism closeness */
+            for (slong wi = 0; wi < dP; wi++) {
+                aic_corner_ha(HaW, &ae.A, CP[wi], P, P, Q, prec);
+                aic_corner_cdot(ZW, &ae.A, CoPP, CP[zi], CP[wi], prec);
+                aic_corner_ha(HaZW, &ae.A, ZW, P, P, Q, prec);
+                acb_mat_mul(prodHa, Ha, HaW, prec);   /* Ha holds Ha(Z) for this zi */
+                acb_mat_sub(dh, HaZW, prodHa, prec);
+                double e = opnorm_d(dh, prec);
+                if (e > whom) whom = e;
+            }
+        }
+        double cp = eta > 1e-14 ? wprod / eta : 0.0;
+        double ch = eta > 1e-14 ? whom / eta : 0.0;
+        if (cp > cmax_prod) cmax_prod = cp;
+        if (ch > cmax_hom) cmax_hom = ch;
+        double gc = eta > 1e-14 ? gram_dev / eta : 0.0;
+        printf("T11(eta) t=%.2f eta=%.4e: ||Ha(Z)(X)-Z.X||/(eta||Z||||X||)=%.3f "
+               "homdef/eta=%.3f ||G-I||=%.3e (Hilb!=Frob; /eta=%.3f)\n",
+               ts[it], eta, cp, ch, gram_dev, gc);
+        AIC_CHECK_MSG(cp < 50.0, "T11(eta): Ha-vs-cdot c=%.3f exceeds 50", cp);
+        AIC_CHECK_MSG(ch < 50.0, "T11(eta): homomorphism c=%.3f exceeds 50", ch);
+        AIC_CHECK_MSG(gram_dev > 1e-9,
+                      "T11(eta): lem_PQ_Hilb Gram ||G-I||=%.3e ~ 0 -- the Hilbert ip "
+                      "coincides with the Frobenius ip, so the ip choice is VACUOUS "
+                      "(fixture has no eta-deviation)", gram_dev);
+        AIC_CHECK_MSG(gc < 50.0,
+                      "T11(eta): ||G-I||/eta=%.3f exceeds 50 -- not O(delta+eps)", gc);
+        acb_mat_clear(dhz); acb_mat_clear(zx); acb_mat_clear(hax);
+        acb_mat_clear(dh); acb_mat_clear(prodHa); acb_mat_clear(ZW);
+        acb_mat_clear(HaZW); acb_mat_clear(HaW); acb_mat_clear(Ha);
+        for (slong m = 0; m < dP; m++) acb_mat_clear(CP[m]);
+        if (CP) flint_free(CP);
+        for (slong m = 0; m < dPQ; m++) acb_mat_clear(CPQ[m]);
+        if (CPQ) flint_free(CPQ);
+        acb_mat_clear(Qtilde); acb_mat_clear(CoQ);
+        acb_mat_clear(CoPP); acb_mat_clear(CoPQ);
+        acb_mat_clear(Q); acb_mat_clear(P);
+        aic_assoc_ecstar_clear(&ae);
+        aic_ucp_kraus_clear(&phi);
+    }
+    printf("T11(eta) -> Ha-vs-cdot c max=%.3f, homomorphism c max=%.3f\n",
+           cmax_prod, cmax_hom);
+}
+
+/* T11(mixconj) — FIX 1 regression fixture + the lem_PQ_Hilb-vs-Frobenius Gram
+ * teeth (bead aic). The eta>0 fixtures in test_t11_eta all have dim S_{P,Q} = 1
+ * for the 1d-Q corner (the dep+conj(4) algebra is diagonal-dominant), so the
+ * Ha Gram is 1x1 and BOTH the blocker (the ||G-I|| guard never sees a near-zero
+ * OFF-diagonal) and the Frobenius-vs-lem_PQ_Hilb distinction are degenerate. The
+ * mixconj(5,3,0.02) fixture (a convex mix of compress_idemp(5,3) with its unitary
+ * conjugate) is the first eta>0 instance with a genuine dim S_{P,Q} = 2 corner:
+ *   P = projector onto span(e1,e2)  (in-A residual ~ 9.2e-3),
+ *   Q = |e1><e1|                    (in-A residual ~ 4.8e-3, dim S_Q = 1),
+ * giving eta ~ 1.30e-2, dim S_{P,Q} = 2, lem_PQ_Hilb Gram off-diagonal G[0,1] ~
+ * 1.7e-6, ||G-I|| ~ 1.3e-5 (trivially in-basin). This is the regime lem_extension
+ * needs (Ha^Q_{P,P} a homomorphism on a >1-dim corner at eta>0).
+ *
+ * THE BLOCKER. Before FIX 1, aic_corner_ha's ||G-I|| guard called aic_mat_opnorm,
+ * whose Gram (G-I)^dag(G-I) off-diagonal relative-Hermiticity check FALSE-FAILS on
+ * the ~1.7e-6 off-diagonal (radius exceeds the absolute floor, bead aic-2yo) and
+ * SIGABRTs. (Confirmed: the routine SIGABRTed on this exact fixture before the
+ * opnorm swap.) After FIX 1 (certified mid+radius upper bound) it RUNS.
+ *
+ * THE FROBENIUS-GRAM MUTATION (the lem_PQ_Hilb Gram's first teeth). The {C^{PQ}_l}
+ * are Frobenius-orthonormal, so the FROBENIUS Gram is EXACTLY I; the lem_PQ_Hilb
+ * Gram deviates by O(eta). On a 1d corner G=I only rescales a scalar (BLIND on the
+ * Ha output, documented in test_t11_eta); on THIS 2x2 corner the off-diagonal
+ * G[0,1] ~ 1.7e-6 is genuine, so forcing G=I in aic_corner_ha (the source mutation
+ * "acb_mat_one(G)" replacing the aic_corner_ip_1d Gram build) MOVES the Ha output.
+ * MUTATION-PROVEN (manual source perturbation, RED documented): the max
+ * ||Ha(Z)(X)-Z.X|| residual jumps from 2.276e-6 (production) to 1.177e-5 (G=I
+ * forced), tripping the < 1.0e-5 absolute teeth assert below (RED). Restored. The
+ * c<... and gram_dev>0 asserts mirror test_t11_eta. */
+static void test_t11_mixconj(void)
+{
+    const slong prec = 256, n = 5;
+    aic_ucp_kraus phi;
+    make_mixconj(&phi, 5, 3, 0.02, prec);
+    double eta = eta_proxy(&phi, prec);
+    aic_assoc_ecstar ae;
+    aic_assoc_ecstar_from_phi(&ae, &phi, prec);
+    slong d = ae.A.dim_A;
+
+    /* P = projector onto span(e1,e2), Q = |e1><e1| (1d). */
+    acb_mat_t P, Q;
+    acb_mat_init(P, n, n);
+    acb_mat_zero(P);
+    acb_set_si(acb_mat_entry(P, 1, 1), 1);
+    acb_set_si(acb_mat_entry(P, 2, 2), 1);
+    diag_proj_at(Q, n, 1);
+    AIC_CHECK_MSG(aic_corner_dim_S(&ae.A, Q, Q, prec) == 1,
+                  "T11(mixconj): Q=|e1><e1| not 1d in mixconj(5,3)");
+    slong dSPQ = aic_corner_dim_S(&ae.A, P, Q, prec);
+    /* (i) the corner is genuinely 2-dimensional (the regime the blocker hit). */
+    AIC_CHECK_MSG(dSPQ == 2,
+                  "T11(mixconj): dim S_{P,Q}=%ld != 2 -- fixture lost its 2d corner",
+                  (long) dSPQ);
+
+    acb_mat_t CoPQ, CoPP, CoQ, Qtilde;
+    acb_mat_init(CoPQ, d, d);
+    acb_mat_init(CoPP, d, d);
+    acb_mat_init(CoQ, d, d);
+    acb_mat_init(Qtilde, n, n);
+    aic_corner_Co(CoPQ, &ae.A, P, Q, prec);
+    aic_corner_Co(CoPP, &ae.A, P, P, prec);
+    aic_corner_Co(CoQ, &ae.A, Q, Q, prec);
+    aic_corner_Ptilde(Qtilde, &ae.A, Q, prec);
+    acb_mat_t *CPQ, *CP;
+    slong dPQ, dP;
+    aic_corner_extract(&CPQ, &dPQ, CoPQ, &ae.A, prec);
+    aic_corner_extract(&CP, &dP, CoPP, &ae.A, prec);
+    AIC_CHECK_MSG(dPQ == 2 && dP >= 2,
+                  "T11(mixconj): extracted dPQ=%ld dP=%ld (expect dPQ=2)",
+                  (long) dPQ, (long) dP);
+
+    /* lem_PQ_Hilb Gram ||G-I|| (the metric that the Frobenius G=I mutation erases):
+     * NONZERO and O(eta) here (the two metrics provably differ on a 2d corner). */
+    double gram_dev;
+    {
+        acb_mat_t G, GmI;
+        acb_mat_init(G, dPQ, dPQ);
+        acb_mat_init(GmI, dPQ, dPQ);
+        for (slong l = 0; l < dPQ; l++)
+            for (slong m = 0; m < dPQ; m++)
+                aic_corner_ip_1d(acb_mat_entry(G, l, m), &ae.A, Qtilde, CoQ,
+                                 CPQ[m], CPQ[l], prec);
+        acb_mat_one(GmI);
+        acb_mat_sub(GmI, G, GmI, prec);
+        gram_dev = mid_opnorm_d(GmI, prec);
+        acb_mat_clear(GmI);
+        acb_mat_clear(G);
+    }
+
+    /* (ii) Ha(Z)(X) ~ Z.X to O(eta): RUNS (no abort -- the FIX 1 regression) and
+     * the residual is small. Also the ABSOLUTE-teeth value for the Frobenius-Gram
+     * mutation: production max||Ha(Z)(X)-Z.X|| = 2.276e-6; the G=I mutation moves it
+     * to 1.177e-5 (> 1.0e-5 -> RED). (iii) Ha^Q_{P,P} the O(eta)-homomorphism. */
+    acb_mat_t Ha, hax, zx, dhz;
+    acb_mat_init(Ha, dPQ, dPQ);   /* P==R so d_RQ == d_PQ */
+    acb_mat_init(hax, n, n);
+    acb_mat_init(zx, n, n);
+    acb_mat_init(dhz, n, n);
+    double ha_abs = 0.0, cprod = 0.0, ha_norm = 0.0;
+    for (slong zi = 0; zi < dP; zi++) {
+        aic_corner_ha(Ha, &ae.A, CP[zi], P, P, Q, prec);   /* RUNS (FIX 1) */
+        double hn = mid_opnorm_d(Ha, prec);
+        if (hn > ha_norm) ha_norm = hn;
+        arb_t nz;
+        arb_init(nz);
+        aic_mat_opnorm(nz, CP[zi], prec);   /* CP exact (radius 0), no false-fail */
+        double znorm = dd(nz);
+        arb_clear(nz);
+        for (slong m = 0; m < dPQ; m++) {
+            ha_apply_col(hax, Ha, CPQ, dPQ, m, n, prec);
+            aic_corner_cdot(zx, &ae.A, CoPQ, CP[zi], CPQ[m], prec);
+            acb_mat_sub(dhz, hax, zx, prec);
+            double e = mid_opnorm_d(dhz, prec);
+            if (e > ha_abs) ha_abs = e;
+            arb_t nxm;
+            arb_init(nxm);
+            aic_mat_opnorm(nxm, CPQ[m], prec);   /* CPQ exact, no false-fail */
+            double cc = e / (eta * znorm * dd(nxm) + 1e-300);
+            arb_clear(nxm);
+            if (cc > cprod) cprod = cc;
+        }
+    }
+
+    /* homomorphism Ha(Z.W) ~ Ha(Z)Ha(W) to O(eta) on the 2x2 corner. */
+    acb_mat_t HaZ, HaW, HaZW, ZW, prodHa, dh;
+    acb_mat_init(HaZ, dPQ, dPQ);
+    acb_mat_init(HaW, dPQ, dPQ);
+    acb_mat_init(HaZW, dPQ, dPQ);
+    acb_mat_init(ZW, n, n);
+    acb_mat_init(prodHa, dPQ, dPQ);
+    acb_mat_init(dh, dPQ, dPQ);
+    double whom = 0.0;
+    for (slong zi = 0; zi < dP; zi++)
+        for (slong wi = 0; wi < dP; wi++) {
+            aic_corner_ha(HaZ, &ae.A, CP[zi], P, P, Q, prec);
+            aic_corner_ha(HaW, &ae.A, CP[wi], P, P, Q, prec);
+            aic_corner_cdot(ZW, &ae.A, CoPP, CP[zi], CP[wi], prec);
+            aic_corner_ha(HaZW, &ae.A, ZW, P, P, Q, prec);
+            acb_mat_mul(prodHa, HaZ, HaW, prec);
+            acb_mat_sub(dh, HaZW, prodHa, prec);
+            double e = mid_opnorm_d(dh, prec);
+            if (e > whom) whom = e;
+        }
+    double chom = whom / (eta + 1e-300);
+
+    printf("T11(mixconj) FIX1 regression (mixconj(5,3,0.02), dim S_{P,Q}=2): "
+           "eta=%.4e ||Ha||=%.3f\n  Ha-vs-cdot abs=%.3e (c=%.3f) homdef=%.3e "
+           "(c=%.3f) ||G-I||_Hilb=%.3e (Frob G=I -> 0; /eta=%.3f)\n",
+           eta, ha_norm, ha_abs, cprod, whom, chom, gram_dev,
+           gram_dev / (eta + 1e-300));
+    /* RUNS (no SIGABRT) + 2d corner -- the FIX 1 regression. */
+    AIC_CHECK_MSG(ha_norm > 0.1,
+                  "T11(mixconj): ||Ha||=%.3f <= 0.1 -- Ha structurally ~0, VACUOUS",
+                  ha_norm);
+    /* O(eta) bounds (loose constants; report the measured c). */
+    AIC_CHECK_MSG(cprod < 50.0,
+                  "T11(mixconj): Ha-vs-cdot c=%.3f exceeds 50 -- not O(delta+eps)",
+                  cprod);
+    AIC_CHECK_MSG(chom < 50.0,
+                  "T11(mixconj): homomorphism c=%.3f exceeds 50 -- not O(delta+eps)",
+                  chom);
+    /* ABSOLUTE Ha-vs-cdot teeth: production 2.276e-6 < 1.0e-5; the Frobenius-Gram
+     * (G=I) source mutation moves it to 1.177e-5 > 1.0e-5 (RED, mutation-proven). */
+    AIC_CHECK_MSG(ha_abs < 1.0e-5,
+                  "T11(mixconj): max||Ha(Z)(X)-Z.X||=%.3e >= 1.0e-5 -- Ha output "
+                  "corrupted (e.g. Frobenius G=I instead of the lem_PQ_Hilb Gram)",
+                  ha_abs);
+    /* the lem_PQ_Hilb Gram genuinely DIFFERS from Frobenius (G != I) and is O(eta):
+     * the substantive content the G=I mutation erases. */
+    AIC_CHECK_MSG(gram_dev > 1e-9,
+                  "T11(mixconj): lem_PQ_Hilb Gram ||G-I||=%.3e ~ 0 -- coincides with "
+                  "the Frobenius ip, ip choice VACUOUS", gram_dev);
+    AIC_CHECK_MSG(gram_dev < 50.0 * eta,
+                  "T11(mixconj): ||G-I||=%.3e exceeds 50 eta -- not O(delta+eps)",
+                  gram_dev);
+
+    acb_mat_clear(dh);
+    acb_mat_clear(prodHa);
+    acb_mat_clear(ZW);
+    acb_mat_clear(HaZW);
+    acb_mat_clear(HaW);
+    acb_mat_clear(HaZ);
+    acb_mat_clear(dhz);
+    acb_mat_clear(zx);
+    acb_mat_clear(hax);
+    acb_mat_clear(Ha);
+    for (slong m = 0; m < dP; m++) acb_mat_clear(CP[m]);
+    if (CP) flint_free(CP);
+    for (slong m = 0; m < dPQ; m++) acb_mat_clear(CPQ[m]);
+    if (CPQ) flint_free(CPQ);
+    acb_mat_clear(Qtilde);
+    acb_mat_clear(CoQ);
+    acb_mat_clear(CoPP);
+    acb_mat_clear(CoPQ);
+    acb_mat_clear(Q);
+    acb_mat_clear(P);
+    aic_assoc_ecstar_clear(&ae);
+    aic_ucp_kraus_clear(&phi);
+}
+
+/* T12 lem_PQR (.tex:1162-1177): | ||X.Y||-||X||||Y|| | bound, 1d Q. */
+static void test_t12(void)
+{
+    const slong prec = 256, n = 4;
+    /* eta=0 on identity(4): exact, ||X.Y|| = ||X|| ||Y||. P=diag(1,1,0,0),
+     * Q=|e0><e0| (1d), R=diag(0,0,1,1). */
+    {
+        aic_ucp_kraus phi;
+        make_identity(&phi, n);
+        aic_assoc_ecstar ae;
+        aic_assoc_ecstar_from_phi(&ae, &phi, prec);
+        acb_mat_t P, Q, R;
+        diag_proj(P, n, 2);
+        diag_proj_at(Q, n, 0);
+        acb_mat_init(R, n, n); acb_mat_zero(R);
+        for (slong i = 2; i < 4; i++) acb_set_si(acb_mat_entry(R, i, i), 1);
+        arb_t def; arb_init(def);
+        aic_corner_pqr_defect(def, &ae.A, P, Q, R, prec);
+        printf("T12 eta=0 lem_PQR (id(4)): max| ||X.Y||-||X||||Y|| |=%.3e\n", dd(def));
+        AIC_CHECK_MSG(arb_le_dbl(def, 1e-9),
+                      "T12: ||X.Y|| != ||X||||Y|| at eta=0 (%.3e)", dd(def));
+        arb_clear(def);
+        acb_mat_clear(R); acb_mat_clear(Q); acb_mat_clear(P);
+        aic_assoc_ecstar_clear(&ae); aic_ucp_kraus_clear(&phi);
+    }
+    /* eta>0 dep+conj(4): | ||X.Y||-||X||||Y|| | / eta bounded. */
+    {
+        const double ts[] = {0.02, 0.06};
+        double cmax = 0.0;
+        for (int it = 0; it < 2; it++) {
+            aic_ucp_kraus phi;
+            make_eta_family(&phi, n, ts[it], prec);
+            double eta = eta_proxy(&phi, prec);
+            aic_assoc_ecstar ae;
+            aic_assoc_ecstar_from_phi(&ae, &phi, prec);
+            acb_mat_t P, Q, R;
+            diag_proj(P, n, 2);
+            diag_proj_at(Q, n, 0);
+            acb_mat_init(R, n, n); acb_mat_zero(R);
+            for (slong i = 2; i < 4; i++) acb_set_si(acb_mat_entry(R, i, i), 1);
+            if (aic_corner_dim_S(&ae.A, Q, Q, prec) != 1) {
+                acb_mat_clear(R); acb_mat_clear(Q); acb_mat_clear(P);
+                aic_assoc_ecstar_clear(&ae); aic_ucp_kraus_clear(&phi);
+                continue;
+            }
+            arb_t def; arb_init(def);
+            aic_corner_pqr_defect(def, &ae.A, P, Q, R, prec);
+            double c = eta > 1e-14 ? dd(def) / eta : 0.0;
+            if (c > cmax) cmax = c;
+            printf("T12 t=%.2f eta=%.4e: max| ||X.Y||-||X||||Y|| |=%.4e (c=%.3f)\n",
+                   ts[it], eta, dd(def), c);
+            AIC_CHECK_MSG(c < 50.0, "T12: lem_PQR c=%.3f exceeds 50", c);
+            arb_clear(def);
+            acb_mat_clear(R); acb_mat_clear(Q); acb_mat_clear(P);
+            aic_assoc_ecstar_clear(&ae); aic_ucp_kraus_clear(&phi);
+        }
+        printf("T12 -> measured lem_PQR c max = %.3f\n", cmax);
+    }
+}
+
+/* T13 lem_1d_proj + equivalence (.tex:1179-1187) on identity(4) (A=M_4). 1d
+ * projectors are rank-1; P~Q iff dim S_{P,Q}=1. Diagonal rank-1's are pairwise
+ * equivalent (dim S_{P,Q}=1 for any rank-1 P,Q in M_n), so the relation is the
+ * full single-class on 1d projectors -- reflexive, symmetric, transitive. */
+static void test_t13(void)
+{
+    const slong prec = 256, n = 4;
+    aic_ucp_kraus phi;
+    make_identity(&phi, n);
+    aic_assoc_ecstar ae;
+    aic_assoc_ecstar_from_phi(&ae, &phi, prec);
+
+    acb_mat_t e0, e1, e2;
+    diag_proj_at(e0, n, 0);
+    diag_proj_at(e1, n, 1);
+    diag_proj_at(e2, n, 2);
+    /* a NON-diagonal rank-1 (conjugated) to exercise off-diagonal corners. */
+    acb_mat_t V, Pd, Pv;
+    acb_mat_init(V, n, n);
+    make_fixed_unitary(V, n, prec);
+    diag_proj_at(Pd, n, 0);
+    conj_proj(Pv, Pd, V, prec);
+
+    /* lem_1d_proj: dim S_{P,Q} <= 1 for all 1d P,Q. */
+    slong d00 = aic_corner_dim_S(&ae.A, e0, e0, prec);
+    slong d01 = aic_corner_dim_S(&ae.A, e0, e1, prec);
+    slong d12 = aic_corner_dim_S(&ae.A, e1, e2, prec);
+    slong d0v = aic_corner_dim_S(&ae.A, e0, Pv, prec);
+    printf("T13 lem_1d_proj dims: S_{e0,e0}=%ld S_{e0,e1}=%ld S_{e1,e2}=%ld "
+           "S_{e0,Pv}=%ld (all <= 1)\n", (long) d00, (long) d01, (long) d12, (long) d0v);
+    AIC_CHECK_MSG(d00 <= 1 && d01 <= 1 && d12 <= 1 && d0v <= 1,
+                  "T13: dim S_{P,Q} > 1 for 1d P,Q (lem_1d_proj)");
+
+    /* equivalence: reflexive, symmetric, transitive. */
+    int r00 = aic_corner_equiv_1d(&ae.A, e0, e0, prec);          /* reflexive */
+    int e01 = aic_corner_equiv_1d(&ae.A, e0, e1, prec);
+    int e10 = aic_corner_equiv_1d(&ae.A, e1, e0, prec);          /* symmetric */
+    int e12 = aic_corner_equiv_1d(&ae.A, e1, e2, prec);
+    int e02 = aic_corner_equiv_1d(&ae.A, e0, e2, prec);          /* transitive */
+    printf("T13 equiv: e0~e0=%d e0~e1=%d e1~e0=%d e1~e2=%d e0~e2=%d\n",
+           r00, e01, e10, e12, e02);
+    AIC_CHECK_MSG(r00 == 1, "T13: equivalence not reflexive");
+    AIC_CHECK_MSG(e01 == e10, "T13: equivalence not symmetric (e0~e1=%d e1~e0=%d)",
+                  e01, e10);
+    AIC_CHECK_MSG(!(e01 && e12) || e02,
+                  "T13: equivalence not transitive (e0~e1, e1~e2, but not e0~e2)");
+    /* all diagonal rank-1's ARE equivalent in M_n => the transitive premise is
+     * non-vacuously satisfied (e01 && e12 both true), so e02 is genuinely tested. */
+    AIC_CHECK_MSG(e01 == 1 && e12 == 1 && e02 == 1,
+                  "T13: rank-1's in M_n not all equivalent (premise vacuous?)");
+
+    acb_mat_clear(Pv); acb_mat_clear(Pd); acb_mat_clear(V);
+    acb_mat_clear(e2); acb_mat_clear(e1); acb_mat_clear(e0);
+    aic_assoc_ecstar_clear(&ae);
+    aic_ucp_kraus_clear(&phi);
+}
+
 int main(void)
 {
     test_t5();   /* headline eta=0 oracle first */
@@ -1530,6 +2646,14 @@ int main(void)
     test_t8_unit();     /* Increment 2a: Ptilde unit of (S_P,.) */
     test_t8_bound();    /* Increment 2a: ||X.Y - X*Y|| O(eta) bound */
     test_t9();          /* Increment 2a: lem_alpha block bijection */
+    test_t10();         /* Increment 2b: lem_PQ_Hilb inner product */
+    test_t11();         /* Increment 2b: Ha-map (eta=0 oracle + Ha_dag + homom.) */
+    test_t11_pneqr();   /* Increment 2b: Ha-map P!=R (full Co-index bookkeeping) */
+    test_t11_disjoint();/* FIX 3: term2 Co-index teeth (range(Q) disjoint from range(P)) */
+    test_t11_eta();     /* Increment 2b: Ha-map eta>0 bounds */
+    test_t11_mixconj(); /* FIX 1: dim S_{P,Q}=2 eta>0 corner (blocker) + Frob-Gram teeth */
+    test_t12();         /* Increment 2b: lem_PQR norm multiplicativity */
+    test_t13();         /* Increment 2b: lem_1d_proj + equivalence */
     aic_test_report("test_corner");
     printf("OK test_corner\n");
     return 0;

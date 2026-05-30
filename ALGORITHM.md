@@ -1579,6 +1579,67 @@ the tested η (negligible); self-mutation-proven (mid=0.999/rad=0.01 → 1.009 f
 header + tests extended (73 checks total). `lem_alpha` hypotheses are not
 separately asserted — they are sufficient conditions for `‖γ‖<1`, which is the
 load-bearing guard (`tex:1114`); the `prop_P` basin assert in `aic_corner_Co`
-gates gross overlap upstream. **Increment 2b** (the 1d-projection cluster:
-`lem_PQ_Hilb` Hilbert inner product, the Ha-map, `lem_PQR`, `lem_1d_proj`,
-equivalence) is the remaining deliverable on this bead.
+gates gross overlap upstream.
+
+## Module `corner` (Increment 2b) — the 1d-projection Hilbert/Ha cluster (bead aic-czm)
+
+Completes §7: the one-dimensional-`Q` machinery (`.tex:1123–1189`). This is what
+the downstream `lem_extension` (in `cstar_build`) leans on — `Ha^Q_{P,P}` as an
+O(δ+ε)-homomorphism is the linearization that extends an isomorphism by one
+matrix dimension.
+
+### `lem_PQ_Hilb` inner product (`.tex:1123–1132`, `aic_corner_ip_1d`)
+For a **one-dimensional** δ-projection `Q` (assert `dim S_Q=1`, fail-loud),
+`S_{P,Q}` is a Hilbert space with `⟨Y,X⟩` defined by `Co_Q(Y†⋆X)=⟨Y,X⟩Q̃`,
+`Q̃=Co_Q(Q)`. Since `S_Q=ℂQ̃` is 1-dim, the scalar is `⟨Q̃, Co_Q(Y†⋆X)⟩_F /
+⟨Q̃,Q̃⟩_F`. Conjugate-linear in `Y`, linear in `X`; `|⟨X,X⟩−‖X‖²|≤O(δ+ε)‖X‖²`
+(measured c≈0.007). The star `Y†⋆X` is load-bearing (oblique non-vacuity gap
+0.667, mutation-RED).
+
+### The Ha-map (`.tex:1146–1160`, `aic_corner_ha`) — the intricate one
+`Ha^Q_{P,R}(Z): S_{R,Q}→S_{P,Q}`, defined by the implicit equation
+`(Y†·Z)·X + Y†·(Z·X) = 2⟨Y, Ha(Z)(X)⟩Q̃` for all `Y∈S_{P,Q}`. Solved as a **Gram
+system**: with `{C_l}` the basis of `S_{P,Q}`, `G_{lm}=⟨C_l,C_m⟩` the
+**lem_PQ_Hilb inner product** (NOT Frobenius — `G=I+O(δ+ε)`, assert `‖G−I‖<1`),
+and `b_l=½[scalar((C_l†·Z)·X)+scalar(C_l†·(Z·X))]`, then `Ha(Z)(X)=Σ_l(G⁻¹b)_l C_l`
+(certified `acb_mat_solve`). **The Co-index bookkeeping is the highest
+convention-risk in the module** — each compressed product `·` targets a specific
+corner: `Y†·Z`→Co_{Q,R}, `(Y†·Z)·X`→Co_Q, `Z·X`→Co_{P,Q}, `Y†·(Z·X)`→Co_Q.
+Properties: `Ha_dag` exact (`Ha^Q_{R,P}(Z†)=Ha^Q_{P,R}(Z)†`), `Ha(Z)(X)≈Z·X`,
+and `Ha^Q_{P,P}` an O(δ+ε)-homomorphism (`Ha(Z·W)≈Ha(Z)·Ha(W)`, measured c≈0.001).
+
+### `lem_PQR` / `lem_1d_proj` / equivalence (`.tex:1162–1187`)
+For 1d `Q`: `|‖X·Y‖−‖X‖‖Y‖|≤O(δ+ε)‖X‖‖Y‖` (`aic_corner_pqr_defect`, norm test,
+exact at η=0). For 1d `P` AND `Q`: `dim S_{P,Q}≤1` (`lem_1d_proj`). Equivalence
+`P~Q ⇔ dim S_{P,Q}=1` (`aic_corner_equiv_1d`), reflexive/symmetric/transitive
+(transitivity via `lem_PQR`).
+
+### The hostile-review BLOCKER (the consequential one) + fixes
+The review found `aic_corner_ha` **SIGABRTs** on a valid in-hypothesis
+`dim S_{P,Q}=2, η>0` corner — exactly the regime `lem_extension` needs — because
+its `‖G−I‖<1` assert called the certified `aic_mat_opnorm`, whose Gram path hits
+the **aic-2yo Hermiticity false-fail** on the near-zero off-diagonal entries (arb
+radius exceeds the absolute floor). The Ha math was correct; the *guard*
+false-aborted. **Fix:** use the certified mid+radius `aic_corner_gamma_opnorm_ub`
+(the alpha module's same-issue workaround) — applied to `aic_corner_ha` AND, a
+**second instance the fix caught**, `aic_corner_pqr_defect` (the cdot output
+carries a ~1e-70 accumulated radius that trips the same check despite `‖X·Y‖≈1`).
+The review also constructed the missing regression cell — `make_mixconj` (convex
+mix of `compress_idemp(5,3)` with its unitary conjugate, η≈0.013, genuine
+δ-projections, `dim S_{P,Q}=2`, off-diagonal Gram `‖G−I‖≈1.3e-5`): the routine
+now runs (before SIGABRT, after exit 0), and this fixture gives the
+**lem_PQ_Hilb-vs-Frobenius Gram distinction its first teeth** (replacing `G` with
+the Frobenius `I` moves the Ha output 2.3e-6→1.18e-5, mutation-RED). Two further
+can't-fail test-gaps closed: the ip_1d **conjugation order** (all fixtures used
+real symmetric corner elements → blind; a complex `⟨i·C0,C0⟩=−i` test now pins
+conjugate-linearity-in-Y, swap RED at 2.0) and the **term2 Co-index** (blind
+because every fixture had `range(Q)⊆range(P)`; a disjoint-support fixture
+`P=diag(0,0,1,1),Q=|e0⟩⟨e0|` makes `Co_Q→Co_{P,Q}` RED at 0.5).
+
+### Files (Increment 2b)
+`src/aic_corner_hilbert.c` (ip_1d + pqr_defect + dim_S + equiv_1d, 203 LOC),
+`src/aic_corner_ha.c` (the Ha-map, 221 LOC — marginally over the ~200 soft limit,
+in line with `extract.c` 205 precedent; literate docstring, single cohesive
+routine; noted on `aic-w4o.4`). `test_corner.c` now 134 checks total. The corner
+module (§7) is COMPLETE; next on the th_main critical path is `projection` (§6,
+bead aic-mqf, Route-A Hermitian-eigensolve nontrivial-projection finder).
