@@ -55,7 +55,9 @@
 #define AIC_CSTAR_H
 
 #include <flint/acb_mat.h>
+#include <flint/arb.h>
 
+#include "aic_dhom.h"
 #include "aic_ecstar.h"
 
 #ifdef __cplusplus
@@ -133,6 +135,79 @@ void aic_cstar_subalg_clear(aic_cstar_subalgebra *out);
  * ASSERTS d >= 1. Free with aic_ecstar_clear (the basis is the only owned data;
  * star_phi is a static function, star_ctx is NULL). */
 void aic_cstar_matrix_algebra(aic_ecstar *out, slong d, slong prec);
+
+/* ============================ Increment 2 =============================== *
+ * The two SIMPLER assembly lemmas of §9 (the master loop builds on these):
+ * lem_add_dim (.tex:1363, dimension decomposition) and cor_merge_sum (.tex:1352,
+ * merging two delta-inclusions). Plus the Stage-3 off-diagonal certification
+ * S_{P_C,P_D}=0 (.tex:1443), a lem_add_dim corollary. The full why lives in
+ * src/aic_cstar_merge.c. These are STRUCTURAL GLUE over closed routines: the
+ * corner dim queries (aic_corner_alpha_dims / aic_corner_dim_S) and the dhom_v
+ * concatenation + certification (aic_dhom_defect_sweep / aic_dhom_v_sigma_min);
+ * no new numerical primitive is introduced.
+ */
+
+/* lem_add_dim (.tex:1363-1369): the dimension-decomposition certification.
+ *   ".tex:1364: dim S_{P,Q} = sum_{j,k} dim S_{P_j,Q_k}."
+ * P = sum_j P_parts[j], Q = sum_k Q_parts[k] (the caller passes BOTH the parts
+ * AND the sums; same convention as aic_corner_alpha / aic_corner_alpha_dims).
+ * Reuses aic_corner_alpha_dims (which builds the per-block Co's + Co_{P,Q}, sums
+ * the extracted dims into N = sum_{jk} dim S_{P_j,Q_k}, and reports d_PQ =
+ * dim S_{P,Q}); then ASSERTS N == d_PQ (fail loud, Rule 4: the lem_add_dim
+ * conclusion). Returns the common value d_PQ.
+ *   `A`       : the eps-C* algebra (BORROWED).
+ *   `P_parts` : p Hermitian n x n delta-projections; `P` their sum (n x n).
+ *   `Q_parts` : q Hermitian n x n delta-projections; `Q` their sum (n x n).
+ * On an exact idempotent (eta=0) with orthogonal rank-1 P_j, Q_k this is exact:
+ * dim S_{P_j,Q_k} in {0,1} and the sum equals dim S_{P,Q} (an isometric
+ * bijection). The internal N == d_PQ assert is the teeth (a wrong P_part feeding
+ * a mismatched sum ABORTS). */
+slong aic_cstar_lem_add_dim(const aic_ecstar *A,
+                            const acb_mat_t *P_parts, slong p, const acb_mat_t P,
+                            const acb_mat_t *Q_parts, slong q, const acb_mat_t Q,
+                            slong prec);
+
+/* Stage-3 off-diagonal certification (.tex:1443): returns 1 iff
+ * dim S_{P_C,P_D} == 0. By lem_add_dim, distinct equivalence classes C != D have
+ * S_{P_C,P_D} = 0 (the sum over j in C, k in D of dim S_{P_j,P_k} is 0 since each
+ * j !~ k contributes 0); this is the certification that the merged blocks of
+ * Stage 3 are genuinely independent (cor_merge_sum's bijectivity hypothesis).
+ * Thin wrapper over aic_corner_dim_S(A, P_C, P_D). P_C, P_D n x n Hermitian. */
+int aic_cstar_off_diag_zero(const aic_ecstar *A, const acb_mat_t P_C,
+                            const acb_mat_t P_D, slong prec);
+
+/* cor_merge_sum (.tex:1352-1358): merge two delta-inclusions
+ *   v_1 : B_1 -> A,  v_2 : B_2 -> A     (both into the SAME containing
+ * eps-C* algebra A — the parent, OR an S_P wrapper when used inside Stage 1; the
+ * paper writes v_j : B_j -> S_{P_j}, and S_{P_j} <= A, so v1->A == v2->A == A)
+ * into the combined map
+ *   ".tex:1355: v : (X_1, X_2) |-> v_1(X_1) + v_2(X_2) : B_1 (+) B_2 -> A."
+ * The merged B has block dims = concat(v1->B->d, v2->B->d); the merged v's
+ * vE[] is the DIRECT concatenation vE = [v1->vE, v2->vE] (design §3): B's
+ * matrix-unit linear index mu(l,a,b) = offset_l + a*d_l + b is CUMULATIVE across
+ * blocks (aic_dhom.h), so the concatenation is exactly v(E_i) for the merged B.
+ * The merged v is an O(delta+eps)-inclusion into A (.tex:1357); cor_improvement
+ * (errreduce) is applied by the CALLER afterward (.tex:1426/1443), NOT here.
+ *
+ *   B_out, v_out : OUTPUT, allocated here. v_out->B points at B_out (which the
+ *                  caller MUST keep alive for v_out's lifetime); v_out->A = A.
+ *                  Free with aic_dhom_B_clear(B_out) and aic_dhom_v_clear(v_out)
+ *                  (in either order; v_out borrows B_out and A). The vE operators
+ *                  are DEEP COPIES of v1/v2's vE (acb_mat_set, not aliased).
+ *   mult_def     : OUTPUT certified arb ball, the merged v's multiplicativity
+ *                  defect aic_dhom_defect_sweep(v_out) w.r.t. A's STAR (NOT plain
+ *                  product, FINDINGS §C2; NULL to skip).
+ *   sigma_min    : OUTPUT certified arb ball, aic_dhom_v_sigma_min(v_out) (the
+ *                  SOUND Frobenius inclusion lower bound, FINDINGS §C6; NULL skip).
+ *
+ * ASSERTS (fail loud, Rule 4): v1->A == A, v2->A == A, v1->n == v2->n == A->n.
+ * The ||P_1 + P_2 - I_A|| <= delta hypothesis (.tex:1353) is the CALLER's
+ * responsibility (Stage 1/3 of the master loop maintains it); this routine does
+ * NOT re-verify it. */
+void aic_cstar_merge_sum(aic_dhom_B *B_out, aic_dhom_v *v_out,
+                         arb_t mult_def, arb_t sigma_min,
+                         const aic_dhom_v *v1, const aic_dhom_v *v2,
+                         const aic_ecstar *A, slong prec);
 
 #ifdef __cplusplus
 }

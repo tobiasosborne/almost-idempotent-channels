@@ -210,6 +210,24 @@ with the concrete evidence from where they bit.
   estimator also hits the `aic_mat_opnorm` Gram false-fail (§C5) on the OBLIQUE wrapper,
   so the η>0 S_P star-defect (T2) is measured via the midpoint-opnorm route too.
 
+### C8. Merged-`v` star teeth: on IN-A delta-projection fixtures the η-shrink DIRECTION is a weak tooth — use the `c = defect/η` MAGNITUDE bound (a §C2 corollary)
+- **Status:** CONFIRMED (cstar_build I2, bead aic-097, `cor_merge_sum` B2 star teeth).
+- When the merged-`v` multiplicativity defect (`aic_dhom_defect_sweep`, which uses A's
+  STAR) is exercised on a fixture whose `P_j` are GENUINE in-A delta-projections
+  (residual `≈0`), mutating the star → plain product does **NOT** make the defect blow
+  up to O(1): `Ptilde_j` stays near-genuine off the oblique direction, so the plain-
+  product merged defect ALSO trends down with η. Measured (mixconj(5,3),
+  `P_1=span(e1),P_2=span(e2)`): star `c=defect/η ≈ 0.017`, plain `c ≈ 0.43` — both
+  shrink in absolute terms, so a "defect shrinks as η→0" assertion passes for BOTH (a
+  weak/half-blind tooth). The SHARP discriminant is the `c`-ratio **magnitude** (25×
+  gap: a `c < 0.2` bound is RED for the plain mutation). 
+- **How to apply.** Any test asserting a merged/assembled-`v` defect is O(η) with the
+  STAR must gate on the `c = defect/η` magnitude (a small constant), NOT merely on the
+  η→0 shrink direction. This recurs in I3 (`lem_merging`) and I5 (the loop) — both
+  certify merged-`v` defects. (The complementary route: test on a genuinely-oblique
+  `P` not in A, where plain-vs-star is O(1) even in direction — but then the unit
+  defect itself is O(1), so the two concerns split across two `P`'s, as in I1 T2.)
+
 ---
 
 ## D. Open questions / escalations (unresolved)
