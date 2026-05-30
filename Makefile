@@ -27,6 +27,12 @@ BUILD := build
 SRC := $(wildcard src/*.c)
 TEST_SRC := $(wildcard tests/test_*.c)
 TEST_BIN := $(patsubst tests/%.c,$(BUILD)/%,$(TEST_SRC))
+# Shared NON-driver test helpers under tests/ (NOT test_*.c, so not their own
+# binaries): the adversarial-instance corpus aic_adversarial*.c (bead aic-dbo.2).
+# Compiled/linked into EVERY test binary alongside $(SRC) — harmless to tests that
+# do not call them (same policy as the LAPACK libs), and reusable by any test/bench
+# that wants an evil instance. Header-only helpers (aic_test.h) need no entry here.
+TEST_HELPER_SRC := $(wildcard tests/aic_*.c)
 BENCH_SRC := $(wildcard bench/bench_*.c)
 BENCH_BIN := $(patsubst bench/%.c,$(BUILD)/%,$(BENCH_SRC))
 # Generated/committed fixture includes (e.g. tests/fixtures_d24.inc.h, the
@@ -45,8 +51,8 @@ $(BUILD):
 # Each test binary links the test driver, all src cores, and FLINT. -Itests
 # exposes the header-only aic_test.h and the generated tests/*.inc.h fixtures
 # (which are prerequisites so a regenerated fixture rebuilds its test).
-$(BUILD)/%: tests/%.c $(SRC) $(TEST_INC) | $(BUILD)
-	$(CC) $(CFLAGS) -Itests $< $(SRC) $(LIBS) -o $@
+$(BUILD)/%: tests/%.c $(SRC) $(TEST_HELPER_SRC) $(TEST_INC) | $(BUILD)
+	$(CC) $(CFLAGS) -Itests $< $(SRC) $(TEST_HELPER_SRC) $(LIBS) -o $@
 
 # Each bench binary links the bench driver, all src cores, and FLINT. -Ibench
 # exposes aic_bench.h; _POSIX_C_SOURCE enables clock_gettime under -std=c11.

@@ -1,10 +1,12 @@
 # HANDOFF.md — almost-idempotent-channels
 
-Orientation for a fresh agent. Last updated **2026-05-30**, after the
-**`aic-8hz` session** (globally-convergent non-normal `sgn` in `funcalc`; see the
-next block). Prior: the `assoc_ecsa` session (Kitaev's `th_almost_idemp`, bead
-`aic-92f`). Current state: `master` clean, **17 test binaries green, zero
-warnings**, 20 beads closed of 60. NOTE `make test` is **~3.5 min**: the cost is
+Orientation for a fresh agent. Last updated **2026-05-30**, after an orchestrated
+session that landed **`aic-8hz`** (globally-convergent non-normal `sgn` in
+`funcalc`) and **`aic-dbo.2` Increment 1** (adversarial NLA generator corpus); see
+the next two blocks. Prior: the `assoc_ecsa` session (Kitaev's `th_almost_idemp`,
+bead `aic-92f`). Current state: `master` clean (pushed to `origin`), **18 test
+binaries green, zero warnings**, 20 beads closed of 61. NOTE `make test` is
+**~3.5 min**: the cost is
 the n=16 universality-canary regularization in `test_assoc2` U3 — cutting it is
 bead `aic-erz` (per-binary fast loops stay quick; `make build/test_X &&
 ./build/test_X`). Read §"Channel-module conventions" before touching
@@ -30,6 +32,29 @@ no blockers; 3 non-blocking findings all fixed inline. Deferred: scaled-Newton
 (Kenney–Laub) Pareto candidate → bead **`aic-68c`** (P3; only if iteration/k counts
 climb near `η→¼`). Docs: `ALGORITHM.md` §"Module funcalc — global sgn",
 `docs/research/sgn_global_research.md`.
+
+**`aic-dbo.2` Increment 1 (this session, committed; bead stays in_progress for
+Inc2).** The adversarial-instance corpus: `tests/aic_adversarial.{h,c}` +
+`aic_adversarial_nla.c` + driver `tests/test_adversarial.c` (n=32 self-tests, all
+mutation-proven). 7 representative NLA generators spanning the distinct attack
+modes + the lethal shortlist, each with a tunable knob, deterministic construction
+(gen2 = fixed-LCG seed), and a certified-arb self-test asserting the knob produces
+the claimed property: gen1 `jordan_t13` (1a, tex:540; ρ=t^{1/3}), gen2
+`nonnormal_tri` (2c; the aic-8hz op-vs-ρ gap regime, `‖[X,X†]‖_F` 0.07→172 as
+c 0.1→10), gen3 `degenerate_proj` (4b, lethal #1; exact {0,1} projector the
+simple-eig path can't isolate), gen4 `near_degen_herm` (4a; gap knob), gen5
+`graded_diag` (5c; κ knob to 1e8), gen6 `boundary_x2I` (7a, lethal #5; `‖X²−I‖`
+straddles 1), gen7 `propP_delta` (7b; `‖P²−P‖=δ` at the ¼ edge). The Makefile now
+links `tests/aic_*.c` (TEST_HELPER_SRC) into every test/bench. **The corpus already
+paid off**: gen5 surfaced a real substrate bug → bead **`aic-2yo`** (P2):
+`aic_mat_int_assert_hermitian`'s ABSOLUTE tol false-fails on a graded/ill-
+conditioned Gram, so `aic_mat_singular_values`/`opnorm` ABORT for condition number
+≳ 1e2 (precision-independent; verified at prec=1024) — needs a relative/magnitude-
+scaled tol. Increment 2 (still open on `aic-dbo.2`): the DOMAIN/channel families
+(`docs/adversarial/domain.md` — several gated by unbuilt modules) + the remaining
+NLA families; unblocks the universality canary `aic-dbo.3` once the `ε~c/dim` dim-
+sweep instances land. `test_adversarial.c` (451 LOC) joins the oversized-test-file
+pile `aic-w4o.4`.
 
 **⚠️ RESUME HERE — `aic-92f` (`assoc_ecsa`, `th_almost_idemp`) is CLOSED; the
 paper's `th_almost_idemp` is now VERIFIED end-to-end.** This session built
