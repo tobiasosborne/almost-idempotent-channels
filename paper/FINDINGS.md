@@ -188,6 +188,28 @@ with the concrete evidence from where they bit.
   T6 is the witness fixture + abort test; mutation-proven (revert to the basis sweep
   → the collapse is no longer caught → RED).
 
+### C7. `aic_ecstar_defect_unit` tests the AMBIENT `1_n` unit — wrong for a compressed S_P (unit is `Ptilde`)
+- **Status:** CONFIRMED (cstar_build I1, bead aic-097, S_P wrapper genuine-C* oracle).
+- The unit-law estimator `aic_ecstar_defect_unit` (`include/aic_ecstar.h:183-189`) is
+  HARDCODED to the ambient unit `I = 1_n`: it checks `‖1_n − Π_A(1_n)‖`, `‖B_k⋆I − B_k‖`,
+  `‖I⋆B_k − B_k‖`. That is correct only when the algebra's unit IS `1_n` (`A = Img Φ̃`,
+  whose unit is the inherited `1_n`, `tex:2186-2187`; and the genuine `M_d`,
+  `aic_cstar_matrix_algebra`). It is **WRONG for a compressed subalgebra `S_P`**: the
+  unit of `(S_P, ⋅)` is `Ptilde = Co_P(P)` (`tex:1082`), NOT `1_n` — and `1_n ∉ S_P`
+  in general. On the η=0 identity-channel `A=M_3`, `P=diag(1,1,0)` → `S_P ≅ M_2`
+  wrapper, the four unit-INDEPENDENT defects (assoc, submult, C*, involution) all read
+  machine-zero (it IS a genuine C* algebra), but `aic_ecstar_defect_unit` reads **1.0**
+  because `Ptilde ≠ 1_3`. This is the same load-bearing distinction CLAUDE.md flags
+  ("the exact unit is only available after the O(ε)-change of `prop_unit`").
+- **The route.** Test the genuine-C* unit law for `S_P` against `Ptilde` directly
+  (`‖Ptilde⋆C_m − C_m‖`, `‖C_m⋆Ptilde − C_m‖` over the corner basis), NOT via
+  `aic_ecstar_defect_unit`. `tests/test_cstar.c` (T1) uses `max_axiom_defect_no_unit`
+  + a `ptilde_unit_defect` helper; both read machine-zero at η=0 (measured 0.0).
+  A unit-parametrized `aic_ecstar_defect_unit(..., unit)` would let any subalgebra
+  reuse the estimator; deferred (not needed for I1, the helper suffices). Note the same
+  estimator also hits the `aic_mat_opnorm` Gram false-fail (§C5) on the OBLIQUE wrapper,
+  so the η>0 S_P star-defect (T2) is measured via the midpoint-opnorm route too.
+
 ---
 
 ## D. Open questions / escalations (unresolved)
