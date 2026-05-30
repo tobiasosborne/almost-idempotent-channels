@@ -1643,3 +1643,91 @@ in line with `extract.c` 205 precedent; literate docstring, single cohesive
 routine; noted on `aic-w4o.4`). `test_corner.c` now 134 checks total. The corner
 module (§7) is COMPLETE; next on the th_main critical path is `projection` (§6,
 bead aic-mqf, Route-A Hermitian-eigensolve nontrivial-projection finder).
+
+## Module `projection` — constructive nontrivial O(ε)-projection (bead aic-mqf, the constructivization crux)
+
+Realizes `lem_nontriv_projection` (`.tex:931`): any ε-C* algebra A with
+`1 < dim A < ∞` has a nontrivial O(ε)-projection. The paper proves *existence*
+non-constructively (Lefschetz–Hopf on the approximate-unitary quotient manifold,
+`.tex:944–969`); we replace that with a direct finite-dim construction (Law 3).
+The §6 entry point of the th_main master loop.
+
+### The route (decided by 3 independent research legs, Rule 9)
+**Reduction (`.tex:935–939`):** a nontrivial projection is `P=½(I+X)` for a
+Hermitian near-involution `X∈A` (`X⋆X≈I`, `X≠±I`). **The key correction the
+independent legs converged on:** by **rem_X2 (`.tex:628`)** the functional
+calculus does *not* generalize to the ε-C* algebra — so do the sign calculus
+**AMBIENT** (in M_n, an exact C* algebra), never inside A. (Leg 1 first proposed
+in-A star-Newton-Schulz; legs 2+3 + the web survey rejected it — no literature
+supports sign-iteration under ε-associativity, and ambient Hermitian spectra are
+*stable*, the fragility being non-normal-only.)
+
+**Route A-ambient (`src/aic_projection.c` + `src/aic_projection_find.c`):**
+1. **Pick H** (`aic_projection_pick_H`): scan the Hermitianized basis
+   `H_k=½(B_k+B_k†)`, choose the one with the **largest interior eigenvalue gap**
+   (tie-break by spectral spread; spread via certified `aic_mat_herm_max_eig`).
+   Fail-loud if all `H_k` near-scalar (a stop condition: dim A>1 but no non-scalar
+   Hermitian element).
+2. **Gap** (`aic_projection_gap`): eigenVALUES of H via LAPACK zheev (double path —
+   Hermitian ⟹ stable spectrum; only the values, not eigenvectors, so no
+   `aic-w4o.1` dependency); largest interior gap `[λ_m,λ_{m+1}]`, threshold
+   `t=½(λ_m+λ_{m+1})`. Fail-loud only if **no positive interior gap** exists (the
+   genuine aic-3qv degenerate-spectrum stop condition).
+3. **Ambient projector** (`ambient_projector`): `Y=s(H−tI)`, `s=1/max(t−λ_min,λ_max−t)`;
+   assert the eig-free sgn basin `‖Y²−I‖<1` (certified via
+   `aic_corner_gamma_opnorm_ub` to dodge the aic-qgs Gram false-fail; holds for any
+   `g>0` since `‖Y²−I‖=1−(s·g/2)²`); `X=aic_sgn(Y)` (AMBIENT, eig-free);
+   `P_amb=½(I+X)` — an exact ambient idempotent onto `λ>t`.
+4. **Project into A** (`project_into_A`) — **the load-bearing discovery
+   (corrected the research spec):** `A=ImgΦ̃` is an *oblique* image (Φ̃ is HP but
+   not HS-self-adjoint), so the Frobenius-orthogonal projector `Π_A` does NOT
+   respect the star structure — it leaves `‖P⋆P−P‖=O(1)` (~0.5, constant in η).
+   The correct projection is **Φ̃ itself**, available through the public star API
+   as `P = P_amb⋆I = Φ̃(P_amb)`, giving the O(η) defect the lemma promises.
+5. **Certify (arb):** `δ=‖P⋆P−P‖_op` (star, via `aic_corner_gamma_opnorm_ub`);
+   nontriviality `‖P‖_op,‖I−P‖_op` (fail-loud if either ≤0.3); membership
+   `aic_ecstar_proj_residual(P)`.
+
+rem_X2-safe (sgn only on ambient Y), eig-free for the projector (eigenVALUES only,
+for gap-finding), no §5 unitary group (no aic-q2x dependency). **Audition (Law 4):**
+Route A-ambient primary; Route B (σ-fixed-point, needs aic-q2x) and Route C
+(optimize `‖P⋆P−P‖`, needs warm start) are Pareto alternatives, deferred.
+
+### The Ω(1)-gap question (aic-3qv) — honestly bounded
+The defect is `δ=O(ε+ε/g)`, = O(ε) iff the gap `g=Ω(1)`. The construction
+certifies the gap **per-instance** and fail-loud-aborts only on a genuinely
+degenerate spectrum (no positive interior gap). The universal a-priori guarantee
+("dim A>1 ⟹ some H has an Ω(1)-relative gap") is what the paper needs Lefschetz
+for and is NOT proven constructively — escalation aic-3qv. Empirically the
+constant is dimension-independent (canary below).
+
+### Cross-checks (Rule 6/7) — `tests/test_projection.c`, 58 checks
+- T1 **η=0 oracle**: M_2/M_3 (identity), block-d4 → `δ` machine-zero, `‖P‖=‖I−P‖=1`,
+  P∈A. (Blind to the oblique fix, since Φ̃=id at η=0 — only T2 catches it.)
+- T2 **η>0** (mixconj): `δ/η` small and flat; non-vacuity rewritten to be
+  fixture-robust — (A) the most-oblique `P_amb` has its star defect reduced **459×**
+  by Φ̃, (B) `P=Φ̃(P_amb)` for the chosen H (mutation: skip Φ̃ → RED at 3.7e-3).
+- T3 **universality canary** (aic-dbo.3, the highest-value test, tex:484): η>0 sweep
+  over 5 dims (dim_A∈{4,9,16}), `(d,C=δ/η)` = (4,5.6e-2),(5,3.6e-4),…,(8,3.0e-3);
+  **slope assert** `C(d_max)/C(d_min)<1.5` (mutation: inject `C=0.05·d` → slope 2.0
+  RED). C does not grow with d (it shrinks) — the universal-constant claim holds.
+- T4 **fail-loud** (message-grepped, fork+stderr-capture): dim-1 abort
+  (`"dim A = 1 <= 1"`) and the **aic-3qv no-interior-gap abort**
+  (`"NO positive interior spectral gap"`), each mutation-proven RED on guard deletion.
+- T5 double-vs-arb@53 agreement; T6 asymmetric-spectrum fixture ({−5,0,1,2},{−2,−1,3})
+  asserts `m==count(λ≥t)` and `rank(P_amb)==m` (mutation: off-by-one in m → RED).
+
+Hostile review (no blockers): core verified rem_X2-safe, m/threshold correct on
+asymmetric spectra, dimension-independent to d=9, Φ̃-vs-Frobenius protected by T2.
+Four SHOULD-FIX applied: the `g_min` floor was `0.05·spread` (spurious abort on a
+well-conditioned uniform spectrum at n≈22, in-range) → now a positive-gap floor
+`1e-9·max(1,spread)` + gap-ranked H-pick (uniform spectrum succeeds to n=24); T4
+cannot-fail (dim-1 aborts via any guard) → message-grep + the aic-3qv path tested;
+the canary print-only → slope assert; + the asymmetric/oblique coverage.
+
+### Files
+`include/aic_projection.h`, `src/aic_projection.c` (orchestrator + ambient_projector
++ project_into_A + star_defect + nontriviality, 207 LOC), `src/aic_projection_find.c`
+(H-pick + gap, 195 LOC), `src/aic_projection_internal.h`, `tests/test_projection.c`.
+Certified gap ENCLOSURE (Rump) defers to `aic-w4o.1`; gap-finding uses double-path
+zheev now, the defect is arb-certified. Next th_main step: `dhom` (§8, bead aic-c1n).
