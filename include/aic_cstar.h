@@ -209,6 +209,112 @@ void aic_cstar_merge_sum(aic_dhom_B *B_out, aic_dhom_v *v_out,
                          const aic_dhom_v *v1, const aic_dhom_v *v2,
                          const aic_ecstar *A, slong prec);
 
+/* ============================ Increment 3 =============================== *
+ * lem_merging (.tex:1325-1350): the GENERAL 2x2 block-assembly lemma that
+ * lem_extension (I4) consumes. cor_merge_sum (I2) is its TWO-BLOCK / off-diagonal-
+ * empty special case (.tex:1352). The full why lives in src/aic_cstar_merging.c.
+ * STRUCTURAL GLUE over closed routines (the dhom_v concat + certification
+ * aic_dhom_defect_sweep / aic_dhom_v_sigma_min and the certified op-norm upper
+ * bound aic_corner_gamma_opnorm_ub); no new numerical primitive is introduced.
+ *
+ * THE TWO B-SHAPES (FINDINGS §C9, load-bearing). .tex:1325 says only that B is "a
+ * C* algebra" with two COMPLEMENTARY projections Pi_1 + Pi_2 = I. Two shapes arise:
+ *   (single block, two_block=0)  B = M_{n1+n2}: Pi_1 = proj onto first n1 coords,
+ *     Pi_2 onto last n2. The off-diagonal sectors S_{Pi_1,Pi_2}, S_{Pi_2,Pi_1} are
+ *     the LIVE rectangular blocks of M_{n1+n2} (E_{lm} with l,m across the n1
+ *     boundary EXIST). gamma_12, gamma_21 must be NONZERO inclusions of them. This
+ *     is what lem_extension (I4, .tex:1378) needs (v_+ : M_{n+1} -> A is a single
+ *     matrix block, gamma_12 = U_1, gamma_21 = U_1(.)^dag).
+ *   (two block,  two_block=1)    B = M_{n1} (+) M_{n2}: Pi_1 = I of block 1, Pi_2 =
+ *     I of block 2. The off-diagonal sectors are EMPTY (dim 0) — block-diagonal B
+ *     has no E_{lm} across blocks — so gamma_12 = gamma_21 = 0 (their domains are
+ *     zero-dimensional). This is what cor_merge_sum (.tex:1352) uses; merged v then
+ *     equals aic_cstar_merge_sum's concat exactly.
+ * Conflating the two is a SILENT BUG: a single M_{n1+n2} block with gamma_12 =
+ * gamma_21 = 0 is NOT a valid lem_merging input — the live off-diagonal pair
+ * (E_{0,n1}, E_{n1,0}) has E*E = E_00 in M_d but gamma(E)=0, so merging1 is
+ * violated and the multiplicativity defect is O(1) (= ||Ptilde_1||, ~1), NOT the
+ * cor_merge_sum cross-defect ||Ptilde_1 * Ptilde_2|| ~ O(eps). The prompt's
+ * "single-block + zero off-diagonal == cor_merge_sum" reading is mathematically
+ * incorrect; the genuine reduction is the TWO-block shape (FINDINGS §C9).
+ */
+
+/* lem_merging (.tex:1325-1346): assemble four block maps gamma_{jk} into the
+ * combined O(delta+eps)-inclusion gamma : B -> A (.tex:1339-1344). B's shape is
+ * chosen by `two_block` (see the §C9 banner above).
+ *
+ * B is a GENUINE C* algebra with two COMPLEMENTARY projections Pi_1, Pi_2,
+ * Pi_1 + Pi_2 = I_B EXACTLY. gamma_{jk} maps the (j,k) block S_{Pi_j,Pi_k} to
+ * S_{P_j,P_k} <= A (P_1, P_2 delta-projections in A, ||P_1+P_2-I_A|| <= delta, the
+ * CALLER's responsibility, .tex:1326). When two_block=1 the off-diagonal blocks
+ * are empty so gamma_12, gamma_21 are IGNORED (pass NULL or anything).
+ *
+ * INPUT — the four gamma_{jk} as their IMAGES on each block's matrix-unit basis
+ * (row-major local index a*cols + b, a = local row, b = local col):
+ *   gamma11 : n1*n1 operators, gamma11[a*n1 + b] = gamma_{11}(E^{(11)}_{ab}),
+ *   gamma12 : n1*n2 operators, gamma12[a*n2 + b] = gamma_{12}(E^{(12)}_{ab}),
+ *   gamma21 : n2*n1 operators, gamma21[a*n1 + b] = gamma_{21}(E^{(21)}_{ab}),
+ *   gamma22 : n2*n2 operators, gamma22[a*n2 + b] = gamma_{22}(E^{(22)}_{ab}).
+ * Each image is an n x n operator IN A (n = A->n). (Contiguous acb_mat_t arrays,
+ * indexed gammaJK[idx] as an acb_mat_t, same convention as aic_corner_alpha_dims.)
+ * When two_block=1, gamma12/gamma21 are unused.
+ *
+ * THE ROUTING (get this EXACTLY right; an off-by-one silently mis-assembles).
+ *   two_block=0: B = M_d (d = n1+n2, single block). The matrix unit E_{lm}
+ *     (l = global row, m = global col) has linear index mu(0,l,m) = l*d + m
+ *     (aic_dhom_B_index). Routed by which sector its row/col fall in:
+ *       l <  n1, m <  n1 : block (1,1), (a,b) = (l,      m),      gamma11[a*n1 + b],
+ *       l <  n1, m >= n1 : block (1,2), (a,b) = (l,      m - n1), gamma12[a*n2 + b],
+ *       l >= n1, m <  n1 : block (2,1), (a,b) = (l - n1, m),      gamma21[a*n1 + b],
+ *       l >= n1, m >= n1 : block (2,2), (a,b) = (l - n1, m - n1), gamma22[a*n2 + b].
+ *     So v_out->vE[l*d + m] = gamma_{jk}(E_{lm}) (a DEEP COPY of the input image).
+ *   two_block=1: B = M_{n1} (+) M_{n2} (two blocks). Block 0's matrix unit E_{ab}
+ *     (index a*n1 + b) -> gamma11[a*n1 + b]; block 1's E_{ab} (index n1*n1 +
+ *     a*n2 + b) -> gamma22[a*n2 + b]. No off-diagonal units exist.
+ *
+ *   B_out, v_out : OUTPUT, allocated here. B_out is M_{n1+n2} (two_block=0) or
+ *                  M_{n1} (+) M_{n2} (two_block=1). v_out->B points at B_out (keep
+ *                  B_out alive for v_out's lifetime); v_out->A = A. Free with
+ *                  aic_dhom_B_clear(B_out) and aic_dhom_v_clear(v_out). The vE
+ *                  operators are DEEP COPIES.
+ *   mult_def     : OUTPUT certified arb ball, aic_dhom_defect_sweep(v_out) — the
+ *                  inclusion's multiplicativity defect w.r.t. A's STAR (NOT plain
+ *                  product, FINDINGS §C2). This is how merging1 (.tex:1331) is
+ *                  CERTIFIED: the defect_sweep over all matrix-unit pairs IS the
+ *                  blockwise multiplicativity G_gamma(E_i,E_j). NULL to skip.
+ *   sigma_min    : OUTPUT certified arb ball, aic_dhom_v_sigma_min(v_out) — the
+ *                  SOUND Frobenius inclusion lower bound (FINDINGS §C6). NULL skip.
+ *   merge_cond_max : OUTPUT certified arb ball, the max violation of the cheap
+ *                  per-block INPUT guards merging0 + merging2 + merging3:
+ *                    (merging0, .tex:1329) max_{block,(a,b)}
+ *                      ||gamma_{kj}(E_{ba}) - gamma_{jk}(E_{ab})^dag||_op,
+ *                    (merging2, .tex:1334) ||gamma_{11}(Pi_1) - P_1||_op and
+ *                      ||gamma_{22}(Pi_2) - P_2||_op (Pi_j = sum of diagonal units),
+ *                    (merging3, .tex:1336) max_{block,(a,b)}
+ *                      | ||gamma_{jk}(E_{ab})||_op - 1 |  (||E_{ab}||_op = 1).
+ *                  When two_block=1 the off-diagonal blocks are skipped (only the
+ *                  diagonal merging0/merging2/merging3 contribute). Op-norms via the
+ *                  certified mid+radius upper bound (FINDINGS §C5 Gram false-fail
+ *                  workaround). NULL to skip. This is REPORTABLE (does NOT abort);
+ *                  the I5 loop will gate on it (fail-loud).
+ *
+ * ASSERTS (fail loud, Rule 4): n1 >= 1, n2 >= 1, A->n == P_j size, the diagonal
+ * gamma arrays non-NULL (and the off-diagonal too when two_block=0). Does NOT
+ * re-verify ||P_1+P_2-I_A|| <= delta (CALLER's, .tex:1326).
+ *
+ * On an exact idempotent (eta=0) with the NATURAL identity-inclusion gamma_{jk}
+ * (each M_d matrix unit -> itself in A=M_d, two_block=0), the merged gamma is the
+ * identity: mult_def ~ machine-zero, sigma_min ~ 1, merge_cond_max ~ 0 (C1 oracle).
+ * With two_block=1 and gamma_12 = gamma_21 unused it REDUCES to cor_merge_sum
+ * exactly (C2 cross-check). */
+void aic_cstar_lem_merging(aic_dhom_B *B_out, aic_dhom_v *v_out,
+                           arb_t mult_def, arb_t sigma_min, arb_t merge_cond_max,
+                           int two_block, slong n1, slong n2,
+                           const acb_mat_t *gamma11, const acb_mat_t *gamma12,
+                           const acb_mat_t *gamma21, const acb_mat_t *gamma22,
+                           const aic_ecstar *A,
+                           const acb_mat_t P1, const acb_mat_t P2, slong prec);
+
 #ifdef __cplusplus
 }
 #endif

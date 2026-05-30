@@ -227,6 +227,43 @@ with the concrete evidence from where they bit.
   certify merged-`v` defects. (The complementary route: test on a genuinely-oblique
   `P` not in A, where plain-vs-star is O(1) even in direction — but then the unit
   defect itself is O(1), so the two concerns split across two `P`'s, as in I1 T2.)
+- **I3 confirmation.** `lem_merging` C2 (`two_block` shape, mixconj(5,3)) measured
+  star `c ≈ 0.017 → 0.005`; the plain-product mutation (overwrite `ae.A.star_phi`)
+  gives `c ≈ 0.244 → 0.230` (`> 0.2`) — RED, mutation-proven by hand (`/tmp/teeth_c2`).
+  (Magnitudes smaller than I2's 0.43 because `lem_merging`'s two-block defect sweep
+  has only the single cross-pair, like `cor_merge_sum`; the `c < 0.2` bound still
+  cleanly separates star from plain.)
+
+### C9. `lem_merging`'s `B` has TWO shapes — single matrix block (lem_extension) vs two-block direct sum (cor_merge_sum); a single block with zeroed off-diagonal is an INVALID input
+- **Status:** CONFIRMED (cstar_build I3, bead aic-097, `lem_merging`). The increment
+  prompt's "single `M_{n1+n2}` block + `gamma_12=gamma_21=0` reduces to cor_merge_sum"
+  reading is **mathematically incorrect**; corrected here.
+- `lem_merging` (`tex:1325`) only requires `B` to be "a C* algebra" with two
+  COMPLEMENTARY projections `Π_1+Π_2=I`. Two shapes arise in the master loop:
+  - **single block** (`two_block=0`): `B = M_{n1+n2}`, `Π_1` = proj onto the first
+    `n1` coords, `Π_2` onto the last `n2`. The off-diagonal sectors `S_{Π_1,Π_2}`,
+    `S_{Π_2,Π_1}` are the **LIVE** rectangular blocks of `M_{n1+n2}` (the units `E_lm`
+    with `l,m` across the `n1` boundary EXIST), so `gamma_12, gamma_21` must be
+    NONZERO. This is what **lem_extension** (I4, `tex:1378`, `v_+ : M_{n+1} → A`)
+    needs (`gamma_12 = U_1`, `gamma_21 = U_1(·)^†`).
+  - **two block** (`two_block=1`): `B = M_{n1} ⊕ M_{n2}`, `Π_j = I` of block `j`. The
+    off-diagonal sectors are **EMPTY** (block-diagonal `B` has no cross-block units),
+    so `gamma_12 = gamma_21 = 0` (zero-dim domain). This is what **cor_merge_sum**
+    (`tex:1352`) uses; the merged `v` then equals `aic_cstar_merge_sum`'s concat
+    EXACTLY (I3 C2 verified to machine precision: `mult_def`/`sigma_min`/`vE` all match
+    `cor_merge_sum` at η ∈ {3.7e-2, 1.3e-2}).
+- **The trap (a "test that can't fail").** A single `M_{n1+n2}` block with
+  `gamma_12=gamma_21=0` is NOT a valid `lem_merging` input: the LIVE pair
+  `(E_{0,n1}, E_{n1,0})` has `E·E = E_{00}` in `M_d` but `gamma(E)=0`, so merging1 is
+  violated and `mult_def = ‖Ptilde_1‖ ≈ 1.0` — **O(1)**, NOT the `cor_merge_sum`
+  cross-defect `‖Ptilde_1 ⋆ Ptilde_2‖ ≈ 1.9e-5`. Measured directly (`/tmp/probe_c2`):
+  `‖Ptilde_1⋆Ptilde_2‖ = 1.90e-5` vs `‖Ptilde_1‖ = 1.00`. Conflating the two shapes
+  silently mis-assembles `B` and is exactly the off-by-`n1` a hostile review hunts.
+- **The route.** `aic_cstar_lem_merging` takes an explicit `int two_block` selector;
+  `B_out` is built as `M_{n1+n2}` (single) or `M_{n1}⊕M_{n2}` (two) and the routing +
+  `merge_cond` sweep branch on it. I4 will pass `two_block=0`; Stage-3 of the loop
+  (which is `cor_merge_sum`) is already served by `aic_cstar_merge_sum` directly, so
+  `two_block=1` is mainly the cross-check seam.
 
 ---
 
