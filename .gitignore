@@ -12,3 +12,6 @@ build/
 # resolved Manifest.toml ARE committed (pinned versions = reproducible SDP values).
 julia/AlmostIdempotentChannels.jl/deps/deps.jl
 julia/AlmostIdempotentChannels.jl/deps/build.log
+
+# agent worktrees (transient)
+.claude/worktrees/
