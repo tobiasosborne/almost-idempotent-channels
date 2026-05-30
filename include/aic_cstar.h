@@ -391,8 +391,15 @@ void aic_cstar_lem_merging(aic_dhom_B *B_out, aic_dhom_v *v_out,
  * ASSERTS (fail loud, Rule 4):
  *   v->B->num_blocks == 1 and v->B->d[0] == n (single M_n block);
  *   v->A == A_parent; P, Q are n x n;
- *   dim S_{P_j,Q} == 1 for each j (aic_corner_dim_S; the S_{P,Q}!=0 hypothesis);
- *   dim S_{P,Q} == n (the lem_add_dim conclusion of Step 1);
+ *   dim S_Q == 1 (Q one-dimensional) AND dim S_{P,Q} == n (the lem_add_dim
+ *     CONCLUSION of Step 1). NOTE: the proof derives this from the per-j
+ *     "dim S_{P_j,Q} == 1 for each j" (P_j = v(E_jj), the S_{P,Q}!=0 hypothesis),
+ *     but that sub-query is INTENTIONALLY NOT run: with P_j = Ptilde_P an OBLIQUE
+ *     S_P element at eta>0, aic_corner_dim_S's Co_{P_j,Q} sgn-basin opnorm hits the
+ *     aic-qgs Gram-Hermiticity FALSE-FAIL (SIGABRT). We assert the equivalent
+ *     CONCLUSION dim S_{P,Q}==n (P a genuine Hermitian projection, no false-fail)
+ *     plus dim S_Q==1 — the operative guard. See FINDINGS §C5/§C10 and
+ *     src/aic_cstar_extension.c:159-173;
  *   lem_approx converges (aic_dhom_approx does not hit max_steps; its own guard);
  *   ||u0||^2 > 0.5 (the rank-1 SVD of mu_{11}(E_00) is nondegenerate).
  *
