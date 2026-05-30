@@ -1,5 +1,15 @@
 # Agent Instructions
 
+`CLAUDE.md` is the authoritative instruction set — read it first (the Laws, Rules,
+and the read order). This file holds the bd/shell quick reference only.
+
+**Paper findings are logged in `paper/FINDINGS.md`** (a living log: `.tex`
+typos/formula errors, non-constructive steps + our constructive routes,
+load-bearing subtleties, open escalations). It is step 6 of the CLAUDE.md read
+order: skim it before touching a new region of the paper, and **append to it**
+whenever you find a new typo / unclear step / pitfall, citing `paper/FINDINGS.md
+§Xn` from the source comment where it bites.
+
 This project uses **bd** (beads) for issue tracking. Run `bd prime` for full workflow context.
 
 ## Quick Reference

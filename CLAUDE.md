@@ -93,9 +93,17 @@ For any task, in order. Refuse to add code or math content before steps 1–2.
 4. `MODULE_PLAN.md` — the DAG of C/Julia modules and which result each realizes.
 5. `ALGORITHM.md` (once it exists) — the canonical math+code narrative for the
    module you are touching, every formula cited to a `.tex` line.
+6. `paper/FINDINGS.md` — the **living log of paper issues**: `.tex` typos/formula
+   errors, non-constructive steps + our constructive routes, load-bearing
+   subtleties (the "tests that can't fail" our hostile reviews keep catching), and
+   open escalations. Skim before touching a new region of the paper so you inherit
+   the known issues; **append to it** whenever research/implementation/review finds
+   a new one, and cite `paper/FINDINGS.md §Xn` from the source comment where it bites.
 
 If a claim in code is not anchored to a `paper/src/approximate_algebras.tex`
-line number, it is undocumented; fix that before changing the code.
+line number, it is undocumented; fix that before changing the code. When the code
+deviates from a `.tex` formula (a typo, a non-constructive route, an oblique-image
+subtlety), that deviation **must** have a `paper/FINDINGS.md` entry it cites.
 
 ## Architecture
 
