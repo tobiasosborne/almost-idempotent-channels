@@ -265,6 +265,42 @@ with the concrete evidence from where they bit.
   (which is `cor_merge_sum`) is already served by `aic_cstar_merge_sum` directly, so
   `two_block=1` is mainly the cross-check seam.
 
+### C10. The OBLIQUE `S_P`-wrapper corner path hits the aic-qgs Gram false-fail in the `sgn`-basin opnorm (a new §C5 manifestation); blocks the genuinely-oblique `lem_extension` end-to-end on a compressed parent
+- **Status:** CONFIRMED (cstar_build I4, bead aic-097, `lem_extension`). A new
+  manifestation of the §C5 / aic-qgs `aic_mat_opnorm` Gram-Hermiticity false-fail,
+  surfaced because I4 is the FIRST customer to run the corner machinery (`aic_corner
+  _Co` / `dim_S` / `ha`) on a **genuinely-oblique (η>0) parent** — either an `S_P`
+  wrapper (`aic_cstar_subalg`) used as `A_parent`, or a raw `ae.A` with an OBLIQUE
+  projection (`Ptilde_P = v(E_jj)`) as the first `dim_S` argument. (`test_cstar.c` T3
+  only exercised the η=0 identity-channel wrapper, whose Gram is exactly identity.)
+- **Where it bites.** `aic_corner_Co` → `aic_prop_P` → `aic_theta` → `aic_sgn` →
+  `aic_funcalc_int_in_op_basin` → `aic_funcalc_int_def_X2` → `aic_mat_opnorm` on
+  `(2M-1)^2 - I` (`M = ½(L_P R_Q + R_Q L_P)`). For the oblique corner this matrix is a
+  near-identity with tiny matmul-ACCUMULATED arb radii on its off-diagonals; the
+  relative-Hermiticity check in `aic_mat_opnorm`'s Gram path FALSE-FAILS and SIGABRTs.
+  **Measured (mixconj(5,3), wrapper over span(e1,e2)):** `‖(2M-1)^2 - I‖_ub ≈ 1.08e-3
+  (Co_{P,P}), 4.46e-3 (Co_{Q,Q}), 3.12e-3 (Co_{P,Q})` — all DEEPLY in-basin (< 1); the
+  abort is purely the Hermiticity false-fail, NOT a genuine out-of-basin input.
+- **The route taken (no infra bandaid; Rule 3 / stop conditions).** `aic_prop_P`
+  itself uses the EIG-free Gelfand spectral route (no opnorm), so the only offender is
+  the `sgn`-basin DISPATCH opnorm. The proper fix is aic-qgs (make `in_op_basin` use a
+  certified UB / Frobenius bound like `aic_corner_gamma_opnorm_ub`); NOT touched in I4.
+  In `aic_cstar_lem_extension` the Step-1 per-`j` guard `dim S_{P_j,Q}==1` (with
+  `P_j = v(E_jj)`, oblique) is REPLACED by the equivalent checks `dim S_Q==1` and the
+  CONCLUSION `dim S_{P,Q}==n` (both queried with GENUINE Hermitian projections `P`,`Q`,
+  which do NOT trip the false-fail) — the conclusion is the operative Rule-4 guard; the
+  per-`j` is the proof's derivation path, redundant as a guard. The Ha-map loop
+  (`ha(v(E_lm), P, P, Q)`) and `aic_corner_Ptilde` accept the oblique `v(E_lm)` as the
+  Z OPERAND without aborting (only the first-PROJECTION-arg `dim_S`/`Co` path trips),
+  so `lem_extension` RUNS end-to-end on the raw oblique `ae.A` (test T3b).
+- **Consequence for I4 testing.** The genuinely-oblique `S_P`-WRAPPER-as-parent
+  end-to-end `lem_extension` is DEFERRED to aic-qgs. T3 instead splits the two concerns
+  (the §C7/§C8 split pattern): T3a (η=0 wrapper-as-parent, proves the compressed-parent
+  path with `‖P+Q-unit‖=0` exactly) + T3b (genuinely-oblique end-to-end on raw `ae.A`,
+  the §C8 `c=mult_def/η` star MAGNITUDE tooth, `c_star≈0.017 ≪ 0.2 ≪ c_plain≈0.50`,
+  a ~29× gap). T3b is a CORNER-LOCAL extension (`P+Q = span(e1,e2) ≠ 1_5`, printed
+  honestly); the valid non-vacuous content is the merging1 multiplicativity star tooth.
+
 ---
 
 ## D. Open questions / escalations (unresolved)

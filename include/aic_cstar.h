@@ -317,6 +317,94 @@ void aic_cstar_lem_merging(aic_dhom_B *B_out, aic_dhom_v *v_out,
                            const aic_ecstar *A,
                            const acb_mat_t P1, const acb_mat_t P2, slong prec);
 
+/* ============================ Increment 4 =============================== *
+ * lem_extension (.tex:1378-1411): the INDUCTIVE growth step of Stage 2 of the
+ * th_main master loop (.tex:1435-1441). Given a delta-isomorphism v : M_n -> S_P
+ * and a complementary one-dimensional delta-projection Q (P + Q ~ unit), extend v
+ * to an O(delta+eps)-isomorphism v_+ : M_{n+1} -> A. Consumes I3's lem_merging
+ * (two_block=0, the LIVE-off-diagonal single-block shape, FINDINGS §C9) to assemble
+ * the four gamma_{jk}. The full why lives in src/aic_cstar_extension.c.
+ *
+ * approximate_algebras.tex:1378-1379 — Lemma lem_extension:
+ *   "Let A be an eps-C* algebra, and let P,Q in A be delta-projections such that
+ *    ||P+Q-I|| <= delta. Suppose that v: M_n -> S_P is a delta-isomorphism,
+ *    dim S_Q = 1, and S_{P,Q} != 0. Then v can be extended to an O(delta+eps)-
+ *    isomorphism v_+: M_{n+1} -> A."
+ *
+ * THE SIX-STEP CONSTRUCTIVE ROUTE (.tex:1382-1411; design §4.4):
+ *   1. dim S_{P,Q} = n (.tex:1383). Each P_j = v(E_jj) is a 1d delta-projection;
+ *      the P_j are equivalent, so dim S_{P_j,Q} = 1 for all j (the S_{P,Q}!=0
+ *      hypothesis), and by lem_add_dim dim S_{P,Q} = sum_j dim S_{P_j,Q} = n.
+ *   2. h_{jk} = Ha^Q_{P_j,P_k} with P_1 = P, P_2 = Q (.tex:1386-1389). Only h_{11}
+ *      = Ha^Q_{P,P} (the O(delta+eps)-homomorphism S_P -> B(S_{P,Q}), .tex:1390) is
+ *      built explicitly; h_{12},h_{21},h_{22} are ~identity and enter only through
+ *      the merging-condition certification (.tex:1411, F-I4-1: the lem_merging
+ *      output guards report the joint result, so no separate per-block sweep).
+ *   3. mu_{11} = lem_approx(h_{11} v) (.tex:1391): h_{11}v : M_n -> B(S_{P,Q}) ~= M_n
+ *      is an O(delta+eps)-hom; lem_approx snaps it to an exact homomorphism mu_{11},
+ *      which is an ISOMORPHISM (M_n has no nontrivial ideals; both sides n^2-dim).
+ *      Codomain A_cod = aic_cstar_matrix_algebra(n) (genuine M_n, so eps_target=0).
+ *   4. U_1 from mu_{11} (.tex:1404): mu_{11}(A) = U_1 A U_1^dag for a unitary
+ *      U_1 : C^n -> S_{P,Q}. Extract via the rank-1 SVD of mu_{11}(E_00) (= u0 u0^dag,
+ *      u0 = left singular vector), then U1_col_l = mu_{11}(E_l0) u0 / ||u0||^2; the
+ *      physical operator U1_op[l] = sum_m U1[m,l] C_m (C_m = S_{P,Q} corner basis).
+ *   5. the four gamma_{jk} (.tex:1405-1410): gamma_{11}(A_11) = v(A_11),
+ *      gamma_{12}(e_l) = U1_op[l], gamma_{21}(e_l^dag) = U1_op[l]^dag,
+ *      gamma_{22}(1) = Qtilde = Co_Q(Q).
+ *   6. v_+ = aic_cstar_lem_merging(two_block=0, n1=n, n2=1) (.tex:1411). The Q block
+ *      sits at global index n (last row/col); the P block at indices 0..n-1.
+ *
+ * PAPER TECHNIQUE vs CONSTRUCTIVE ROUTE (CLAUDE.md Law 3). The proof asserts mu_{11}
+ * exists (lem_approx) and is an isomorphism (no-ideals + dimension count), then
+ * READS OFF U_1 from its representation theory (every finite-dim C* iso of M_n is
+ * inner, U_1 A U_1^dag). In finite dim every step is a matrix computation: lem_approx
+ * IS the Newton iteration (aic_dhom_approx), and U_1 is recovered constructively by
+ * the rank-1 SVD recipe above (no representation-theory existence appeal). The
+ * paper's O(delta+eps) bound is the spec; mult_def/sigma_min certify it.
+ *
+ * THE STAR IS LOAD-BEARING (FINDINGS §C2/§C8). mult_def goes through A's STAR
+ * (aic_dhom_defect_sweep). On in-A delta-projection fixtures the star-vs-plain gap is
+ * a MAGNITUDE gap (c = mult_def/eta < 0.2 for the star, ~0.4+ for plain), not a
+ * direction gap — the §C8 tooth, this increment's responsibility, lives in the test.
+ *
+ * lem_extension (.tex:1378-1411): extend the delta-isomorphism v : M_n -> S_P to an
+ * O(delta+eps)-isomorphism v_+ : M_{n+1} -> A.
+ *
+ * INPUTS:
+ *   v       : BORROWED delta-isomorphism M_n -> S_P (as aic_dhom_v; v->B a single
+ *             M_n block, v->A == A_parent). Each v->vE[j*n+j] is a 1d projection P_j.
+ *   P, Q    : n x n Hermitian delta-projections in A_parent (n = A_parent->n) with
+ *             ||P+Q-I|| <= delta (the CALLER's hypothesis, .tex:1378; not re-checked
+ *             here — Stage 2 of the loop maintains it / the test asserts it).
+ *   A_parent: the parent eps-C* algebra (BORROWED).
+ *
+ * OUTPUTS:
+ *   B_out, v_out : the assembled M_{n+1} and v_+ : M_{n+1} -> A_parent (allocated
+ *                  here). B_out is a single M_{n+1} block (dim_B = (n+1)^2). v_out->B
+ *                  points at B_out (keep alive for v_out's lifetime); v_out->A =
+ *                  A_parent. Free with aic_dhom_B_clear(B_out) + aic_dhom_v_clear.
+ *   mult_def     : OUTPUT certified arb ball, aic_dhom_defect_sweep(v_out) w.r.t.
+ *                  A_parent's STAR (the merging1 multiplicativity defect). NULL skip.
+ *   sigma_min    : OUTPUT certified arb ball, aic_dhom_v_sigma_min(v_out) (the SOUND
+ *                  Frobenius inclusion lower bound, FINDINGS §C6). NULL skip.
+ *
+ * ASSERTS (fail loud, Rule 4):
+ *   v->B->num_blocks == 1 and v->B->d[0] == n (single M_n block);
+ *   v->A == A_parent; P, Q are n x n;
+ *   dim S_{P_j,Q} == 1 for each j (aic_corner_dim_S; the S_{P,Q}!=0 hypothesis);
+ *   dim S_{P,Q} == n (the lem_add_dim conclusion of Step 1);
+ *   lem_approx converges (aic_dhom_approx does not hit max_steps; its own guard);
+ *   ||u0||^2 > 0.5 (the rank-1 SVD of mu_{11}(E_00) is nondegenerate).
+ *
+ * On the eta=0 oracle (A_parent = aic_cstar_matrix_algebra, v the natural inclusion)
+ * v_+ is the IDENTITY inclusion M_{n+1} -> M_{n+1}: mult_def ~ machine-zero,
+ * sigma_min ~ 1, v_+(E_lm) == E_lm (test T1 base n=1, T2 inductive n=2). */
+void aic_cstar_lem_extension(aic_dhom_B *B_out, aic_dhom_v *v_out,
+                             arb_t mult_def, arb_t sigma_min,
+                             const aic_dhom_v *v,
+                             const acb_mat_t P, const acb_mat_t Q,
+                             const aic_ecstar *A_parent, slong prec);
+
 #ifdef __cplusplus
 }
 #endif
