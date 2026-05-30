@@ -1,18 +1,95 @@
 # HANDOFF.md — almost-idempotent-channels
 
 Orientation for a fresh agent. Last updated **2026-05-30**, after an orchestrated
-session that landed **`aic-8hz`** (globally-convergent non-normal `sgn` in
-`funcalc`), **`aic-dbo.2` Increment 1** (adversarial NLA generator corpus), and
-**`aic-2yo`** (the substrate Hermiticity-tol bug the corpus surfaced); see the next
-blocks. Prior: the `assoc_ecsa` session (Kitaev's `th_almost_idemp`, bead
-`aic-92f`). Current state: `master` clean (pushed to `origin`), **18 test binaries
-green, zero warnings**, 21 beads closed of 61. NOTE `make test` is
-**~3.5 min**: the cost is
-the n=16 universality-canary regularization in `test_assoc2` U3 — cutting it is
-bead `aic-erz` (per-binary fast loops stay quick; `make build/test_X &&
-./build/test_X`). Read §"Channel-module conventions" before touching
-`ucp`/`idemp`/`cbnorm`/`ecstar`/`assoc_ecsa`; those conventions are load-bearing
-and prior hostile reviews learned them hard.
+session that built **almost the entire `th_main` pipeline** — the constructive
+proof of the main theorem (`tex:460`: any finite-dim ε-C* algebra is
+`O(ε)`-isomorphic to a genuine C* algebra, with a *dimension-independent*
+constant). Four modules landed, each through the full research → implement →
+verify → **hostile-review → fix** → commit pipeline (the hostile review caught a
+**real blocker every time** — see the per-module blocks below):
+- **`corner`** (§7, bead `aic-czm`, CLOSED) — `Co_{P,Q}` compressions, `S_{P,Q}`,
+  compressed product, `lem_alpha`, `lem_PQ_Hilb`, the **Ha-map**, `lem_PQR`,
+  `lem_1d_proj`. 3 increments, 134 checks.
+- **`projection`** (§6, bead `aic-mqf`, CLOSED) — the **constructivization crux**
+  (`lem_nontriv_projection`): ambient spectral split of a Hermitian element of A,
+  projected into A via `Φ̃`. 58 checks.
+- **`dhom`** (§8, bead `aic-c1n`, CLOSED) — `prop_delta_hominc` + `lem_approx`
+  (the multiplicativity-defect Newton iteration with the explicit Pauli diagonal).
+  89 checks.
+- **`errreduce`** (§8/9, bead `aic-t81`, CLOSED) — `cor_improvement`; the **c₀
+  universality canary** lives here and is FLAT (dimension-independent — the
+  headline `tex:484` correctness check passes). 51 checks.
+
+Also created **`paper/FINDINGS.md`** — a living log of `.tex` typos / formula
+errors / non-constructive steps / load-bearing subtleties / open escalations,
+wired into the CLAUDE.md read order (step 6). **Read it.** Two confirmed `.tex`
+findings this session: §A1 (`tex:1109` `lem_alpha` β subscript `Q_j`→`Q_k`) and
+§A2 (`tex:1254` direct-sum diagonal is non-central for the finite Pauli design;
+the correct one is the embedded sum `Σ_l D_l`).
+
+Current state: `master` clean (pushed to `origin`), **22 test binaries green,
+zero warnings**, 28 beads closed of 62. `make test` ~5 min (the n=16 canary in
+`test_assoc2` U3, bead `aic-erz`; per-binary `make build/test_X && ./build/test_X`
+stays quick). Read §"Channel-module conventions" before touching
+`ucp`/`idemp`/`cbnorm`/`ecstar`/`assoc_ecsa`, and `paper/FINDINGS.md` §C (the
+"tests that can't fail" the reviews keep catching: the **star vs plain product**
+blindness, the **oblique-`Φ̃`-not-`Π_A`** projection, **rem_X2** = no funcalc
+inside A, the **`aic_corner_gamma_opnorm_ub`** workaround for the `aic-qgs`
+opnorm Gram false-fail).
+
+---
+
+## ⚠️ RESUME HERE — `cstar_build` (§9 master loop, bead `aic-097`) = the proof of `th_main`
+
+This is the **only remaining `th_main` step** and the culmination: it assembles
+the four modules above into the constructive `O(ε)`-isomorphism `v: B → A`. The
+proof structure is in **shard E** (`paper/shards/shard-E-delta-homs-main-proof.md`,
+"The master loop") and `tex:1414-1444`; read that first, plus `MODULE_PLAN.md`
+L5. The 3-stage loop:
+1. **Stage 1 (commutative skeleton):** repeatedly apply `projection` (aic-mqf) to
+   split A; force the projections to be 1-dimensional (`lem_1d_proj`, in `corner`);
+   classify into equivalence classes (`lem_PQR` transitivity, in `corner`); merge
+   via `cor_merge_sum` + reset error via `errreduce` (aic-t81).
+2. **Stage 2 (extend each class to a full matrix block):** the inductive
+   `lem_extension` (`tex:1378`) — uses the **Ha-map** `Ha^Q_{P,P}` (already built
+   in `corner`, the homomorphism), `lem_approx` (dhom), and `lem_merging`; then
+   `errreduce` after each step.
+3. **Stage 3 (merge blocks):** `cor_merge_sum` over the equivalence classes +
+   `errreduce`, giving `B = ⊕_C M_{|C|}` and the `c₀ε`-isomorphism `v`.
+
+**What `cstar_build` must still BUILD (not yet implemented):** the §9 assembly
+lemmas `lem_merging` (`tex:1325`), `cor_merge_sum` (`tex:1352`), `lem_add_dim`
+(`tex:1363`), `lem_extension` (`tex:1378`) — all on top of the existing
+`corner` (`S_{P,Q}`/compressed product/`lem_alpha`/Ha-map), `projection`, `dhom`,
+`errreduce`. These are **constructive** (shard E marks them so) but `lem_extension`
+is the substantive one (Ha-map linearization + `lem_approx` inside + `lem_merging`
+assembly). It is a LARGE module — budget a focused session; research shard E +
+`tex:1321-1446` first, decide the loop's data model (how to thread `B`'s growing
+block structure + the running `v`), then build the assembly lemmas, then the loop.
+
+**Reuse map (all CLOSED + green):** `aic_projection_nontrivial` (the nontrivial
+projection), `aic_corner_*` (Co/S/cdot/alpha/ip_1d/**ha**/dim_S/equiv_1d),
+`aic_dhom_approx`+`aic_dhom_prop_bounds` (lem_approx/prop_delta_hominc),
+`aic_errreduce` (the error reset), `aic_dhom_v_sigma_min` (the true inclusion
+lower bound). The η=0 oracle: an exact-idempotent Φ → A a genuine C* algebra →
+`cstar_build` must recover `B≅A` with `v` an **exact** isomorphism (zero defect).
+The universality canary (c₀ not growing with dim A) is the headline test — the
+`errreduce`/`dhom` canaries already pass; `cstar_build` must preserve it
+end-to-end.
+
+**Known open escalations feeding cstar_build** (see `paper/FINDINGS.md` §D):
+`aic-3qv` (does an Ω(1) gap always exist for `projection`? — per-instance
+certified now, universal guarantee open); `aic-1bc` (the analytic `c₀` from
+`cor_improvement` — only the *measured* c₀ exists today); `aic-w4o.1` (certified
+degenerate eig — corner `dim S`, projection gap *enclosure*, errreduce σ_min are
+double-path now). None block starting cstar_build (the constructive double-path
+route works; certification defers).
+
+**th_main_ext (§10, `opspace`, bead `aic-zwo`) and the headline `factorize`
+(`th_factorization`, `aic-tff`) come AFTER cstar_build** — the user scoped this
+work to plain `th_main`, not the tensor extension.
+
+---
 
 **`aic-8hz` (this session, CLOSED, committed).** funcalc now has a globally-
 convergent non-normal matrix-`sgn` reaching the full SPECTRAL `ρ(I−X²)<1` regime,
