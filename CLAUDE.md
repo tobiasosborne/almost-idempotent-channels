@@ -385,14 +385,19 @@ real bugs in the sibling).
 
 ## Session completion ("landing the plane")
 
-This repo is **under git + beads** (initialized 2026-05-28) but has **no remote
-configured**. The auto-generated Beads block at the bottom mandates `git push` /
-`bd dolt push`; until a remote exists, that push step is **N/A** — do not invent
-one. Instead, at session end: file/close beads for work surfaced this session,
-run the quality gates (once code exists), commit atomically with `.tex`-line
-provenance, and leave the working tree clean. Cross-session persistence is the
-committed `.beads/` + git history. Do not add a remote unless the user asks; when
-one exists, adopt the sibling push protocol (work is not "done" until pushed).
+This repo is **under git + beads** (initialized 2026-05-28). A **git remote now
+exists** (`origin` → `git@github.com:tobiasosborne/almost-idempotent-channels.git`,
+`master` tracks `origin/master`; user directive 2026-05-30: "push should be done
+regularly and should work"). So **push after every commit** — `git pull --rebase &&
+git push` — and certainly at session end (adopt the sibling push protocol: work is
+not "done" until pushed). Before committing, `bd export > .beads/issues.jsonl` so
+the bead state lands in the commit (the pre-commit hook also syncs it); the JSONL
+in git IS the bead persistence — **no `bd dolt` remote is configured**, so `bd dolt
+push` is a no-op/N/A (do not invent a dolt remote unless asked). At session/commit
+boundaries: file/close beads for work surfaced, run the quality gates, commit
+atomically with `.tex`-line provenance, push, and leave the working tree clean
+(the untracked `.claude/docs`/`.claude/tools` are session-start hook artifacts —
+leave them untracked, do not commit them).
 
 ## Stop conditions (escalate to the user)
 

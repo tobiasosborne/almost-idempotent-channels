@@ -417,8 +417,10 @@ Mathematica/`wolframscript` (needs the user's VPN) for exact fun-calc, driven fr
 Julia or C. **No parallel Julia** (precompile/env fragility — one Julia process at
 a time). `TaskCreate` is fine for ephemeral in-session tracking; **beads is the
 only persistent tracker** (`bd ready`/`bd show`; export to `.beads/issues.jsonl`
-before committing — the pre-commit hook also syncs it). **No GitHub CI; no remote
-configured** (commit locally; do NOT push — the auto-block's push step is N/A).
+before committing — the pre-commit hook also syncs it). **No GitHub CI.** A git
+**remote now exists** (`origin`, GitHub; user directive 2026-05-30) — **push after
+every commit** (`git pull --rebase && git push`). The `.beads/issues.jsonl` in git
+is the bead persistence; no `bd dolt` remote is configured (`bd dolt push` is N/A).
 
 ## Conventions / gotchas
 
