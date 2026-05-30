@@ -1731,3 +1731,63 @@ the canary print-only → slope assert; + the asymmetric/oblique coverage.
 (H-pick + gap, 195 LOC), `src/aic_projection_internal.h`, `tests/test_projection.c`.
 Certified gap ENCLOSURE (Rump) defers to `aic-w4o.1`; gap-finding uses double-path
 zheev now, the defect is arb-certified. Next th_main step: `dhom` (§8, bead aic-c1n).
+
+## Module `dhom` — δ-homomorphism approximation (bead aic-c1n, §8)
+
+Realizes `prop_delta_hominc` (`.tex:1194`) + `lem_approx` (`.tex:1224`): any
+δ-homomorphism `v` from a genuine finite-dim C* algebra B into an ε-C* algebra A
+is `O(δ)`-close to an `O(ε)`-homomorphism `ṽ`. The §8 tool the master loop's
+`lem_extension`/`cor_improvement` lean on. **Fully constructive, eig-free**
+(pure products + norms).
+
+### Data model
+B = ⊕_l M_{d_l} (block dims + matrix-unit basis `E^{(l)}_{ab}`, block matmul,
+block adjoint, unit ⊕I_{d_l}). `v: B→A` stored as `dim_B` n×n matrices
+`vE[i]=v(E_i)`; `v(X)=Σ_i x_i vE[i]`. **The multiplicativity defect**
+`G_v(X,Y)=v(XY)−v(X)⋆v(Y)` uses *two* products: `XY` is B's block matmul, but
+`v(X)⋆v(Y)` is A's **Choi–Effros star** (`aic_ecstar_star`, load-bearing — never
+plain matmul; the η=0 identity-channel oracle is blind to this, only the η>0 T4
+catches it, the corner lesson).
+
+### The generalized-Pauli diagonal (dimension-independence crux, tex:484)
+`D=Σ_jk d⁻² S_jk†⊗S_jk`, `S_jk=X^jZ^k` (shift·clock Heisenberg–Weyl). The
+**exact** diagonal (central `XD=DX`, `π(D)=I`, `‖D‖_proj=1`) is what makes the
+th_main constant dimension-independent (a naive ε-averaged diagonal carries O(n)
+error). **A real `.tex` finding (see `paper/FINDINGS.md`):** the paper's `tex:1254`
+direct-sum formula (Cartesian product of joint block-diagonal unitaries) is
+**non-central for the finite Pauli 1-design** (`Σ_jk S_jk≠0` unlike Haar
+`∫U dU=0`, leaving spurious cross-sector terms; measured `‖XD−DX‖=0.54` for
+M₂⊕M₂). The correct finite central diagonal is the cross-term-free **embedded
+sum** `D=Σ_l D_l` (per-block Pauli embedded as a partial isometry in sector (l,l)),
+`nterms=Σ_l d_l²` — this is the Haar diagonal `∫dU U†⊗U`. Consequence: `‖D‖_proj=m`
+(block count), not 1, so the `w'` bound is `O(mδ)`; the canary (below) checks this
+m-dependence does not surface in the constant.
+
+### lem_approx Newton iteration
+`w'(X)=Σ_t v⁽ˢ⁾(A_t)⋆g(B_t,X)` (star; uses the *current* v⁽ˢ⁾), `w''(X)=w'(X†)†`,
+`v⁽ˢ⁺¹⁾=v⁽ˢ⁾+½(w'+w'')` — defect `O(δ)→O(δ²+ε)` per step (the F_w cancellation
+`tex:1282-1304` relies on `XD=DX`), iterate to `≤O(ε)`, fail-loud on the cap.
+`prop_delta_hominc` = 3 predicates (‖v‖ upper, lower-bound surrogate,
+unit-preservation). Certified op-norms via `aic_corner_gamma_opnorm_ub` (aic-qgs).
+
+### Cross-checks — `tests/test_dhom.c`, 89 checks
+T1 Pauli identities (unitarity, π(D)=I, **centrality incl. the direct-sum case**
+M₂⊕M₂/M₂⊕M₃, ‖D‖_proj; mutation: clock-phase k=0 → centrality RED 0.48; the
+old joint Cartesian build → direct-sum centrality RED 0.71). T2 η=0 oracle
+(`v(X)=UXU†` exact hom → G_v=0, 0 steps). T3 Johnson (δ>0,ε=0 → exact hom in 4
+steps, ‖ṽ−v‖=1.02δ). T4 ε>0 (mixconj, C=defect/ε=2.2; **star-mutation RED**:
+defect floors at 1.11, both star call sites independently caught). T5
+universality canary (block-dim sweep M₂/M₃/M₄ ratio 1.31; **block-count sweep**
+m=1,2,3: C={2.71,1.24,1.56} — does NOT grow with m; Pauli-mutation → C grows RED).
+T6 prop bounds. Hostile review found the direct-sum non-centrality BLOCKER (T1
+never tested multi-block diagonals — a "test that cannot fail"); fixed + the
+direct-sum centrality test added.
+
+### Files
+`include/aic_dhom.h`, `src/aic_dhom_B.c` (B + matrix units), `src/aic_dhom_diag.c`
+(Pauli diagonal + the embedded-sum fix + the `.tex:1254` discrepancy box),
+`src/aic_dhom_defect.c` (v + G_v + prop_delta_hominc), `src/aic_dhom_approx.c`
+(Newton), `src/aic_dhom_internal.h`. No eig anywhere. `c_0` (cor_improvement) is
+unstated in the paper → the next module `errreduce` (aic-t81) / research aic-1bc.
+Next th_main step: `errreduce` (§8/9, aic-t81) → `cstar_build` (§9 master loop,
+aic-097).
