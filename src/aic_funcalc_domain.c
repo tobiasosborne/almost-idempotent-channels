@@ -27,6 +27,23 @@
 #include "aic_mat.h"
 #include "aic_funcalc_internal.h"
 
+/* See the header docstring (aic_funcalc_internal.h). Computed on the ball
+ * MIDPOINTS so the convergence test tracks "the iterate has stopped moving",
+ * not the (monotonically inflating) certified radius. */
+void aic_funcalc_int_step_norm(arb_t out, const acb_mat_t A, const acb_mat_t B,
+                               slong prec)
+{
+    slong n = acb_mat_nrows(A);
+    acb_mat_t D;
+    acb_mat_init(D, n, n);
+    acb_mat_sub(D, A, B, prec);
+    for (slong i = 0; i < n; i++)
+        for (slong j = 0; j < n; j++)
+            acb_get_mid(acb_mat_entry(D, i, j), acb_mat_entry(D, i, j));
+    aic_mat_frobenius_norm(out, D, prec);
+    acb_mat_clear(D);
+}
+
 void aic_funcalc_int_tol(arb_t tol, slong prec)
 {
     arb_set_si(tol, 1);

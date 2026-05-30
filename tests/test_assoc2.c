@@ -42,6 +42,9 @@
 #include "aic_assoc.h"
 #include "aic_ecstar.h"
 #include "aic_funcalc.h"
+/* U6 (aic-8hz) drives the funcalc Gelfand certifier directly (the public prop_P
+ * aborts on a not-certified verdict; the test asserts the certified verdict). */
+#include "../src/aic_funcalc_internal.h"
 #include "aic_idemp.h"
 #include "aic_latd.h"
 #include "aic_mat.h"
@@ -663,6 +666,142 @@ static void test_u5(void)
     }
 }
 
+/* ====================== U6: the non-normal payoff (aic-8hz) ============== */
+
+/* T-global-5: a genuinely eta-idempotent NON-NORMAL channel whose superoperator
+ * S_Phi has rho(S_Phi^2-S_Phi) < 1/4 but ||S_Phi^2-S_Phi||_op >= 1/4. The OLD
+ * op-norm-basin aic_prop_P would ABORT on it (||S^2-S||_op >= 1/4); the RELAXED
+ * aic_prop_P (bead aic-8hz, Gelfand SPECTRAL precondition rho(S^2-S) < 1/4)
+ * SUCCEEDS, and aic_assoc_regularize returns an EXACT idempotent S_tilde.
+ *
+ * THE CHANNEL. A convex mix Phi_t = (1-t) compress_idemp(4,1) + t dephasing(4)
+ * (t=0.30). Both summands are exactly-idempotent unital CP maps, so Phi_t is UCP
+ * and eta-idempotent. compress_idemp is genuinely OBLIQUE (non-HS-self-adjoint,
+ * U5: S_tilde sigma_max > 1), so its superoperator S_Phi is NON-NORMAL, and the
+ * defect S_Phi^2-S_Phi has ||.||_op = 2 rho (a 2x non-normality gap, measured).
+ * The self-dual eta-family (U2/U3) can NOT serve here: a mix of HS-self-adjoint
+ * maps is HS-self-adjoint, so its S_Phi is HERMITIAN and ||S^2-S||_op = rho
+ * exactly (no straddle). The obliqueness of the compression channel is what
+ * opens the op-norm/spectral-radius gap that the relaxation exploits.
+ *
+ * MEASURED (t=0.30, prec=256): ||S^2-S||_op = 0.420 >= 1/4 (OLD prop_P aborts),
+ * rho(S^2-S) = 0.210 < 1/4, Gelfand certifies 4 rho(S^2-S) < 1 at k=6
+ * (rho_ub = 0.975 < 1), and ||S_tilde^2 - S_tilde||_op = 3e-77 (exact idempotent).
+ */
+static void test_u6(void)
+{
+    const slong P = 256;
+    const slong d = 4, m = 1;
+    const double t = 0.30;
+    printf("U6 non-normal payoff (aic-8hz) compress_idemp(%ld,%ld) x dephasing(%ld) "
+           "t=%.2f:\n", (long) d, (long) m, (long) d, t);
+
+    aic_ucp_kraus base, dep, phi;
+    make_compress_idemp(&base, d, m);
+    make_dephasing(&dep, d);
+    make_mix(&phi, &base, &dep, t, P);
+    slong n = phi.dim_H, nn = n * n;
+
+    /* (1) the OLD op-basin prop_P would ABORT: ||S^2-S||_op >= 1/4. eta_proxy
+     * returns exactly ||S_Phi^2 - S_Phi||_op (the OLD prop_P precondition). */
+    double op = eta_proxy(&phi, P);
+    arb_t opb, quarter;
+    arb_init(opb);
+    arb_init(quarter);
+    arb_set_d(opb, op);
+    arb_set_si(quarter, 1);
+    arb_mul_2exp_si(quarter, quarter, -2);          /* 1/4 */
+    AIC_CHECK_MSG(!arb_lt(opb, quarter),
+                  "U6: ||S^2-S||_op=%.4f < 1/4 — OLD op-basin prop_P would NOT "
+                  "abort, so this is not a straddle witness", op);
+
+    /* (2) the RELAXED prop_P (Gelfand spectral) SUCCEEDS: rho(S^2-S) < 1/4.
+     * Certify on M = I - (2S-1)^2 = 4(S^2-S) (rho(M)<1 <=> rho(S^2-S)<1/4). */
+    acb_mat_t S, X, M, I2;
+    acb_mat_init(S, nn, nn);
+    acb_mat_init(X, nn, nn);
+    acb_mat_init(M, nn, nn);
+    acb_mat_init(I2, nn, nn);
+    aic_assoc_superop_from_ucp(S, &phi, P);
+    acb_mat_scalar_mul_2exp_si(X, S, 1);            /* 2S */
+    acb_mat_one(I2);
+    acb_mat_sub(X, X, I2, P);                        /* X = 2S - 1 */
+    acb_mat_sqr(M, X, P);
+    acb_mat_sub(M, I2, M, P);                        /* M = I - X^2 = 4(S^2-S) */
+    arb_t rho;
+    arb_init(rho);
+    slong kused = 0;
+    int cert = aic_funcalc_int_gelfand_rho(rho, &kused, M, 32, P);
+    printf("  ||S^2-S||_op=%.4f (>=1/4: OLD aborts)  Gelfand 4rho(S^2-S): cert=%d "
+           "k=%ld rho_ub=%.4f (<1: RELAXED succeeds)\n",
+           op, cert, (long) kused, dd(rho));
+    AIC_CHECK_MSG(cert == 1,
+                  "U6: Gelfand could not certify rho(S^2-S) < 1/4 — relaxed prop_P "
+                  "would abort too (channel over the spectral 1/4 boundary?)");
+
+    /* (3) the relaxed aic_assoc_regularize SUCCEEDS and S_tilde is an EXACT
+     * idempotent (S_tilde^2 = S_tilde to tol). */
+    acb_mat_t St, St2, Diff;
+    acb_mat_init(St, nn, nn);
+    acb_mat_init(St2, nn, nn);
+    acb_mat_init(Diff, nn, nn);
+    aic_assoc_regularize(St, &phi, P);              /* would abort under OLD prop_P */
+    acb_mat_sqr(St2, St, P);
+    acb_mat_sub(Diff, St2, St, P);
+    arb_t idef, tol;
+    arb_init(idef);
+    arb_init(tol);
+    arb_set_d(tol, 1e-40);
+    aic_mat_opnorm(idef, Diff, P);
+    printf("  regularize SUCCEEDED; ||S_tilde^2 - S_tilde||_op=%.3e (exact idempotent)\n",
+           dd(idef));
+    AIC_CHECK_MSG(arb_lt(idef, tol),
+                  "U6: S_tilde not idempotent (||S_tilde^2-S_tilde||=%.3e > tol) — "
+                  "relaxed regularization produced a non-idempotent", dd(idef));
+
+    /* (4) SIGN WITNESS (hostile review, aic-8hz). The idempotence check (3) is
+     * sign-BLIND: the complementary idempotent I - S_tilde (what -sgn would yield)
+     * also passes (3). theta/prop_P pin the correct sign via UNITALITY: the
+     * regularized channel is unital, Phi_tilde(1) = 1 (tex:2179), i.e. the
+     * superoperator FIXES vec(I):  S_tilde vec(I) = vec(I). The complement
+     * I - S_tilde instead ANNIHILATES vec(I). So ||S_tilde vec(I) - vec(I)|| ~ 0
+     * for the correct sign and jumps to ||vec(I)|| = sqrt(n) under -sgn -> RED.
+     * This is a trace/eigenvalue identity (vec(I) is the +1 eigenvector of
+     * 2 S_Phi - 1 since Phi(1)=1), robust to the obliqueness of S_tilde — unlike a
+     * norm comparison ||S_tilde - S|| vs ||(I-S_tilde) - S||, which need NOT order
+     * correctly for an oblique S_tilde (sigma_max(S_tilde) = sqrt(3) here). */
+    acb_mat_t vecI, w, dv;
+    acb_mat_init(vecI, nn, 1);
+    acb_mat_init(w, nn, 1);
+    acb_mat_init(dv, nn, 1);
+    for (slong a = 0; a < n; a++)
+        acb_one(acb_mat_entry(vecI, a * n + a, 0));     /* vec(I_n), row-major */
+    acb_mat_mul(w, St, vecI, P);                         /* S_tilde vec(I) */
+    acb_mat_sub(dv, w, vecI, P);                         /* Phi_tilde(1) - 1 */
+    arb_t unit_def, utol;
+    arb_init(unit_def);
+    arb_init(utol);
+    arb_set_d(utol, 1e-40);
+    aic_mat_frobenius_norm(unit_def, dv, P);
+    printf("  sign witness: ||S_tilde vec(I) - vec(I)||=%.3e (Phi_tilde(1)=1; "
+           "-sgn complement -> sqrt(n)=%.3f)\n", dd(unit_def), sqrt((double) n));
+    AIC_CHECK_MSG(arb_lt(unit_def, utol),
+                  "U6: Phi_tilde(1) != 1 (||S_tilde vec(I)-vec(I)||=%.3e) — the "
+                  "regularization picked -sgn (complement I - S_tilde annihilates "
+                  "vec(I)), or unitality is broken", dd(unit_def));
+    arb_clear(utol); arb_clear(unit_def);
+    acb_mat_clear(dv); acb_mat_clear(w); acb_mat_clear(vecI);
+
+    arb_clear(tol); arb_clear(idef);
+    acb_mat_clear(Diff); acb_mat_clear(St2); acb_mat_clear(St);
+    arb_clear(rho);
+    acb_mat_clear(I2); acb_mat_clear(M); acb_mat_clear(X); acb_mat_clear(S);
+    arb_clear(quarter); arb_clear(opb);
+    aic_ucp_kraus_clear(&phi);
+    aic_ucp_kraus_clear(&dep);
+    aic_ucp_kraus_clear(&base);
+}
+
 int main(void)
 {
     test_u1();
@@ -670,6 +809,7 @@ int main(void)
     test_u3();
     test_u4();
     test_u5();
+    test_u6();
     aic_test_report("test_assoc2");
     printf("OK test_assoc2\n");
     return 0;

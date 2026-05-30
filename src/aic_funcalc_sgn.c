@@ -60,33 +60,9 @@
 
 #define AIC_SGN_MAX_ITERS 100
 
-/* MIDPOINT Frobenius step ||A - B||_F into `out`, computed on the ball MIDPOINTS
- * (radii stripped) rather than the certified balls.
- *
- * Why midpoints. A quadratically-convergent interval iteration reaches the true
- * fixed point (sgn X) in a handful of steps, after which the midpoint stops
- * moving but the certified ball RADII keep inflating (each step's rounding adds
- * to the radius; Newton-Schulz is not radius-contracting at the fixed point).
- * A convergence test on the certified-ball norm therefore stalls at the growing
- * radius and never falls below tol (observed: at prec=256 the midpoint step is
- * < 1e-74 by iter 7 but the ball-norm floor is ~7e-75 and rising). The midpoint
- * step is the honest measure of "the iterate has stopped moving". The returned
- * matrix is still a rigorous enclosure (every step used certified acb arithmetic);
- * we just stop accumulating radius once the midpoint has converged. The
- * Frobenius norm (no Gram/eig, no Hermiticity assert) is used so the test is
- * robust to the non-exact, possibly non-Hermitian iteration matrices. */
-static void step_norm(arb_t out, const acb_mat_t A, const acb_mat_t B, slong prec)
-{
-    slong n = acb_mat_nrows(A);
-    acb_mat_t D;
-    acb_mat_init(D, n, n);
-    acb_mat_sub(D, A, B, prec);
-    for (slong i = 0; i < n; i++)
-        for (slong j = 0; j < n; j++)
-            acb_get_mid(acb_mat_entry(D, i, j), acb_mat_entry(D, i, j));
-    aic_mat_frobenius_norm(out, D, prec);
-    acb_mat_clear(D);
-}
+/* The midpoint convergence measure step_norm lives in aic_funcalc_domain.c as
+ * aic_funcalc_int_step_norm (shared with the global Newton variant, bead aic-8hz);
+ * see its header docstring for why midpoints, not certified balls. */
 
 void aic_sgn_newton_schulz(acb_mat_t out, const acb_mat_t X, slong prec)
 {
@@ -118,7 +94,7 @@ void aic_sgn_newton_schulz(acb_mat_t out, const acb_mat_t X, slong prec)
         acb_mat_mul(Ynext, Y, T, prec);      /* Y (3 I - Y^2) */
         acb_mat_scalar_mul_2exp_si(Ynext, Ynext, -1); /* * 1/2 */
 
-        step_norm(step, Ynext, Y, prec);
+        aic_funcalc_int_step_norm(step, Ynext, Y, prec);
         acb_mat_set(Y, Ynext);
         if (arb_lt(step, tol)) { k++; break; } /* converged below tol */
     }
@@ -173,7 +149,7 @@ void aic_sgn_denman_beavers(acb_mat_t out, const acb_mat_t X, slong prec)
         acb_mat_add(Ynext, Y, Yinv, prec);   /* Y + Y^{-1} */
         acb_mat_scalar_mul_2exp_si(Ynext, Ynext, -1); /* * 1/2 */
 
-        step_norm(step, Ynext, Y, prec);
+        aic_funcalc_int_step_norm(step, Ynext, Y, prec);
         acb_mat_set(Y, Ynext);
         if (arb_lt(step, tol)) { k++; break; }
     }
@@ -191,10 +167,19 @@ void aic_sgn_denman_beavers(acb_mat_t out, const acb_mat_t X, slong prec)
     arb_clear(tol);
 }
 
-/* Default dispatch: Newton-Schulz, chosen on bench evidence (file docstring;
- * bench/bench_funcalc.c). Inverse-free + faster, equal correctness on the
- * degenerate-projector case that is this project's real input. */
+/* Default dispatch (bead aic-8hz): AUTO-DISPATCH on the operator-norm basin.
+ * When ||X^2-I||_op is certified < 1 (the Newton-Schulz local-convergence basin),
+ * use the fast inverse-free Newton-Schulz — BYTE-FOR-BYTE the prior behavior, so
+ * the existing in-basin tests are unchanged (and the bench-selected winner on the
+ * degenerate-projector inputs this project actually uses; see the file docstring).
+ * Out of basin, fall back to the globally-convergent aic_sgn_newton_global, which
+ * certifies the SPECTRAL precondition rho(I-X^2)<1 (Higham Thm 5.6) instead of the
+ * op-norm bound. This is a STRICT improvement: the out-of-basin input previously
+ * hit Newton-Schulz's domain assert and ABORTED. The probe is non-aborting. */
 void aic_sgn(acb_mat_t out, const acb_mat_t X, slong prec)
 {
-    aic_sgn_newton_schulz(out, X, prec);
+    if (aic_funcalc_int_in_op_basin(X, prec))
+        aic_sgn_newton_schulz(out, X, prec);
+    else
+        aic_sgn_newton_global(out, X, prec);
 }

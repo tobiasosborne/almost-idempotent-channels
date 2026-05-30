@@ -61,8 +61,28 @@ void aic_sgn_newton_schulz(acb_mat_t out, const acb_mat_t X, slong prec);
  * converges in one step. `out` n x n, initialised. */
 void aic_sgn_denman_beavers(acb_mat_t out, const acb_mat_t X, slong prec);
 
-/* Default sgn(X): dispatches to the benchmarked-best candidate (see the
- * selection comment in src/aic_funcalc_sgn.c, which cites bench_funcalc.c). */
+/* sgn(X) via the GLOBALLY-convergent Newton sign iteration (bead aic-8hz):
+ *   Y_0 = X,   Y_{k+1} = 1/2 (Y_k + Y_k^{-1}),
+ * the same step as aic_sgn_denman_beavers, but the precondition is the SPECTRAL
+ * basin rho(I - X^2) < 1 (a SUFFICIENT sub-case of Higham's full no-imaginary-
+ * eigenvalue hypothesis — Functions of Matrices, SIAM 2008, Ch.5 Thm 5.6, global +
+ * quadratic convergence), NOT the operator-norm basin ||X^2-I||_op < 1. It does
+ * NOT cover every Higham-valid X (e.g. diag(2,-3) aborts), by design: our inputs
+ * X=2 S_Phi - 1 have spectrum near +/-1, exactly this disk. The condition is
+ * certified EIG-FREE and RIGOROUSLY via the Gelfand bound: accept the first k with
+ * ||(I-X^2)^k||_F^{1/k} certainly < 1 (fail loud if no k <= k_max certifies).
+ * After convergence an a-posteriori certificate (||Y^2-I|| < tol AND
+ * ||XY-YX|| < tol) pins Y = sgn(X); a straddling certificate ball aborts (Rule
+ * 4). Reaches the full non-normal regime the op-basin path rejected (e.g.
+ * X=[[a,c],[0,-b]] with large c, where ||I-X^2||_op > 1 but rho(I-X^2) < 1).
+ * `out` n x n, initialised, out != X (asserted). */
+void aic_sgn_newton_global(acb_mat_t out, const acb_mat_t X, slong prec);
+
+/* Default sgn(X): AUTO-DISPATCHES (bead aic-8hz) — the fast inverse-free
+ * Newton-Schulz when ||X^2-I||_op is certified < 1 (the in-basin path, BYTE-FOR-
+ * BYTE the previous behavior), else the globally-convergent aic_sgn_newton_global
+ * (a strict improvement: the out-of-basin input previously ABORTED). The probe is
+ * aic_funcalc_int_in_op_basin (non-aborting). See src/aic_funcalc_sgn.c. */
 void aic_sgn(acb_mat_t out, const acb_mat_t X, slong prec);
 
 /* x^alpha of a matrix A near x0 I, via the binomial Taylor series (tex:503-511):

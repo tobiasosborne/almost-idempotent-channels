@@ -1145,13 +1145,22 @@ honest parts:
 
 ### Fail-loud basin (T9) + its dimension dependence
 
-`θ`/`sgn` require `‖(2S−1)²−I‖_op = 4‖S²−S‖_op < 1` (`.tex:516,520-521`);
-`aic_prop_P` additionally asserts `‖S²−S‖_op < 1/4` (`.tex:525`) on a CERTIFIED
-ball and aborts loudly otherwise (Rule 4). This holds at η=0 and small η but TRIPS
-near `η → 1/4` or for large-`n` channels whose defect inflates (the in-basin guard
-`4‖S²−S‖_op < 1` is asserted live in T6). The out-of-basin globally-convergent
-`sgn` variant is bead **aic-8hz** (out of scope here). T9 documents this; an abort
-would fail the binary, so it is not invoked, only asserted in-basin.
+`θ`/`sgn` are well-defined when `2S−1` has no purely-imaginary eigenvalue
+(`.tex:516,520-521,546-550`). The ORIGINAL `aic_prop_P` asserted the OPERATOR-norm
+basin `‖S²−S‖_op < 1/4` (`.tex:525`), which TRIPS near `η → 1/4` or for large-`n` /
+NON-NORMAL channels even though the SPECTRAL condition `ρ(S²−S) < 1/4` still holds.
+**Bead aic-8hz (LANDED)** relaxed this: `aic_prop_P` now certifies the spectral
+condition EIG-FREE via the Gelfand bound `‖M^k‖_F^{1/k} < 1` on `M = I−(2S−1)² =
+4(S²−S)` (accept the first `k` whose certified ball is `< 1`; `k=1` is the old
+Frobenius check), and `aic_sgn` auto-dispatches to a globally-convergent Newton
+iteration `½(Y+Y⁻¹)` (Higham *Functions of Matrices* Thm 5.6) out of the op-norm
+basin. The payoff is `test_assoc2` **U6**: a genuinely oblique channel
+(`compress_idemp(4,1)×dephasing(4)`, `t=0.30`) with `‖S²−S‖_op = 0.420 ≥ 1/4` (OLD
+`prop_P` aborts) but `ρ(S²−S) = 0.210 < 1/4` (Gelfand certifies `4ρ<1` at `k=6`,
+`ρ_ub=0.975`); the relaxed `aic_assoc_regularize` succeeds, `‖S̃²−S̃‖_op = 8.9e-70`.
+A sign witness pins the correct branch via unitality `Φ̃(1)=1` (`.tex:2179`):
+`‖S̃·vec(I)−vec(I)‖ = 4.0e-70`, vs `√n = 2.0` for the `−sgn` complement (mutation-
+proven). See `## Module funcalc — global sgn` below and `docs/research/sgn_global_research.md`.
 
 ### Precision ladder (T8) + the near-zero opnorm fix
 
@@ -1198,7 +1207,9 @@ rigor lives in T3/T6, not the trend).
 
 ### Deferred (beaded)
 
-- Out-of-basin globally-convergent `sgn` (η near 1/4 / large n) → bead **aic-8hz**.
+- Out-of-basin globally-convergent `sgn` (η near 1/4 / large n) → bead **aic-8hz**
+  CLOSED 2026-05-30 (Gelfand spectral precondition + global Newton; see the T9
+  section above and the dedicated funcalc-global module section).
 
 ## Module `assoc_ecsa` (Increment 2) — A = Img Φ̃, the Choi–Effros star, th_almost_idemp (bead aic-92f)
 
@@ -1379,3 +1390,62 @@ the iterate would leave `A`).
 - Radius-aware opnorm so the defect estimators consume the full certified `S̃` ball
   (not the midpoint) → same deferral as the inflated-radius wall (`aic-w4o.1`).
 - The downstream channel factorization (`th_factorization`) → `aic-tff`.
+
+## Module `funcalc` — globally-convergent non-normal `sgn` (bead aic-8hz)
+
+The original `funcalc` `sgn` candidates (`aic_sgn_newton_schulz`,
+`aic_sgn_denman_beavers`) both assert the OPERATOR-norm basin `‖X²−I‖_op < 1`
+(`.tex:520-521`), the Newton–Schulz local-convergence region. For the
+`assoc_ecsa` superoperator `X = 2S_Φ − 1` (NON-NORMAL: `Φ` is HP-preserving but
+not HS-self-adjoint), the eigenvalues satisfy `λ²−1 = 4μ(μ−1)`, `μ ∈ spec(S_Φ)`,
+so `ρ(I−X²) = 4ρ(S_Φ²−S_Φ) ≤ 4η < 1` — the SPECTRAL radius is below 1, but for a
+non-normal `X` the op-norm `‖I−X²‖_op` can exceed 1, tripping the basin guard near
+`η → 1/4` / large `n` even though `sgn(X)` is well-defined.
+
+**Constructive route (Law 3).** Higham, *Functions of Matrices* (SIAM 2008),
+Ch. 5 Thm 5.6: the Newton sign iteration `Y₀=X, Y_{k+1}=½(Y_k+Y_k⁻¹)` converges
+GLOBALLY + quadratically to `sgn(X)` for any `X` with no purely-imaginary
+eigenvalue. (Zolotarev/QDWH are Hermitian-only — inapplicable. Scaled Newton,
+Kenney–Laub 1992, is a deferred Pareto candidate, `aic-8hz` notes / a follow-up
+bead, not needed since our spectrum starts near `±1`.)
+
+**Precondition, eig-free + rigorous (the Gelfand certifier).** The implemented
+basin is `ρ(I−X²) < 1` — a SUFFICIENT sub-case of Higham's hypothesis (NOT the
+whole: `diag(2,−3)` is Higham-valid yet aborts here), exactly the disk our
+`X=2S_Φ−1` inputs occupy. `aic_funcalc_int_gelfand_rho` certifies `ρ(M)<1` for
+`M=I−X²` via the Gelfand bound: `‖M^k‖_F^{1/k}` is a rigorous upper bound on `ρ(M)`
+for every `k` and decreases to it, so the first `k≤k_max=32` with a certified
+`‖M^k‖_F^{1/k} < 1` (whole arb ball `< 1`) proves it. `k=1` is the old Frobenius
+check; non-normal `M` needs a few powers past the transient (`k=2` for the 2×2
+teeth, `k=6` for the U6 superoperator). No eigensolver ⇒ sidesteps the
+degenerate-eig debt `aic-w4o.1`. Fail loud if no `k` certifies (at/over `ρ=1`).
+
+**A-posteriori certificate.** After convergence, `aic_sgn_newton_global` certifies
+`‖Y²−I‖ < tol` (near an involution) AND `‖XY−YX‖ < tol` (commutes with `X`);
+combined with the certified precondition and `Y₀=X` basin invariance these pin
+`Y=sgn(X)` (rule out `−sgn` and wrong-inertia involutions). A straddling ball or a
+singular per-step inverse aborts (Rule 4). These checks genuinely fire: at prec=53
+on `[[1.05,c],[0,−0.95]]` they reject via `‖XY−YX‖` at `c=1e9` and `‖Y²−I‖` at
+`c=1e12` (hostile review).
+
+**Dispatch + prop_P.** `aic_sgn` auto-dispatches: in-basin (`‖X²−I‖_op<1` certified
+by the non-aborting probe `aic_funcalc_int_in_op_basin`) → Newton–Schulz, BYTE-FOR-
+BYTE the prior behavior (existing tests unchanged); else → `aic_sgn_newton_global`.
+`aic_prop_P` likewise certifies the spectral `ρ(P²−P)<1/4` via Gelfand on
+`M=4(P²−P)`, so `aic_theta`/`prop_P`/`aic_assoc_regularize` reach the full
+non-normal `η<1/4` regime.
+
+**Tests (`tests/test_funcalc_global.c`, n=12).** T-global-1 (teeth, exact closed-
+form oracle `sgn([[1.05,20],[0,−0.95]])=[[1,20],[0,−1]]`, INDEPENDENTLY confirmed
+by Mathematica `X(X²)^{-1/2}` + eigendecomposition to ~58 digits): op-basin probe
+FALSE (`‖I−X²‖_op=2.005`), Gelfand `ρ_ub=0.132` at `k=2`, global Newton 7 iters,
+max-diff vs oracle `< 1e-60`. T-global-2 (η=0 oracle `sgn(2P−I)=2P−I`). T-global-3
+(in-basin global/DB/Newton–Schulz agree to `1e-25`; `aic_sgn` dispatch byte-equal).
+T-global-4 (Gelfand rejects `ρ≥1`). The −sgn / wrong-inertia distinction is
+mutation-proven: a sign flip turns T-global-1/2/3 RED. `test_assoc2` U6 is the
+assoc payoff with the unitality sign witness (see the Increment-1 T9 section).
+
+**Files.** `src/aic_funcalc_global.c` (200 LOC), `src/aic_funcalc_domain.c`
+(shared `aic_funcalc_int_step_norm`), `src/aic_funcalc_sgn.c` (dispatch),
+`src/aic_funcalc_proj.c` (prop_P spectral relax), `include/aic_funcalc.h`,
+`src/aic_funcalc_internal.h`. Research: `docs/research/sgn_global_research.md`.

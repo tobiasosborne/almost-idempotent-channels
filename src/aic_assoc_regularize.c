@@ -13,11 +13,14 @@
  *
  * This is Proposition prop_P (.tex:524-533) applied to P = Phi at the
  * superoperator level: build S_Phi (aic_assoc_superop_from_ucp), then
- * S_tilde = aic_prop_P(S_Phi) = theta(2 S_Phi - 1). aic_prop_P ASSERTS the
- * prop_P hypothesis ||S_Phi^2 - S_Phi||_op < 1/4 (.tex:525) on a certified ball
- * and aborts loudly otherwise (Rule 4) — that IS the fail-loud basin guard for
- * the regularization. The out-of-basin (eta near 1/4) globally-convergent sgn
- * variant is bead aic-8hz, out of scope.
+ * S_tilde = aic_prop_P(S_Phi) = theta(2 S_Phi - 1). aic_prop_P CERTIFIES the
+ * prop_P hypothesis as the SPECTRAL condition rho(S_Phi^2 - S_Phi) < 1/4 (.tex:525)
+ * via the eig-free Gelfand bound (bead aic-8hz, LANDED) and aborts loudly at the
+ * true rho >= 1/4 boundary (Rule 4) — that IS the fail-loud basin guard. The sign
+ * inside theta auto-dispatches to the globally-convergent Newton out of the
+ * operator-norm basin (aic-8hz), so the full NON-NORMAL eta < 1/4 regime is now
+ * reachable (the earlier op-norm guard ||S_Phi^2 - S_Phi||_op < 1/4 over-rejected
+ * oblique channels; test_assoc2 U6 is the payoff witness).
  *
  * ROUTE A1 (default, here): prop_P -> theta -> aic_sgn (Newton-Schulz, eig-free).
  * ROUTE A2 (the independent non-normal cross-check, lives in the test, test T6):

@@ -1,14 +1,35 @@
 # HANDOFF.md — almost-idempotent-channels
 
-Orientation for a fresh agent. Last updated **2026-05-29**, after the
-**`assoc_ecsa` session** (Kitaev's `th_almost_idemp`, bead `aic-92f`, built in two
-committed increments). Current state: `master` clean, **16 test binaries green,
-zero warnings**, 19 beads closed of 59. NOTE `make test` is now **~3.5 min** (was
-seconds): the cost is the n=16 universality-canary regularization in
-`test_assoc2` U3 — cutting it is bead `aic-erz` (per-binary fast loops stay quick;
-`make build/test_X && ./build/test_X`). Read §"Channel-module conventions" before
-touching `ucp`/`idemp`/`cbnorm`/`ecstar`/`assoc_ecsa`; those conventions are
-load-bearing and prior hostile reviews learned them hard.
+Orientation for a fresh agent. Last updated **2026-05-30**, after the
+**`aic-8hz` session** (globally-convergent non-normal `sgn` in `funcalc`; see the
+next block). Prior: the `assoc_ecsa` session (Kitaev's `th_almost_idemp`, bead
+`aic-92f`). Current state: `master` clean, **17 test binaries green, zero
+warnings**, 20 beads closed of 60. NOTE `make test` is **~3.5 min**: the cost is
+the n=16 universality-canary regularization in `test_assoc2` U3 — cutting it is
+bead `aic-erz` (per-binary fast loops stay quick; `make build/test_X &&
+./build/test_X`). Read §"Channel-module conventions" before touching
+`ucp`/`idemp`/`cbnorm`/`ecstar`/`assoc_ecsa`; those conventions are load-bearing
+and prior hostile reviews learned them hard.
+
+**`aic-8hz` (this session, CLOSED, committed).** funcalc now has a globally-
+convergent non-normal matrix-`sgn` reaching the full SPECTRAL `ρ(I−X²)<1` regime,
+eig-free (no `aic-w4o.1` dependency). Route: Newton `½(Y+Y⁻¹)` (Higham *Functions
+of Matrices* Thm 5.6, global+quadratic) gated by a **Gelfand precondition**
+`‖M^k‖_F^{1/k}<1` on `M=I−X²` (`k=1` = the old op/Frobenius basin; non-normal needs
+a few powers; `k_max=32`, fail loud), + an a-posteriori `‖Y²−I‖`/`‖XY−YX‖`
+certificate (fires at prec=53). `aic_sgn` auto-dispatches (in-basin Newton–Schulz
+byte-for-byte, else global Newton); **`aic_prop_P` relaxed to the spectral
+`ρ(P²−P)<1/4`**, so `theta`/`prop_P`/`aic_assoc_regularize` now reach the full
+NON-NORMAL `η<1/4` regime (`assoc_ecsa` near-boundary/large-n robustness). New
+`src/aic_funcalc_global.c` (200 LOC), `tests/test_funcalc_global.c` (n=12). Teeth:
+2×2 closed-form oracle (Mathematica-confirmed 2 ways to 58 digits) + `test_assoc2`
+**U6** assoc payoff (oblique channel, `‖S²−S‖_op=0.42≥¼` OLD aborts, `ρ=0.21` cert
+`4ρ<1` at k=6 → `S̃²=S̃` to 8.9e-70) with a **unitality** sign witness `Φ̃(1)=1`
+(`‖S̃·vec(I)−vec(I)‖=4e-70` vs `√n=2` for −sgn), mutation-proven. Hostile review:
+no blockers; 3 non-blocking findings all fixed inline. Deferred: scaled-Newton
+(Kenney–Laub) Pareto candidate → bead **`aic-68c`** (P3; only if iteration/k counts
+climb near `η→¼`). Docs: `ALGORITHM.md` §"Module funcalc — global sgn",
+`docs/research/sgn_global_research.md`.
 
 **⚠️ RESUME HERE — `aic-92f` (`assoc_ecsa`, `th_almost_idemp`) is CLOSED; the
 paper's `th_almost_idemp` is now VERIFIED end-to-end.** This session built
@@ -31,11 +52,11 @@ algebra B. It is **NOT directly unblocked**: th_factorization Step 3 invokes
 real next constructive frontier is the **th_main pipeline**. `bd ready` P1: the
 recurring `aic-w4o.1` (certified DEGENERATE Hermitian eig — gates the certified
 halves of `projection`/Kraus/subspace extraction, deferred all session) and
-`aic-dbo.2` (adversarial instance generators). New this session: `aic-8hz`
-(globally-convergent matrix-sign for the NON-NORMAL superoperator — funcalc's
-Frobenius basin trips near η→1/4 / large n), `aic-erz` (cut the canary runtime),
-and `aic-4c7` stays open (the U2/U3 O(η) sweep used an op-norm η-PROXY; closing it
-needs the certified cb-η normalization to rule out a proxy↔cb-η dimension factor).
+`aic-dbo.2` (adversarial instance generators). `aic-8hz` (globally-convergent
+non-normal `sgn`) is now **CLOSED** (see the top block); `aic-erz` (cut the canary
+runtime) stays open, and `aic-4c7` stays open (the U2/U3 O(η) sweep used an op-norm
+η-PROXY; closing it needs the certified cb-η normalization to rule out a proxy↔cb-η
+dimension factor).
 
 **`assoc_ecsa` (this session, `aic-92f` Increments 1+2, commits `96f381e` + this
 one).** Realizes `th_almost_idemp` (`.tex:2162-2237`) as a finite-dim algorithm.
