@@ -27,11 +27,13 @@
 #include <flint/acb_mat.h>
 #include <flint/arb.h>
 
+#include "aic_adversarial.h"   /* evil-matrix corpus (aic-dbo.2): gen5 graded_diag */
 #include "aic_assoc.h"
 #include "aic_latd.h"
 #include "aic_mat.h"
 #include "aic_test.h"
 #include "aic_ucp.h"
+#include "../src/aic_mat_internal.h" /* aic_mat_int_is_hermitian (aic-2yo teeth test) */
 
 /* tol as an acb (zero imaginary) for the matrix close-checker, and as arb. */
 static void set_tol(arb_t tol, double t) { arb_set_d(tol, t); }
@@ -492,6 +494,89 @@ static void test_herm_max_eig_fallback(void)
     aic_ucp_kraus_clear(&phi);
 }
 
+/* --- 7. assert_hermitian RELATIVE tol on graded/ill-conditioned Gram (aic-2yo) - */
+/* The old ABSOLUTE Hermiticity tol 2^-(prec-8) false-failed on a Gram whose entry
+ * radii grow with magnitude (the asymmetry it flagged was the arb ball RADIUS, not
+ * a real asymmetry), so aic_mat_opnorm / aic_mat_singular_values ABORTED on any
+ * ill-conditioned input (cond >~ 1e2, precision-independently). The relative +
+ * absolute-floor tol tol*(1+|H_ij|+|H_ji|) fixes it while keeping teeth on a
+ * GENUINELY non-Hermitian input. Instance drawn from the adversarial corpus
+ * (aic_adv_graded_diag = gen5, the family that surfaced the bug).
+ *
+ * MUTATION-PROVEN: reverting the relative scale to the bare absolute tol (drop the
+ * arb_add/arb_add_si/arb_mul, compare mag <= tol) makes (1) and (2) RED (the graded
+ * Gram is rejected and opnorm aborts). Verified RED, then restored. */
+static void test_assert_hermitian_relative(void)
+{
+    const slong prec = 256;
+    const slong n = 6;
+    const double range = 1e8;
+
+    /* (1) THE FIX: the Gram G = D^dag D of a graded diagonal (kappa=1e8) is a
+     * genuine Hermitian; is_hermitian must ACCEPT it (the old absolute tol -> 0). */
+    acb_mat_t D, Dd, G;
+    acb_mat_init(D, n, n);
+    acb_mat_init(Dd, n, n);
+    acb_mat_init(G, n, n);
+    aic_adv_graded_diag(D, n, range, prec);     /* diag(1, r, ..., range) */
+    acb_mat_conjugate_transpose(Dd, D);
+    acb_mat_mul(G, Dd, D, prec);                /* G_ii ~ r^{2i}, up to range^2=1e16 */
+    AIC_CHECK_MSG(aic_mat_int_is_hermitian(G, prec),
+                  "aic-2yo: graded Gram (kappa=%.0e) rejected as non-Hermitian "
+                  "(absolute-tol regression)", range);
+
+    /* (2) END-TO-END: aic_mat_opnorm(D) routes through Gram + herm_max_eig +
+     * assert_hermitian; it must SUCCEED (no abort) and enclose sigma_max(D)=range
+     * (D diagonal). Before the fix this aborted. Containment is the rigorous check;
+     * the 1% midpoint band also catches a 0-straddling fallback ball (~5e7). */
+    arb_t op, range_arb;
+    arb_init(op);
+    arb_init(range_arb);
+    arb_set_d(range_arb, range);
+    aic_mat_opnorm(op, D, prec);
+    double opd = arf_get_d(arb_midref(op), ARF_RND_NEAR);
+    AIC_CHECK_MSG(arb_is_finite(op) && arb_contains(op, range_arb),
+                  "aic-2yo: opnorm(graded_diag) ball does not enclose range=%.0e "
+                  "(mid=%.6e)", range, opd);
+    AIC_CHECK_MSG(fabs(opd - range) <= 1e-2 * range,
+                  "aic-2yo: opnorm(graded_diag)=%.6e far from range=%.0e", opd, range);
+
+    /* (3) TEETH: GENUINELY non-Hermitian inputs must STILL be rejected. Real
+     * asymmetric [[1,2],[3,1]] (H_01=2 != conj(H_10)=3) and symmetric-but-not-
+     * Hermitian complex [[1,i],[i,1]] (H_01=i, conj(H_10)=-i). */
+    acb_mat_t NH;
+    acb_mat_init(NH, 2, 2);
+    acb_set_si(acb_mat_entry(NH, 0, 0), 1);
+    acb_set_si(acb_mat_entry(NH, 1, 1), 1);
+    acb_set_si(acb_mat_entry(NH, 0, 1), 2);
+    acb_set_si(acb_mat_entry(NH, 1, 0), 3);
+    AIC_CHECK_MSG(!aic_mat_int_is_hermitian(NH, prec),
+                  "aic-2yo TEETH: real asymmetric [[1,2],[3,1]] wrongly accepted "
+                  "(relative tol too loose)");
+    acb_onei(acb_mat_entry(NH, 0, 1));          /* H_01 = i */
+    acb_onei(acb_mat_entry(NH, 1, 0));          /* H_10 = i  => conj(H_10) = -i */
+    AIC_CHECK_MSG(!aic_mat_int_is_hermitian(NH, prec),
+                  "aic-2yo TEETH: symmetric-not-Hermitian [[1,i],[i,1]] wrongly "
+                  "accepted");
+
+    /* (4) SANITY: a genuine Hermitian (real symmetric) is accepted. */
+    acb_set_si(acb_mat_entry(NH, 0, 1), 2);
+    acb_set_si(acb_mat_entry(NH, 1, 0), 2);
+    AIC_CHECK_MSG(aic_mat_int_is_hermitian(NH, prec),
+                  "aic-2yo: real symmetric [[1,2],[2,1]] wrongly rejected");
+
+    printf("  test7 assert_hermitian relative tol (aic-2yo): graded Gram kappa=%.0e "
+           "accepted, opnorm=%.4e (=range); [[1,2],[3,1]] & [[1,i],[i,1]] rejected\n",
+           range, opd);
+
+    arb_clear(range_arb);
+    arb_clear(op);
+    acb_mat_clear(NH);
+    acb_mat_clear(G);
+    acb_mat_clear(Dd);
+    acb_mat_clear(D);
+}
+
 int main(void)
 {
     test_norms_exact();
@@ -500,6 +585,7 @@ int main(void)
     test_kron_ptrace();
     test_singular_values();
     test_herm_max_eig_fallback();
+    test_assert_hermitian_relative();
 
     aic_test_report("test_mat");
     printf("OK test_mat\n");

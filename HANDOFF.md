@@ -2,10 +2,11 @@
 
 Orientation for a fresh agent. Last updated **2026-05-30**, after an orchestrated
 session that landed **`aic-8hz`** (globally-convergent non-normal `sgn` in
-`funcalc`) and **`aic-dbo.2` Increment 1** (adversarial NLA generator corpus); see
-the next two blocks. Prior: the `assoc_ecsa` session (Kitaev's `th_almost_idemp`,
-bead `aic-92f`). Current state: `master` clean (pushed to `origin`), **18 test
-binaries green, zero warnings**, 20 beads closed of 61. NOTE `make test` is
+`funcalc`), **`aic-dbo.2` Increment 1** (adversarial NLA generator corpus), and
+**`aic-2yo`** (the substrate Hermiticity-tol bug the corpus surfaced); see the next
+blocks. Prior: the `assoc_ecsa` session (Kitaev's `th_almost_idemp`, bead
+`aic-92f`). Current state: `master` clean (pushed to `origin`), **18 test binaries
+green, zero warnings**, 21 beads closed of 61. NOTE `make test` is
 **~3.5 min**: the cost is
 the n=16 universality-canary regularization in `test_assoc2` U3 — cutting it is
 bead `aic-erz` (per-binary fast loops stay quick; `make build/test_X &&
@@ -46,11 +47,15 @@ simple-eig path can't isolate), gen4 `near_degen_herm` (4a; gap knob), gen5
 `graded_diag` (5c; κ knob to 1e8), gen6 `boundary_x2I` (7a, lethal #5; `‖X²−I‖`
 straddles 1), gen7 `propP_delta` (7b; `‖P²−P‖=δ` at the ¼ edge). The Makefile now
 links `tests/aic_*.c` (TEST_HELPER_SRC) into every test/bench. **The corpus already
-paid off**: gen5 surfaced a real substrate bug → bead **`aic-2yo`** (P2):
-`aic_mat_int_assert_hermitian`'s ABSOLUTE tol false-fails on a graded/ill-
-conditioned Gram, so `aic_mat_singular_values`/`opnorm` ABORT for condition number
-≳ 1e2 (precision-independent; verified at prec=1024) — needs a relative/magnitude-
-scaled tol. Increment 2 (still open on `aic-dbo.2`): the DOMAIN/channel families
+paid off**: gen5 surfaced a real substrate bug → bead **`aic-2yo`** (FIXED + closed
+this session): `aic_mat_int_assert_hermitian`'s ABSOLUTE tol false-failed on a
+graded/ill-conditioned Gram (the flagged asymmetry was the ball RADIUS, which grows
+with magnitude), so `aic_mat_singular_values`/`opnorm` ABORTED for condition number
+≳ 1e2 (precision-independent). Fix: a RELATIVE + absolute-floor tol
+`tol·(1+|H_ij|+|H_ji|)`, refactored into a non-aborting predicate
+`aic_mat_int_is_hermitian` so the teeth (genuine non-Hermitian still rejected) are
+testable; `test_mat` test7 (n=29) mutation-proven, full `make test` green.
+Increment 2 (still open on `aic-dbo.2`): the DOMAIN/channel families
 (`docs/adversarial/domain.md` — several gated by unbuilt modules) + the remaining
 NLA families; unblocks the universality canary `aic-dbo.3` once the `ε~c/dim` dim-
 sweep instances land. `test_adversarial.c` (451 LOC) joins the oversized-test-file

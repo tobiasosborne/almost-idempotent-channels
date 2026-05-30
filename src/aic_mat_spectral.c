@@ -55,38 +55,75 @@ void aic_mat_int_tol(arb_t tol, slong prec)
     arb_mul_2exp_si(tol, tol, -(prec - 8));
 }
 
-void aic_mat_int_assert_hermitian(const acb_mat_t H, slong prec)
+/* Non-aborting Hermiticity predicate. Returns 1 iff |H[i,j] - conj(H[j,i])| is
+ * certainly within a RELATIVE + absolute-floor tol tol*(1 + |H_ij| + |H_ji|) for
+ * all i,j, else 0 (bead aic-2yo).
+ *
+ * Why relative, not the bare absolute tol (the bug aic-2yo fixed). For a
+ * faithfully-rounded Hermitian H the flagged "asymmetry" |H_ij - conj(H_ji)| is
+ * the arb ball RADIUS, which grows with the entry MAGNITUDE. The canonical
+ * trigger is a Gram G = D^dag D of a graded/ill-conditioned D: G_ii ~ r^{2i}
+ * carries an imaginary-part radius ~r^{2i} 2^-prec (from the products), so the
+ * asymmetry is ~r^{2i} 2^-prec while the old ABSOLUTE tol 2^-(prec-8)=256 2^-prec
+ * is fixed -> false-fail once r^{2i} > 128, a PRECISION-INDEPENDENT abort (tol and
+ * radius both scale as 2^-prec). aic_mat_singular_values / aic_mat_opnorm (which
+ * route through the Gram) then aborted on any condition number >~ 1e2. Scaling the
+ * tol by (1 + |H_ij| + |H_ji|) tracks that magnitude: the +1 keeps the original
+ * absolute floor for O(1)/zero entries, so a GENUINELY non-Hermitian input
+ * (asymmetry ~ magnitude >> tol*magnitude) is still rejected (teeth preserved;
+ * tested in test_mat.c). */
+int aic_mat_int_is_hermitian(const acb_mat_t H, slong prec)
 {
     slong n = acb_mat_nrows(H);
     assert(acb_mat_ncols(H) == n && "Hermitian matrix must be square");
 
-    arb_t tol, mag;
+    arb_t tol, mag, scale, hij, hji;
     acb_t diff, cji;
     arb_init(tol);
     arb_init(mag);
+    arb_init(scale);
+    arb_init(hij);
+    arb_init(hji);
     acb_init(diff);
     acb_init(cji);
     aic_mat_int_tol(tol, prec);
 
-    for (slong i = 0; i < n; i++) {
+    int herm = 1;
+    for (slong i = 0; i < n && herm; i++) {
         for (slong j = 0; j < n; j++) {
             acb_conj(cji, acb_mat_entry(H, j, i));
             acb_sub(diff, acb_mat_entry(H, i, j), cji, prec);
-            acb_abs(mag, diff, prec);
-            if (!arb_le(mag, tol)) {
-                fprintf(stderr,
-                        "aic_mat: input not Hermitian at (%ld,%ld): "
-                        "|H_ij - conj(H_ji)| exceeds tol\n",
-                        (long) i, (long) j);
-                abort();
+            acb_abs(mag, diff, prec);                 /* |H_ij - conj(H_ji)| */
+            acb_abs(hij, acb_mat_entry(H, i, j), prec);
+            acb_abs(hji, acb_mat_entry(H, j, i), prec);
+            arb_add(scale, hij, hji, prec);
+            arb_add_si(scale, scale, 1, prec);        /* 1 + |H_ij| + |H_ji| */
+            arb_mul(scale, scale, tol, prec);         /* effective tol */
+            if (!arb_le(mag, scale)) {                /* fail iff certainly > tol */
+                herm = 0;
+                break;
             }
         }
     }
 
     acb_clear(cji);
     acb_clear(diff);
+    arb_clear(hji);
+    arb_clear(hij);
+    arb_clear(scale);
     arb_clear(mag);
     arb_clear(tol);
+    return herm;
+}
+
+void aic_mat_int_assert_hermitian(const acb_mat_t H, slong prec)
+{
+    if (!aic_mat_int_is_hermitian(H, prec)) {
+        fprintf(stderr,
+                "aic_mat: input not Hermitian: |H_ij - conj(H_ji)| exceeds the "
+                "relative tol tol*(1 + |H_ij| + |H_ji|) (bead aic-2yo)\n");
+        abort();
+    }
 }
 
 void aic_mat_int_eig_certified(acb_ptr E, acb_mat_t R, const acb_mat_t A,

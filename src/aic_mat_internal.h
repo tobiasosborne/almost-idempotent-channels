@@ -14,8 +14,13 @@
  * so a faithfully-rounded Hermitian input (radii ~2^-prec) is not rejected. */
 void aic_mat_int_tol(arb_t tol, slong prec);
 
-/* Abort (fail loud, CLAUDE.md Rule 4) unless |H[i,j] - conj(H[j,i])| is
- * certainly <= tol for all i,j. Asserts squareness too. */
+/* Non-aborting Hermiticity predicate: 1 iff |H[i,j] - conj(H[j,i])| is certainly
+ * within the RELATIVE + absolute-floor tol tol*(1 + |H_ij| + |H_ji|) for all i,j
+ * (bead aic-2yo: a bare ABSOLUTE tol false-fails on graded/ill-conditioned Gram
+ * matrices whose entry radii grow with magnitude). Asserts squareness. */
+int aic_mat_int_is_hermitian(const acb_mat_t H, slong prec);
+
+/* Abort (fail loud, CLAUDE.md Rule 4) unless aic_mat_int_is_hermitian(H, prec). */
 void aic_mat_int_assert_hermitian(const acb_mat_t H, slong prec);
 
 /* Certified eig of a GENERAL n x n matrix A: heuristic acb_mat_approx_eig_qr to
