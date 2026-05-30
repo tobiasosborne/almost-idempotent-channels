@@ -151,6 +151,43 @@ with the concrete evidence from where they bit.
   ‖rad(M)‖_F`) for op-norms of near-zero-off-diagonal / star-defect matrices.
   Until aic-qgs is fixed, new modules must use that helper.
 
+### C6. δ-inclusion lower bound: the basis sweep is BASIS-BLIND — use σ_min of the coordinate matrix
+- **Status:** RESOLVED (route in `src/aic_dhom_sigmin.c`; guard switch in
+  `src/aic_errreduce.c`). Surfaced: `errreduce` (bead aic-t81), hostile review (F1
+  BLOCKER, a soundness hole).
+- **The trap.** The δ-inclusion hypothesis (`tex:451-453`) is
+  `(1−δ)‖X‖ ≤ ‖v(X)‖ ≤ (1+δ)‖X‖` over the **OPERATOR norm**, i.e. a bound on the
+  unit-ball infimum `inf_{X≠0} ‖v(X)‖/‖X‖`. The natural cheap surrogate is the
+  basis sweep `min_i ‖v(E_i)‖` (dhom's `aic_dhom_prop_bounds` `norm_lb`). That is
+  **NOT** the inclusion infimum: a `v` bounded below on every basis element can
+  still **collapse a general combination**. Witness (review): `B = C⊕C → A = M₂`,
+  `v(E₀)=diag(1,0)`, `v(E₁)=|u⟩⟨u|` at angle 0.1. Each `‖v(Eᵢ)‖_op = 1` (so the
+  basis sweep reads `a = 1.0`, **passes** the `≥0.5` guard), but
+  `‖v(E₀−E₁)‖_op = |sin 0.1| = 0.0998` while `‖E₀−E₁‖ = 1`, so the true inclusion
+  inf is `≤0.0998` — the hypothesis is violated and `aic_errreduce` silently
+  certified it as a 0-inclusion (`c₀=0`, no abort). A "test that can't fail."
+- **The sound route — σ_min of the coordinate matrix.** `v(X) = Σᵢ xᵢ v(Eᵢ)` is
+  linear. With A's Frobenius-orthonormal basis `{B_k}` and B's Frobenius-orthonormal
+  matrix units `{Eᵢ}`, assemble `M` (`dim_A × dim_B`), `M[k,i] = ⟨B_k, v(Eᵢ)⟩_F`.
+  Then `‖v(X)‖_F = ‖Mx‖₂` and `‖X‖_F = ‖x‖₂`, so
+  `σ_min(M) = inf_{X≠0} ‖v(X)‖_F/‖X‖_F` — the **exact unit-ball inclusion infimum
+  in the Frobenius/coordinate norm**. It SEES all combinations (`σ_min = 0` iff `v`
+  collapses a direction), so it is a **sound collapse detector**.
+- **Frobenius vs operator (the documented caveat).** `σ_min(M)` is the
+  Frobenius/coordinate inf, not the exact operator-norm inclusion inf the `.tex`
+  states; they differ by `≤√dim` factors (norm equivalence). It is therefore a true
+  Frobenius unit-ball lower bound and a correct REJECTER of non-inclusions, but not
+  the precise operator-norm `a`. The faithful operator-norm worst-case (HOPM, like
+  `aic_ecstar`) is a later cycle (bead aic-0at). The σ_min GATE uses the **double
+  midpoint** (`aic_latd_singular_values` on `mid(M)`, uncertified — certified
+  enclosure defers to aic-w4o.1/.2), a coarse fail-loud gate adequate for the 0.5
+  threshold (cf. the projection-nontriviality gate).
+- **Where it bites.** Switched BOTH `aic_errreduce` guards (input δ-inclusion check
+  AND the certification `lower_gap = max(0, 1−a)`) and the `aic_errreduce_is_bijective`
+  injectivity test from the basis sweep to `aic_dhom_v_sigma_min`. `test_errreduce`
+  T6 is the witness fixture + abort test; mutation-proven (revert to the basis sweep
+  → the collapse is no longer caught → RED).
+
 ---
 
 ## D. Open questions / escalations (unresolved)
@@ -163,11 +200,32 @@ with the concrete evidence from where they bit.
   constant is dimension-independent (projection canary to d=9), but no proof.
 
 ### D2. The universal constant `c_0` (`cor_improvement`, `tex:1317`) is unstated
-- **Status:** OPEN (beads **aic-t81** errreduce / **aic-1bc** research). The paper says
-  "there exist constants `ε_max, δ_max, c_0`" without numerical values; they must be
-  extracted from the `lem_approx` Newton analysis (the `δ_{s+1}≤C(δ_s²+ε)` constant
-  and the `prop_delta_hominc` bounds). The `‖D‖_proj=m` consequence of A2 feeds into
-  this (the `w'` bound is `O(mδ)`).
+- **Status:** OPEN (the ANALYTIC `c_0` defers to **aic-1bc** research). The
+  errreduce module (**aic-t81**, `src/aic_errreduce.c`, `cor_improvement`) is BUILT and
+  returns the MEASURED `c_0` per instance (= max(inclusion-defect of `ṽ`)/ε), not the
+  analytic constant. The paper says "there exist constants `ε_max, δ_max, c_0`"
+  without numerical values; the analytic extraction must come from the `lem_approx`
+  Newton analysis (the `δ_{s+1}≤C(δ_s²+ε)` constant and the `prop_delta_hominc`
+  bounds). The `‖D‖_proj=m` consequence of A2 feeds into this (the `w'` bound is
+  `O(mδ)`).
+- **MEASURED (errreduce, `test_errreduce` T3/T4, 2026-05-30):** the empirical `c_0` is
+  `≈ 2.0–2.7` and does NOT grow with dimension. Block-dim sweep B=M₂/M₃/M₄/M₅ (dim_B
+  4/9/16/25, a 6.25× range): `c_0 = 2.714 / 2.218 / 2.069 / 1.962` (DECREASING with
+  dim), ratio `c0_max/c0_min = 1.384 < 1.6` (T4(A) threshold tightened in F2 to catch
+  even sublinear/sqrt-dim growth — a `c_0 *= √dim_B` injection drives the ratio to
+  1.807 > 1.6, RED; mutation-proven 2026-05-30, independently of T3). If T4(A)
+  RED-fires the `tex:484` failure mode is back. Block-count sweep m=1,2,3 of M₂:
+  `c_0 = 2.714 / 1.238 / 1.564` — does NOT grow with m, so the `‖D‖_proj=m → O(mδ)` w'
+  bound does NOT manifest as growth in the achieved `c_0` (the per-step quadratic
+  Newton contraction reaches the O(ε) floor regardless of m). These match the dhom
+  layer's `C=defect/ε` exactly (errreduce just wraps `aic_dhom_approx`). The
+  lem_approx termination floor is set to `AIC_ERRREDUCE_EPS_FLOOR=4`×ε (NOT bare ε:
+  the defect cannot beat the algebra's intrinsic O(ε) obstruction, so driving toward
+  bare ε stalls and bounces — fail-loud in `aic_dhom_approx`'s contraction guard). The
+  certification ceiling `AIC_ERRREDUCE_C0_CERT=10` (tightened 50→10 in F3) is a
+  generous fail-loud guard for "is `ṽ` an O(ε)-inclusion", NOT the analytic `c_0`
+  (the worst achieved max-defect over the corpus is `≈ 2.71`×ε at T4(A) M₂, a ~3.7×
+  margin under 10×ε; the machine-floor cases T1/T2 clear it with ≥30× margin).
 
 ### D3. cb-norm truncation `N` (shard F, `tex:1447-1561`)
 - **Status:** OPEN (bead **aic-2jd**). "for all n" in the cb-norm must be truncated;

@@ -1791,3 +1791,50 @@ direct-sum centrality test added.
 unstated in the paper → the next module `errreduce` (aic-t81) / research aic-1bc.
 Next th_main step: `errreduce` (§8/9, aic-t81) → `cstar_build` (§9 master loop,
 aic-097).
+
+## Module `errreduce` — error reduction / `cor_improvement` (bead aic-t81, §8/9)
+
+Realizes `cor_improvement` (`.tex:1317`): a δ-inclusion of a genuine C* algebra B
+into an ε-C* algebra A is upgraded to a `c₀ε`-inclusion (bijective preserved).
+The error-reset the th_main master loop applies after every merge/extend. A
+**thin orchestration of `dhom`**: `ṽ=lem_approx(v)` (an O(ε)-homomorphism with
+`‖ṽ−v‖≤O(δ)`), then `prop_delta_hominc` applied to `ṽ` (whose own defect is O(ε))
+certifies `ṽ` is an O(ε)-inclusion. The MEASURED `c₀=max-defect/ε` is returned;
+the analytic `c₀` defers to aic-1bc (FINDINGS §D2).
+
+### The c₀ universality canary (the headline th_main correctness test, tex:484)
+`errreduce` is where `c₀` is measured, so its canary (T4) is *the* check that the
+th_main constant is **dimension-independent**. Block-dim sweep B=M₂/M₃/M₄/M₅
+(dim_B 4/9/16/25): `c₀=2.71/2.22/2.07/1.96` — **decreases** with dim; ratio
+`c₀_max/c₀_min=1.38`, asserted `<1.6` over the 6.25× dim range (a √dim-growth
+injection trips it at 1.807 — mutation-proven). Block-count sweep m=1,2,3 flat
+too. So the explicit-Pauli-diagonal route (dhom) delivers the universal constant
+the paper claims; no escalation.
+
+### The hostile-review BLOCKER + fix (the soundness hole)
+The δ-inclusion guards (input "is v a δ-inclusion?" + the output `lower_gap`
+certification + `is_bijective` injectivity) originally used the **basis-sweep**
+`min_i‖v(E_i)‖` — **blind to a map that collapses a non-basis direction**
+(`v(E_0)=diag(1,0), v(E_1)=`rank-1 at angle 0.1: basis-sweep `a=1.0` passes, but
+`‖v(E_0−E_1)‖=0.10` violates the hypothesis → silently certified `c₀=0`). Fix:
+`aic_dhom_v_sigma_min` (`src/aic_dhom_sigmin.c`) — assemble the coordinate matrix
+`M[k,i]=⟨B_k,vE[i]⟩_F` (both bases Frobenius-orthonormal) so
+`σ_min(M)=inf_{X≠0}‖v(X)‖_F/‖X‖_F` (true unit-ball lower bound in the coordinate
+norm, via double-path SVD `aic_latd_singular_values`); it **sees all combinations**
+and catches collapses (the collapsing-v fixture now aborts, σ_min=0.0998<0.5;
+genuine inclusions pass at σ_min≈1). The exact *operator-norm* inclusion inf
+(HOPM, like ecstar) and the certified σ_min enclosure defer to aic-w4o.1/aic-w4o.2;
+the coordinate-norm σ_min is a sound collapse-detector now.
+
+### Files
+`include/aic_errreduce.h`, `src/aic_errreduce.c` (the orchestration + the 4
+inclusion-defects + the O(ε)-inclusion certification + measured c₀ + bijectivity),
+`src/aic_dhom_sigmin.c` (the σ_min collapse-detector, shared with dhom),
+`tests/test_errreduce.c` (51 checks: T1 η=0 oracle, T2 Johnson, T3 ε>0, T4 the
+c₀ canary, T5 bijectivity, T6 the collapse-abort). `C0_CERT=10` (output-inclusion
+ceiling), `EPS_FLOOR=4` (lem_approx termination floor — the defect cannot beat
+~c₀ε). No eig in errreduce; σ_min uses double-path SVD.
+
+**th_main status:** `corner`✓ `projection`✓ `dhom`✓ `errreduce`✓ — only the §9
+master loop **`cstar_build`** (aic-097) remains; it assembles all four into the
+proof of `th_main`. See HANDOFF.md "RESUME HERE".

@@ -194,6 +194,32 @@ void aic_dhom_Gv(acb_mat_t out, const aic_dhom_v *v, const acb_mat_t X,
  * metric; see header CAVEAT). `out` init'd. */
 void aic_dhom_defect_sweep(arb_t out, const aic_dhom_v *v, slong prec);
 
+/* TRUE unit-ball lower bound on the COORDINATE/Frobenius inclusion infimum of v
+ * (src/aic_dhom_sigmin.c). Realizes the delta-inclusion lower-bound hypothesis
+ * (.tex:451-453, (1-delta)||X|| <= ||v(X)||) as a SOUND COLLAPSE DETECTOR.
+ *
+ * WHY (the F1 fix, paper/FINDINGS.md). aic_dhom_prop_bounds' norm_lb = min_i
+ * ||vE[i]|| is a BASIS sweep: a v bounded below on every basis element but
+ * COLLAPSING a general combination passes it (norm_lb stays ~1) yet has true
+ * inclusion inf ~0. v(X) = sum_i x_i vE[i] is linear; assemble the coordinate
+ * matrix M (dim_A x dim_B), column i = the A-coordinates of vE[i] in A's
+ * Frobenius-ORTHONORMAL basis {B_k}: M[k,i] = <B_k, vE[i]>_F. Since {B_k} and B's
+ * matrix-unit basis {E_i} are BOTH Frobenius-orthonormal, ||v(X)||_F = ||M x||_2
+ * and ||X||_F = ||x||_2, so
+ *       sigma_min(M) = inf_{X != 0} ||v(X)||_F / ||X||_F
+ * is the EXACT unit-ball lower bound in the FROBENIUS/coordinate norm — it SEES
+ * all combinations (not just basis elements), so it is 0 iff v collapses a
+ * direction. It differs from the exact OPERATOR-norm inclusion inf by <= sqrt(dim)
+ * factors, but is a sound collapse detector and a true Frobenius unit-ball lower
+ * bound; the exact operator-norm HOPM is a later cycle (cf. aic_ecstar HOPM).
+ *
+ * PRECISION. sigma_min is computed via the DOUBLE-path SVD (aic_latd_singular_values
+ * on the ball midpoints, uncertified — a certified sigma_min enclosure defers to
+ * aic-w4o.1/aic-w4o.2 like other extraction). `out` is set to the double sigma_min
+ * as a zero-radius arb (a coarse fail-loud GATE midpoint, like the projection
+ * nontriviality gate — acceptable for a 0.5 threshold). `out` caller-init'd. */
+void aic_dhom_v_sigma_min(arb_t out, const aic_dhom_v *v, slong prec);
+
 /* prop_delta_hominc (.tex:1194). Computes the three quantities as certified arb
  * balls (any output may be NULL to skip):
  *   norm_ub : basis-sweep ||v|| = max_i ||vE[i]||_op  (predicate (i): <= 1+O).
