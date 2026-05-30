@@ -279,9 +279,11 @@ void aic_cstar_merge_sum(aic_dhom_B *B_out, aic_dhom_v *v_out,
  *                  operators are DEEP COPIES.
  *   mult_def     : OUTPUT certified arb ball, aic_dhom_defect_sweep(v_out) — the
  *                  inclusion's multiplicativity defect w.r.t. A's STAR (NOT plain
- *                  product, FINDINGS §C2). This is how merging1 (.tex:1331) is
- *                  CERTIFIED: the defect_sweep over all matrix-unit pairs IS the
- *                  blockwise multiplicativity G_gamma(E_i,E_j). NULL to skip.
+ *                  product, FINDINGS §C2). The defect_sweep over all matrix-unit
+ *                  pairs certifies the COMBINED map gamma:B->A multiplicativity
+ *                  (the O(delta)-homomorphism property the proof at .tex:1349 needs)
+ *                  — stronger than, and implying, the per-block merging1 (.tex:1331)
+ *                  hypothesis G_gamma(E_i,E_j). NULL to skip.
  *   sigma_min    : OUTPUT certified arb ball, aic_dhom_v_sigma_min(v_out) — the
  *                  SOUND Frobenius inclusion lower bound (FINDINGS §C6). NULL skip.
  *   merge_cond_max : OUTPUT certified arb ball, the max violation of the cheap

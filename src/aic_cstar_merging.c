@@ -82,7 +82,9 @@ static const acb_mat_struct *route_unit(slong l, slong m, slong n1, slong n2,
                                         const acb_mat_t *g11, const acb_mat_t *g12,
                                         const acb_mat_t *g21, const acb_mat_t *g22)
 {
-    (void) n2; /* g12/g21/g22 column counts are n2/n1/n2; n2 used only for clarity */
+    /* Array column counts: g11=n1, g12=n2, g21=n1, g22=n2 (n2 used in the g12/g22
+     * index expressions below). The local (a,b) is (l,m) shifted by the sector
+     * offsets n1 on whichever of row/col crosses the boundary. */
     if (l < n1 && m < n1)  return g11[l * n1 + m];               /* block (1,1) */
     if (l < n1 && m >= n1) return g12[l * n2 + (m - n1)];        /* block (1,2) */
     if (l >= n1 && m < n1) return g21[(l - n1) * n1 + m];        /* block (2,1) */
