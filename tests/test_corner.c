@@ -46,7 +46,10 @@
  */
 #include <complex.h>
 #include <math.h>
+#include <signal.h>
 #include <stdio.h>
+#include <sys/wait.h>
+#include <unistd.h>
 
 #include <flint/acb.h>
 #include <flint/acb_mat.h>
@@ -101,6 +104,25 @@ static double opnorm_d(const acb_mat_t Aop, slong prec)
     double r = dd(e);
     arb_clear(e);
     return r;
+}
+
+/* ||A||_op on the BALL MIDPOINTS (mirrors eta_proxy below). For a NEAR-ZERO
+ * difference matrix carrying wide accumulated error balls, the certified
+ * aic_mat_opnorm forms the Gram A^dag A whose off-diagonal relative-Hermiticity
+ * check can false-fail (bead aic-2yo); collapsing to midpoints first is the
+ * test-side measurement (we only want the number, not a certified ball, exactly
+ * as eta_proxy does). Used by T8/T9 where cdot outputs can be tiny. */
+static double mid_opnorm_d(const acb_mat_t Aop, slong prec)
+{
+    slong r = acb_mat_nrows(Aop), c = acb_mat_ncols(Aop);
+    acb_mat_t M;
+    acb_mat_init(M, r, c);
+    for (slong i = 0; i < r; i++)
+        for (slong j = 0; j < c; j++)
+            acb_get_mid(acb_mat_entry(M, i, j), acb_mat_entry(Aop, i, j));
+    double v = opnorm_d(M, prec);
+    acb_mat_clear(M);
+    return v;
 }
 
 /* n x n diagonal projector with the first `k` diagonal entries 1 (rest 0). */
@@ -764,6 +786,737 @@ static void test_t7(void)
     aic_ucp_kraus_clear(&phi);
 }
 
+/* ============ Increment 2a: T8 compressed product (.tex:1077-1082) ======== *
+ * X . Y = Co_{P,R}(X * Y) : S_{P,Q} x S_{Q,R} -> S_{P,R} (eq compr_prod). The
+ * STAR is load-bearing (CLAUDE.md callout). The suite's teeth (mirrors T7):
+ *
+ * (a) DEFINITION/INDEPENDENT-ORACLE on the OBLIQUE compress_idemp(4,2)
+ *     (S_tilde sigma_max = sqrt(3), exactly idempotent => clean oracle). For X,Y
+ *     in the relevant corners, aic_corner_cdot must equal the INDEPENDENT route
+ *     Co_{P,R}(Phi_tilde(X.Y)) (X.Y plain product, Phi_tilde via
+ *     aic_assoc_superop_apply -- the same independent Phi_tilde used in T7).
+ *     NON-VACUITY GUARD: the PLAIN-product compression Co_{P,R}(X.Y) (NO
+ *     Phi_tilde) differs from cdot by O(1) on this oblique algebra, so the oracle
+ *     WOULD be RED if cdot dropped the star. MUTATION-PROVEN: replacing
+ *     aic_ecstar_star with acb_mat_mul in aic_corner_cdot makes (a) RED at the
+ *     non-vacuity gap (see test_t8 result line), restored.
+ * (b) BOUND ||X . Y - X * Y|| <= c(delta+eps) ||X|| ||Y|| (.tex:1081): on the
+ *     eta>0 dep+conj(4) family report c; EXACT (machine-zero) at eta=0. The
+ *     eta>0 arm is ALSO the COMPRESSION-STEP teeth: at eta>0 the star X*Y =
+ *     Phi_tilde(XY) is NOT exactly in S_{P,R}, so cdot = Co_{P,R}(X*Y) DIFFERS
+ *     from X*Y by an O(eta) gap. (At eta=0, and for ALL valid corner X,Y, X*Y is
+ *     already in S_{P,R} so Co_{P,R} is a no-op on it -- a THEOREM, not a test
+ *     gap; this is exactly WHY cdot is "close to the ambient product", .tex:1081.
+ *     So the Co_{P,R} step in cdot is invisible at eta=0 but VISIBLE at eta>0:
+ *     the X.Y == X*Y check below has teeth precisely there.) MUTATION-PROVEN:
+ *     making cdot SKIP the Co_{P,R} apply (return the bare star X*Y) makes the
+ *     eta>0 arm RED ("X.Y == X*Y at eta>0 -- expected O(eta) gap"), restored.
+ * (c) UNIT (.tex:1082): Ptilde = Co_P(P) is the unit of (S_P,.): ||Ptilde . X -
+ *     X||, ||X . Ptilde - X|| <= c(delta+eps) ||X|| for X in S_P. The unit law
+ *     needs P a genuine delta-PROJECTION IN A (|v01><v01| is NOT in A -- residual
+ *     0.333 -- so its O(delta+eps) bound is vacuous); tested on identity(3)
+ *     (P=diag2, exact) and the oblique compress(4,2) with P=|e1><e1| (in A). Both
+ *     machine-zero. */
+
+/* a single rank-1 Hermitian projector |v><v| onto the unit vector with entries
+ * vr[0..n-1] (real). `Pout` init'd here. */
+static void rank1_proj(acb_mat_t Pout, slong n, const double *vr)
+{
+    acb_mat_init(Pout, n, n);
+    acb_mat_zero(Pout);
+    for (slong i = 0; i < n; i++)
+        for (slong j = 0; j < n; j++)
+            acb_set_d(acb_mat_entry(Pout, i, j), vr[i] * vr[j]);
+}
+
+/* T8(a) + the eta=0 arm of (b) on the oblique exactly-idempotent
+ * compress_idemp(4,2). The eta>0 arm of (b) is test_t8_bound; (c) is test_t8_unit. */
+static void test_t8_oblique(void)
+{
+    const slong prec = 256, n = 4;
+    aic_ucp_kraus phi;
+    make_compress_idemp(&phi, 4, 2);
+    aic_assoc_ecstar ae;
+    aic_assoc_ecstar_from_phi(&ae, &phi, prec);
+    slong d = ae.A.dim_A;
+
+    /* P=Q=R=|v><v|, v=(e0+e1)/sqrt2 (rank-1 in M). This is the combo for which
+     * the plain product X.Y leaves A substantially (||Phi_tilde(XY)-XY|| = 0.167),
+     * so the star-vs-plain gap SURVIVES the Co_{P,R} compression (non-vacuity gap
+     * 0.0556, measured). Other rank-1 choices (e.g. v01,e0,e1) wash the star out
+     * (XY already near A, gap ~0): the symmetric P=Q=R=|v><v| with v straddling
+     * the M/Mperp split is what exercises it (CLAUDE.md: verify obliqueness is
+     * genuinely exercised, not washed out by a symmetric combination). */
+    double v01[4] = {0.70710678118654752, 0.70710678118654752, 0.0, 0.0};
+    acb_mat_t P, Q, R;
+    rank1_proj(P, n, v01);
+    rank1_proj(Q, n, v01);
+    rank1_proj(R, n, v01);
+
+    /* corner bases of S_{P,Q} and S_{Q,R}; pick a representative X, Y. */
+    acb_mat_t CoPQ, CoQR, CoPR;
+    acb_mat_init(CoPQ, d, d); acb_mat_init(CoQR, d, d); acb_mat_init(CoPR, d, d);
+    aic_corner_Co(CoPQ, &ae.A, P, Q, prec);
+    aic_corner_Co(CoQR, &ae.A, Q, R, prec);
+    aic_corner_Co(CoPR, &ae.A, P, R, prec);
+    acb_mat_t *CX, *CY;
+    slong dXY, dYR;
+    aic_corner_extract(&CX, &dXY, CoPQ, &ae.A, prec);
+    aic_corner_extract(&CY, &dYR, CoQR, &ae.A, prec);
+    AIC_CHECK_MSG(dXY >= 1 && dYR >= 1,
+                  "T8: empty corner (dim S_{P,Q}=%ld, S_{Q,R}=%ld) -- pick P,Q,R "
+                  "with nonzero corners", (long) dXY, (long) dYR);
+
+    acb_mat_t X, Y, prod, Zexp, ZexpCo, Zplain, ZplainCo, dorc, dvac;
+    acb_mat_init(X, n, n); acb_mat_init(Y, n, n);
+    acb_mat_set(X, CX[0]); acb_mat_set(Y, CY[0]);
+    acb_mat_init(prod, n, n);
+    acb_mat_init(Zexp, n, n); acb_mat_init(ZexpCo, n, n);
+    acb_mat_init(Zplain, n, n); acb_mat_init(ZplainCo, n, n);
+    acb_mat_init(dorc, n, n); acb_mat_init(dvac, n, n);
+
+    aic_corner_cdot(prod, &ae.A, CoPR, X, Y, prec);          /* production X . Y */
+    /* INDEPENDENT: Co_{P,R}(Phi_tilde(X.Y)). */
+    acb_mat_t XYplain;
+    acb_mat_init(XYplain, n, n);
+    acb_mat_mul(XYplain, X, Y, prec);                        /* X . Y (plain)    */
+    aic_assoc_superop_apply(Zexp, ae.S_tilde, XYplain, prec);/* Phi_tilde(X.Y)   */
+    aic_corner_apply(ZexpCo, &ae.A, CoPR, Zexp, prec);       /* Co_{P,R}(...)    */
+    /* NON-VACUITY: Co_{P,R}(X.Y) with NO Phi_tilde. */
+    aic_corner_apply(ZplainCo, &ae.A, CoPR, XYplain, prec);
+    acb_mat_sub(dorc, prod, ZexpCo, prec);
+    acb_mat_sub(dvac, prod, ZplainCo, prec);
+    double oracle = mid_opnorm_d(dorc, prec), vac = mid_opnorm_d(dvac, prec);
+    printf("T8(a) oblique cdot oracle: ||cdot - Co(Phi_tilde(XY))||=%.3e  "
+           "||cdot - Co(plain XY)||=%.4f (non-vacuity gap)\n", oracle, vac);
+    AIC_CHECK_MSG(oracle < 1e-9,
+                  "T8(a): cdot != Co_{P,R}(Phi_tilde(X*Y)) (%.3e) -- star wrong?",
+                  oracle);
+    AIC_CHECK_MSG(vac > 0.03,
+                  "T8(a): non-vacuity gap ||cdot - Co(plain XY)||=%.3e <= 0.03 -- "
+                  "fixture not exercising the star in cdot", vac);
+
+    /* (b) bound ||X.Y - X*Y|| on this exactly-idempotent fixture: machine-zero. */
+    acb_mat_t star, db;
+    acb_mat_init(star, n, n); acb_mat_init(db, n, n);
+    aic_ecstar_star(star, &ae.A, X, Y, prec);     /* X * Y (ambient star product) */
+    acb_mat_sub(db, prod, star, prec);
+    double bnd0 = mid_opnorm_d(db, prec);
+    printf("T8(b) eta=0 ||X.Y - X*Y||=%.3e (machine-zero)\n", bnd0);
+    AIC_CHECK_MSG(bnd0 < 1e-9, "T8(b): at eta=0 X.Y != X*Y (%.3e)", bnd0);
+
+    acb_mat_clear(db); acb_mat_clear(star);
+    acb_mat_clear(XYplain);
+    acb_mat_clear(dvac); acb_mat_clear(dorc);
+    acb_mat_clear(ZplainCo); acb_mat_clear(Zplain);
+    acb_mat_clear(ZexpCo); acb_mat_clear(Zexp);
+    acb_mat_clear(prod); acb_mat_clear(Y); acb_mat_clear(X);
+    for (slong m = 0; m < dYR; m++) acb_mat_clear(CY[m]);
+    if (CY) flint_free(CY);
+    for (slong m = 0; m < dXY; m++) acb_mat_clear(CX[m]);
+    if (CX) flint_free(CX);
+    acb_mat_clear(CoPR); acb_mat_clear(CoQR); acb_mat_clear(CoPQ);
+    acb_mat_clear(R); acb_mat_clear(Q); acb_mat_clear(P);
+    aic_assoc_ecstar_clear(&ae);
+    aic_ucp_kraus_clear(&phi);
+}
+
+/* T8(c) UNIT (.tex:1082): Ptilde = Co_P(P) is the unit of (S_P,.). The unit law
+ * ||Ptilde . X - X|| <= O(delta+eps)||X|| holds only when P is a genuine
+ * delta-PROJECTION IN A (a star-idempotent close to A); the proj_residual probe
+ * shows |v01><v01| is NOT in A for compress_idemp (residual 0.333, ||P*P-P||=0.5),
+ * so its O(delta+eps) bound is vacuous (delta = O(1)) and it is a wrong unit
+ * fixture. We test the unit law where P IS a genuine projection in A:
+ *   - identity(n): A=M_n, star=plain product, every ambient projector P is
+ *     star-idempotent => Ptilde = P EXACTLY and the unit law is machine-exact;
+ *   - the OBLIQUE compress_idemp(4,2) with P=|e1><e1| (proj_residual in A = 0,
+ *     verified) so the oblique star path is also exercised on a clean unit. */
+static void t8_unit_on(const char *name, aic_assoc_ecstar *ae, const acb_mat_t P,
+                       slong prec)
+{
+    slong n = ae->A.n, d = ae->A.dim_A;
+    acb_mat_t CoPP, Ptil, lu, ru, dlu, dru;
+    acb_mat_init(CoPP, d, d);
+    aic_corner_Co(CoPP, &ae->A, P, P, prec);
+    acb_mat_t *CP;
+    slong dP;
+    aic_corner_extract(&CP, &dP, CoPP, &ae->A, prec);
+    AIC_CHECK_MSG(dP >= 1, "T8(c) %s: dim S_P=%ld < 1", name, (long) dP);
+    acb_mat_init(Ptil, n, n);
+    aic_corner_Ptilde(Ptil, &ae->A, P, prec);
+    acb_mat_init(lu, n, n); acb_mat_init(ru, n, n);
+    acb_mat_init(dlu, n, n); acb_mat_init(dru, n, n);
+    double lmax = 0.0, rmax = 0.0;
+    for (slong m = 0; m < dP; m++) {
+        aic_corner_cdot(lu, &ae->A, CoPP, Ptil, CP[m], prec);   /* Ptilde . X */
+        aic_corner_cdot(ru, &ae->A, CoPP, CP[m], Ptil, prec);   /* X . Ptilde */
+        acb_mat_sub(dlu, lu, CP[m], prec);
+        acb_mat_sub(dru, ru, CP[m], prec);
+        double le = mid_opnorm_d(dlu, prec), re = mid_opnorm_d(dru, prec);
+        if (le > lmax) lmax = le;
+        if (re > rmax) rmax = re;
+    }
+    printf("T8(c) unit %-18s dim S_P=%ld max||Ptilde.X-X||=%.3e "
+           "max||X.Ptilde-X||=%.3e\n", name, (long) dP, lmax, rmax);
+    AIC_CHECK_MSG(lmax < 1e-9 && rmax < 1e-9,
+                  "T8(c) %s: Ptilde not the unit of (S_P,.) (%.3e, %.3e)", name,
+                  lmax, rmax);
+    acb_mat_clear(dru); acb_mat_clear(dlu); acb_mat_clear(ru); acb_mat_clear(lu);
+    acb_mat_clear(Ptil);
+    for (slong m = 0; m < dP; m++) acb_mat_clear(CP[m]);
+    if (CP) flint_free(CP);
+    acb_mat_clear(CoPP);
+}
+
+static void test_t8_unit(void)
+{
+    const slong prec = 256;
+    /* identity(3): exact oracle. P = diag(1,1,0) (rank-2 genuine projector). */
+    {
+        aic_ucp_kraus phi;
+        make_identity(&phi, 3);
+        aic_assoc_ecstar ae;
+        aic_assoc_ecstar_from_phi(&ae, &phi, prec);
+        acb_mat_t P;
+        diag_proj(P, 3, 2);
+        t8_unit_on("id(3) P=diag2", &ae, P, prec);
+        acb_mat_clear(P);
+        aic_assoc_ecstar_clear(&ae);
+        aic_ucp_kraus_clear(&phi);
+    }
+    /* oblique compress_idemp(4,2): P=|e1><e1| (genuine member of A, residual 0). */
+    {
+        aic_ucp_kraus phi;
+        make_compress_idemp(&phi, 4, 2);
+        aic_assoc_ecstar ae;
+        aic_assoc_ecstar_from_phi(&ae, &phi, prec);
+        acb_mat_t P;
+        diag_proj_at(P, 4, 1);
+        t8_unit_on("compress(4,2) e1", &ae, P, prec);
+        acb_mat_clear(P);
+        aic_assoc_ecstar_clear(&ae);
+        aic_ucp_kraus_clear(&phi);
+    }
+}
+
+/* T8(b) eta>0: ||X.Y - X*Y|| / eta is a bounded constant c on dep+conj(4). */
+static void test_t8_bound(void)
+{
+    const slong prec = 256;
+    printf("T8(b) ||X.Y - X*Y|| vs eta (dep+conj(4)):\n");
+    double cmax = 0.0;
+    const double ts[] = {0.02, 0.06};
+    for (int it = 0; it < 2; it++) {
+        aic_ucp_kraus phi;
+        make_eta_family(&phi, 4, ts[it], prec);
+        double eta = eta_proxy(&phi, prec);
+        aic_assoc_ecstar ae;
+        aic_assoc_ecstar_from_phi(&ae, &phi, prec);
+        slong d = ae.A.dim_A, n = 4;
+        /* P=Q=R=diag(1,1,0,0) (rank 2). X,Y in S_P; use basis elements. */
+        acb_mat_t P;
+        diag_proj(P, n, 2);
+        acb_mat_t CoPP;
+        acb_mat_init(CoPP, d, d);
+        aic_corner_Co(CoPP, &ae.A, P, P, prec);
+        acb_mat_t *CP;
+        slong dP;
+        aic_corner_extract(&CP, &dP, CoPP, &ae.A, prec);
+        AIC_CHECK_MSG(dP >= 2, "T8(b) eta>0: dim S_P=%ld < 2", (long) dP);
+        acb_mat_t prod, star, db;
+        acb_mat_init(prod, n, n); acb_mat_init(star, n, n); acb_mat_init(db, n, n);
+        double worst = 0.0;
+        for (slong a = 0; a < dP; a++)
+            for (slong b = 0; b < dP; b++) {
+                aic_corner_cdot(prod, &ae.A, CoPP, CP[a], CP[b], prec);
+                aic_ecstar_star(star, &ae.A, CP[a], CP[b], prec);
+                acb_mat_sub(db, prod, star, prec);
+                double e = mid_opnorm_d(db, prec);
+                if (e > worst) worst = e;
+            }
+        double c = eta > 1e-14 ? worst / eta : 0.0;
+        if (c > cmax) cmax = c;
+        printf("  t=%.2f eta=%.4e: max||X.Y - X*Y||=%.4e (c=%.3f)\n",
+               ts[it], eta, worst, c);
+        AIC_CHECK_MSG(c < 5.0,
+                      "T8(b): ||X.Y-X*Y||/eta=%.3f exceeds 5 (t=%.2f) -- not "
+                      "O(delta+eps)?", c, ts[it]);
+        AIC_CHECK_MSG(worst > 1e-7,
+                      "T8(b): X.Y == X*Y at eta>0 (t=%.2f) -- expected O(eta) gap",
+                      ts[it]);
+        acb_mat_clear(db); acb_mat_clear(star); acb_mat_clear(prod);
+        for (slong m = 0; m < dP; m++) acb_mat_clear(CP[m]);
+        if (CP) flint_free(CP);
+        acb_mat_clear(CoPP); acb_mat_clear(P);
+        aic_assoc_ecstar_clear(&ae);
+        aic_ucp_kraus_clear(&phi);
+    }
+    printf("  -> measured c (||X.Y-X*Y||/eta) max = %.3f\n", cmax);
+}
+
+/* ===================== T9: lem_alpha block bijection (.tex:1086-1119) ===== *
+ * alpha = sum_{jk} Co_{P,Q}|_{S_{Pj,Qk}} : (+)_{jk} S_{Pj,Qk} -> S_{P,Q} is a
+ * linear bijection (tex:1096) with ||alpha|| <= pq + O(pq(d+e)), ||alpha^{-1}|| <=
+ * 1 + O(pq(d+e)) (tex:1097-1099). Tests:
+ *   (i)  eta=0 EXACT oracle (tex:1124): exact orthogonal sub-projectors in M_n,
+ *        dim S_{P,Q} = sum dim S_{Pj,Qk} (the dim-count assert inside alpha is
+ *        itself this oracle; we also re-assert it), round-trip alpha alpha^{-1} ~
+ *        I and alpha^{-1} alpha ~ I (machine-zero), ||alpha|| <= pq, ||alpha^{-1}||
+ *        ~ 1, and ||gamma|| ~ 0 reported.
+ *   (ii) eta>0 (dep+conj(4)): the bounds ||alpha|| <= pq + O(pq(d+e)), ||alpha^{-1}||
+ *        <= 1 + O(pq(d+e)) hold; report the constants and ||gamma||.
+ *   (iii) FAIL-LOUD teeth: OVERLAPPING projectors (||P1 P2|| not small) violate the
+ *        lem_alpha hypothesis pq(d+e)<const => ||gamma|| >= 1 => the assert fires
+ *        (forked child, SIGABRT; mirrors test_idemp test_entry_guard).
+ * MUTATION (the .tex TYPO, mutation-proven): building beta_{jk} as Co_{Pj,Qj}
+ * (the tex:1109 typo, Q_j not Q_k) on the eta=0 id(4) p=q=2 fixture with distinct
+ * Q_1=|e2><e2|, Q_2=|e3><e3| makes beta wrong => beta alpha != I and ||gamma||
+ * jumps from 0 to 1.0000 (CONFIRMED), tripping the ||gamma||<1 assert (SIGABRT).
+ * Restored. Documented in src/aic_corner_product.c. */
+
+/* Build alpha on the identity(n) algebra (A=M_n, star=plain) with the given
+ * sub-projector supports: P_j = |e_{Psup[j]}><e_{Psup[j]}|, Q_k similarly.
+ * Asserts the dim count, round-trips, and the norm bounds. The supports must be
+ * DISJOINT (so P_j P_l = delta_jl P_l exactly) for the eta=0 oracle. */
+static void t9_identity(const char *name, slong n, const slong *Psup, slong p,
+                        const slong *Qsup, slong q, slong prec)
+{
+    aic_ucp_kraus phi;
+    make_identity(&phi, n);
+    aic_assoc_ecstar ae;
+    aic_assoc_ecstar_from_phi(&ae, &phi, prec);
+
+    acb_mat_t *Pp = flint_malloc((size_t) p * sizeof(acb_mat_t));
+    acb_mat_t *Qp = flint_malloc((size_t) q * sizeof(acb_mat_t));
+    acb_mat_t P, Q;
+    acb_mat_init(P, n, n); acb_mat_zero(P);
+    acb_mat_init(Q, n, n); acb_mat_zero(Q);
+    for (slong j = 0; j < p; j++) {
+        diag_proj_at(Pp[j], n, Psup[j]);
+        acb_add(acb_mat_entry(P, Psup[j], Psup[j]),
+                acb_mat_entry(P, Psup[j], Psup[j]),
+                acb_mat_entry(Pp[j], Psup[j], Psup[j]), prec);
+    }
+    for (slong k = 0; k < q; k++) {
+        diag_proj_at(Qp[k], n, Qsup[k]);
+        acb_add(acb_mat_entry(Q, Qsup[k], Qsup[k]),
+                acb_mat_entry(Q, Qsup[k], Qsup[k]),
+                acb_mat_entry(Qp[k], Qsup[k], Qsup[k]), prec);
+    }
+
+    slong N, dPQ;
+    aic_corner_alpha_dims(&N, &dPQ, &ae.A, (const acb_mat_t *) Pp, p, P,
+                          (const acb_mat_t *) Qp, q, Q, prec);
+    AIC_CHECK_MSG(N == dPQ,
+                  "T9 %s: dim count N=%ld != dim S_{P,Q}=%ld", name, (long) N,
+                  (long) dPQ);
+    /* exact M_n value: dim S_{P,Q} = rank(P) rank(Q) = p*q (each part rank 1). */
+    AIC_CHECK_MSG(dPQ == p * q,
+                  "T9 %s: dim S_{P,Q}=%ld != p*q=%ld (M_n exact)", name,
+                  (long) dPQ, (long) (p * q));
+
+    acb_mat_t alpha, alpha_inv, prod1, prod2, one1, one2;
+    acb_mat_init(alpha, dPQ, N);
+    acb_mat_init(alpha_inv, N, dPQ);
+    arb_t na, nai, ng, ngrad;
+    arb_init(na); arb_init(nai); arb_init(ng); arb_init(ngrad);
+    slong N2, dPQ2;
+    aic_corner_alpha(alpha, alpha_inv, na, nai, ng, ngrad, &N2, &dPQ2, &ae.A,
+                     (const acb_mat_t *) Pp, p, P, (const acb_mat_t *) Qp, q, Q,
+                     prec);
+
+    acb_mat_init(prod1, dPQ, dPQ);
+    acb_mat_init(prod2, N, N);
+    acb_mat_init(one1, dPQ, dPQ);
+    acb_mat_init(one2, N, N);
+    acb_mat_mul(prod1, alpha, alpha_inv, prec);   /* alpha alpha^{-1} = I_dPQ */
+    acb_mat_mul(prod2, alpha_inv, alpha, prec);   /* alpha^{-1} alpha = I_N   */
+    acb_mat_one(one1); acb_mat_one(one2);
+    acb_mat_sub(prod1, prod1, one1, prec);
+    acb_mat_sub(prod2, prod2, one2, prec);
+    double rt1 = mid_opnorm_d(prod1, prec), rt2 = mid_opnorm_d(prod2, prec);
+    printf("T9 %-16s p=%ld q=%ld dim=%ld ||a||=%.4f ||a^-1||=%.4f ||g||=%.3e "
+           "(rad=%.2e) rt(aa^-1)=%.2e rt(a^-1a)=%.2e\n", name, (long) p, (long) q,
+           (long) dPQ, dd(na), dd(nai), dd(ng), dd(ngrad), rt1, rt2);
+    /* The round-trips rt1, rt2 confirm acb_mat_solve SUCCEEDED and alpha is
+     * SURJECTIVE (so the certified inverse exists): they are NOT a witness that
+     * alpha's/beta's ENTRIES are numerically correct. Because alpha_inv =
+     * (beta alpha)^{-1} beta, alpha^{-1} alpha = (beta alpha)^{-1} (beta alpha) =
+     * I_N is an ALGEBRAIC IDENTITY for ANY alpha, beta (a beta->1.5 beta or an
+     * alpha-entry mutation leaves it I_N), and alpha alpha^{-1} = I_dPQ likewise
+     * holds whenever alpha has full row rank dPQ. The genuine entry-level oracle
+     * is t9_alpha_entry_oracle (alpha^dag alpha = I_N + the per-column D_l
+     * reconstruction), computed WITHOUT going through alpha_inv. */
+    AIC_CHECK_MSG(rt1 < 1e-9 && rt2 < 1e-9,
+                  "T9 %s: alpha solve failed / alpha not surjective (round-trip "
+                  "%.3e, %.3e)", name, rt1, rt2);
+    /* eta=0 bounds: ||alpha|| <= pq, ||alpha^{-1}|| ~ 1 (exact orthogonal). */
+    AIC_CHECK_MSG(dd(na) <= (double) (p * q) + 1e-6,
+                  "T9 %s: ||alpha||=%.4f > pq=%ld", name, dd(na), (long) (p * q));
+    AIC_CHECK_MSG(dd(nai) <= 1.0 + 1e-6,
+                  "T9 %s: ||alpha^{-1}||=%.4f > 1 (eta=0)", name, dd(nai));
+    AIC_CHECK_MSG(dd(ng) < 1e-6,
+                  "T9 %s: ||gamma||=%.3e not ~0 at eta=0", name, dd(ng));
+
+    arb_clear(ngrad); arb_clear(ng); arb_clear(nai); arb_clear(na);
+    acb_mat_clear(one2); acb_mat_clear(one1);
+    acb_mat_clear(prod2); acb_mat_clear(prod1);
+    acb_mat_clear(alpha_inv); acb_mat_clear(alpha);
+    acb_mat_clear(Q); acb_mat_clear(P);
+    for (slong k = 0; k < q; k++) acb_mat_clear(Qp[k]);
+    for (slong j = 0; j < p; j++) acb_mat_clear(Pp[j]);
+    flint_free(Qp); flint_free(Pp);
+    aic_assoc_ecstar_clear(&ae);
+    aic_ucp_kraus_clear(&phi);
+}
+
+/* T9(ii) eta>0: bounds hold on dep+conj(4); report constants. The dep+conj(4)
+ * algebra A is diagonal-dominant, so the only NONEMPTY corners S_{Pj,Qk} are the
+ * diagonal ones (off-diagonal P{0,1} x Q{2,3} corners are 0-dim, measured). We
+ * take P = Q = diag(1,1,0,0) with parts P_1=Q_1=|e0><e0|, P_2=Q_2=|e1><e1|
+ * (disjoint rank-1 delta-projections in A): N = dim S_{P,Q} = 2 (the two diagonal
+ * blocks). p=q=2 still exercises the four-block alpha (two blocks empty). */
+static void t9_eta_pos(slong prec)
+{
+    aic_ucp_kraus phi;
+    make_eta_family(&phi, 4, 0.04, prec);
+    double eta = eta_proxy(&phi, prec);
+    aic_assoc_ecstar ae;
+    aic_assoc_ecstar_from_phi(&ae, &phi, prec);
+    slong n = 4, p = 2, q = 2;
+    acb_mat_t Pp[2], Qp[2], P, Q;
+    diag_proj_at(Pp[0], n, 0); diag_proj_at(Pp[1], n, 1);
+    diag_proj_at(Qp[0], n, 0); diag_proj_at(Qp[1], n, 1);
+    diag_proj(P, n, 2);                         /* P = diag(1,1,0,0) */
+    diag_proj(Q, n, 2);                         /* Q = diag(1,1,0,0) = P */
+
+    slong N, dPQ;
+    aic_corner_alpha_dims(&N, &dPQ, &ae.A, (const acb_mat_t *) Pp, p, P,
+                          (const acb_mat_t *) Qp, q, Q, prec);
+    AIC_CHECK_MSG(N == dPQ, "T9 eta>0: N=%ld != dPQ=%ld", (long) N, (long) dPQ);
+    acb_mat_t alpha, alpha_inv;
+    acb_mat_init(alpha, dPQ, N);
+    acb_mat_init(alpha_inv, N, dPQ);
+    arb_t na, nai, ng, ngrad;
+    arb_init(na); arb_init(nai); arb_init(ng); arb_init(ngrad);
+    slong N2, dPQ2;
+    aic_corner_alpha(alpha, alpha_inv, na, nai, ng, ngrad, &N2, &dPQ2, &ae.A,
+                     (const acb_mat_t *) Pp, p, P, (const acb_mat_t *) Qp, q, Q,
+                     prec);
+    /* The two surviving (diagonal) corners give ||alpha|| ~ ||alpha^{-1}|| ~ 1
+     * (isometric at eta=0), so the genuine O(delta+eps) deviation is from 1; the
+     * paper's pq-bound is a (loose-here) upper bound, asserted below. The reported
+     * constants are |dev|/eta. */
+    double ca = (dd(na) - 1.0) / eta;       /* (||a|| - 1)/eta   */
+    double cai = (dd(nai) - 1.0) / eta;     /* (||a^-1|| - 1)/eta */
+    double cg = dd(ng) / eta;               /* ||gamma||/eta      */
+    printf("T9 eta>0 dep+conj(4): eta=%.4e ||a||=%.4f (dev/eta=%.2f) "
+           "||a^-1||=%.4f (dev/eta=%.2f) ||g||=%.3e (/eta=%.2f) rad=%.2e [pq=%ld]\n",
+           eta, dd(na), ca, dd(nai), cai, dd(ng), cg, dd(ngrad), (long) (p * q));
+    AIC_CHECK_MSG(dd(na) <= (double) (p * q) + 5.0 * eta + 1e-9,
+                  "T9 eta>0: ||alpha||=%.4f exceeds pq + 5 eta", dd(na));
+    AIC_CHECK_MSG(dd(nai) <= 1.0 + 5.0 * eta + 1e-9,
+                  "T9 eta>0: ||alpha^{-1}||=%.4f exceeds 1 + 5 eta", dd(nai));
+    AIC_CHECK_MSG(dd(ng) < 1.0,
+                  "T9 eta>0: ||gamma||=%.4f >= 1 (contraction lost)", dd(ng));
+    arb_clear(ngrad); arb_clear(ng); arb_clear(nai); arb_clear(na);
+    acb_mat_clear(alpha_inv); acb_mat_clear(alpha);
+    acb_mat_clear(Q); acb_mat_clear(P);
+    acb_mat_clear(Qp[1]); acb_mat_clear(Qp[0]);
+    acb_mat_clear(Pp[1]); acb_mat_clear(Pp[0]);
+    aic_assoc_ecstar_clear(&ae);
+    aic_ucp_kraus_clear(&phi);
+}
+
+/* T9(iii) FAIL-LOUD teeth: OVERLAPPING P_1,P_2 (P_1=|e0><e0|, P_2=|v><v|,
+ * v=(e0+e1)/sqrt2, so ||P_1 P_2|| = 1/sqrt2, NOT small) violate the lem_alpha
+ * hypothesis ||P_j P_l - delta_jl P_l|| <= delta. The construction must REJECT
+ * this ill-posed input via SIGABRT. For GROSS overlap the EARLIEST hypothesis
+ * check that fires is the prop_P basin inside aic_corner_Co: P = P_1 + P_2 with a
+ * large overlap is far from a delta-projection, so the symmetric combination M =
+ * 1/2(L_P R_P + R_P L_P) has ||M^2 - M|| >= 1/4 and aic_prop_P aborts.
+ *
+ * Finding 6 (corrected). prop_P gates only GROSS overlap; it is NOT the
+ * load-bearing invertibility guard. The review found overlaps in [0.05, 0.20]
+ * PASS prop_P and are CORRECTLY handled (not rejected) by the certified ||gamma||<1
+ * guard inside aic_corner_alpha -- that guard is the load-bearing invertibility
+ * gate. The lemma's named per-projector hypotheses (||P_j P_l - delta P_l|| <=
+ * delta, etc., tex:1091) are SUFFICIENT CONDITIONS for ||gamma||<1 (tex:1114), not
+ * separately asserted in code. The ||gamma||<1 assert is exercised on the VALID
+ * path (||gamma|| reported in every T9 pass: 0 at eta=0, 7.3e-6 at eta=0.028) and
+ * fires on the rare borderline input that slips past prop_P. Either way an
+ * out-of-hypothesis input is fail-loud (Rule 4) -- that is the tooth. This test
+ * uses ||P1 P2|| = 0.707 (gross), so prop_P fires here. Forked child (mirrors
+ * test_idemp). */
+static void test_t9_failloud(void)
+{
+    const slong prec = 256, n = 4;
+    pid_t pid = fork();
+    if (pid == 0) {
+        aic_ucp_kraus phi;
+        make_identity(&phi, n);
+        aic_assoc_ecstar ae;
+        aic_assoc_ecstar_from_phi(&ae, &phi, prec);
+        acb_mat_t Pp[2], Qp[1], P, Q;
+        diag_proj_at(Pp[0], n, 0);                    /* |e0><e0| */
+        double v01[4] = {0.70710678118654752, 0.70710678118654752, 0, 0};
+        rank1_proj(Pp[1], n, v01);                    /* |v><v|, overlaps P_0 */
+        diag_proj_at(Qp[0], n, 2);
+        /* P = P_0 + P_1 is NOT a clean delta-projection (overlap); build it anyway
+         * (the construction's fail-loud is what we are testing). */
+        acb_mat_init(P, n, n);
+        acb_mat_add(P, Pp[0], Pp[1], prec);
+        acb_mat_init(Q, n, n);
+        acb_set_si(acb_mat_entry(Q, 2, 2), 1);
+        slong N, dPQ;
+        /* aic_corner_alpha_dims itself builds Co_{P,P}, so the prop_P basin assert
+         * fires HERE (the earliest hypothesis check) on this overlapping P. */
+        aic_corner_alpha_dims(&N, &dPQ, &ae.A, (const acb_mat_t *) Pp, 2, P,
+                              (const acb_mat_t *) Qp, 1, Q, prec);
+        acb_mat_t alpha;
+        acb_mat_init(alpha, dPQ, N);
+        arb_t ng;
+        arb_init(ng);
+        slong N2, dPQ2;
+        aic_corner_alpha(alpha, NULL, NULL, NULL, ng, NULL, &N2, &dPQ2, &ae.A,
+                         (const acb_mat_t *) Pp, 2, P, (const acb_mat_t *) Qp, 1,
+                         Q, prec);    /* (or here: ||gamma||>=1 / dim mismatch) */
+        _exit(0);                     /* reached only if NOT aborted */
+    }
+    int status = 0;
+    waitpid(pid, &status, 0);
+    AIC_CHECK_MSG(WIFSIGNALED(status) && WTERMSIG(status) == SIGABRT,
+                  "T9(iii): overlapping projectors did not abort via SIGABRT "
+                  "(WIFSIGNALED=%d, WTERMSIG=%d)", WIFSIGNALED(status),
+                  WIFSIGNALED(status) ? WTERMSIG(status) : -1);
+    printf("T9(iii) fail-loud: overlapping P_1,P_2 (||P1 P2||=0.707, GROSS) "
+           "rejected via SIGABRT (prop_P basin gates gross overlap; ||gamma||<1 is "
+           "the load-bearing invertibility guard for borderline inputs)\n");
+}
+
+/* T9(iv) INDEPENDENT eta=0 ENTRY oracle (FIX 1, bead aic — Increment-2a hostile
+ * review). The t9_identity round-trips alpha alpha^{-1} ~ I cannot fail on alpha's
+ * ENTRIES: with alpha_inv = (beta alpha)^{-1} beta, alpha^{-1} alpha = I_N is an
+ * algebraic identity for ANY alpha, beta (a beta->1.5 beta mutation stays green; the
+ * review proved only the ||gamma|| check caught it). This oracle tests alpha's
+ * entries DIRECTLY, with NO path through alpha_inv / acb_mat_solve:
+ *
+ *   At eta=0 on the identity(4) algebra (A = M_4, star = plain product) with
+ *   DISJOINT rank-1 parts P_j=|e_j><e_j| (j=0,1), Q_k=|e_{2+k}><e_{2+k}| (k=0,1),
+ *   almost-containment is EXACT: each block S_{Pj,Qk} = span{|e_j><e_{2+k}|} (a
+ *   matrix unit, dim 1, all 4 blocks populated -- the off-diagonal blocks are
+ *   present), and Co_{P,Q}(C^{jk}_m) = P C^{jk}_m Q = C^{jk}_m EXACTLY. So
+ *   alpha is the rectangular CHANGE-OF-BASIS ISOMETRY: column (b,m) of alpha is
+ *   <D_l, C^{jk}_m>_F (re-coordinating the block basis element in {D_l}). Both
+ *   {C^{jk}_m} (across blocks) and {D_l} are Frobenius-orthonormal bases of the
+ *   SAME space S_{P,Q} (N = dPQ = 4), so alpha is UNITARY. We check:
+ *     (a) ORTHONORMAL COLUMNS: ||alpha^dag alpha - I_N|| < tol. A column-scale or
+ *         transpose bug in the alpha ASSEMBLY breaks this, independently of
+ *         alpha_inv (the round-trip is blind to it).
+ *     (b) RECONSTRUCTION: for each block column (b,m), sum_l alpha[l,off+m] D_l ==
+ *         C^{jk}_m to machine-zero -- an entry-level witness that the block basis
+ *         element is preserved, recomputed via an INDEPENDENT path ({D_l},
+ *         {C^{jk}_m} re-extracted here, NOT the solve).
+ * MUTATION (forked children, confirmed RED). At eta=0 alpha is a 4x4 PERMUTATION
+ *   matrix (each block basis element = a matrix unit |e_j><e_{2+k}| maps to a single
+ *   {D_l}), so two complementary mutations isolate the two checks:
+ *     col_scale=1.5 on alpha column 0 -> (a) ||alpha^dag alpha - I|| = 1.5^2-1 =
+ *       1.250e0 RED, (b) reconstruction residual 5.000e-1 RED (SIGABRT). Both fire.
+ *     transpose_mut=1 swaps alpha COLUMNS 0,1 -> (a) is BLIND (permutation stays
+ *       orthonormal, ||a^dag a - I||=0) but (b) RED: block 0 rebuilds C^{01} != C^{00},
+ *       reconstruction residual 1.414e0 (SIGABRT). This proves (b) has teeth against
+ *       a column permutation, the kind of bug (a) cannot see.
+ *   With col_scale=1.0, transpose_mut=0 (no mutation) the oracle is GREEN (both
+ *   residuals ~1e-74). See t9_entry_check_aborts. */
+static void t9_entry_oracle(double col_scale, int transpose_mut, slong prec)
+{
+    const slong n = 4, p = 2, q = 2;
+    aic_ucp_kraus phi;
+    make_identity(&phi, n);
+    aic_assoc_ecstar ae;
+    aic_assoc_ecstar_from_phi(&ae, &phi, prec);
+    slong d = ae.A.dim_A;
+
+    /* disjoint rank-1 parts; P=sum Pj, Q=sum Qk. */
+    acb_mat_t Pp[2], Qp[2], P, Q;
+    diag_proj_at(Pp[0], n, 0); diag_proj_at(Pp[1], n, 1);
+    diag_proj_at(Qp[0], n, 2); diag_proj_at(Qp[1], n, 3);
+    diag_proj(P, n, 2);                          /* diag(1,1,0,0) */
+    acb_mat_init(Q, n, n); acb_mat_zero(Q);
+    acb_set_si(acb_mat_entry(Q, 2, 2), 1);
+    acb_set_si(acb_mat_entry(Q, 3, 3), 1);       /* diag(0,0,1,1) */
+
+    slong N, dPQ;
+    aic_corner_alpha_dims(&N, &dPQ, &ae.A, (const acb_mat_t *) Pp, p, P,
+                          (const acb_mat_t *) Qp, q, Q, prec);
+    AIC_CHECK_MSG(N == dPQ && N == 4,
+                  "T9(iv): expected N=dPQ=4, got N=%ld dPQ=%ld", (long) N,
+                  (long) dPQ);
+
+    acb_mat_t alpha;
+    acb_mat_init(alpha, dPQ, N);
+    arb_t na, nai, ng, ngrad;
+    arb_init(na); arb_init(nai); arb_init(ng); arb_init(ngrad);
+    slong N2, dPQ2;
+    aic_corner_alpha(alpha, NULL, na, nai, ng, ngrad, &N2, &dPQ2, &ae.A,
+                     (const acb_mat_t *) Pp, p, P, (const acb_mat_t *) Qp, q, Q,
+                     prec);
+
+    /* MUTATIONS (applied to the test's COPY of alpha; production is untouched). */
+    if (col_scale != 1.0) {
+        arb_t s;
+        arb_init(s);
+        arb_set_d(s, col_scale);
+        for (slong l = 0; l < dPQ; l++)              /* scale alpha column 0 */
+            acb_mul_arb(acb_mat_entry(alpha, l, 0), acb_mat_entry(alpha, l, 0),
+                        s, prec);
+        arb_clear(s);
+    }
+    if (transpose_mut) {
+        /* swap alpha columns 0 and 1 (the block-0 and block-1 coordinate columns).
+         * alpha here is a permutation matrix, so a COLUMN swap is invisible to (a)
+         * (||a^dag a - I|| stays 0) but corrupts (b): block 0's reconstruction now
+         * uses column 1's coords and rebuilds C^{01} != C^{00}. This is the
+         * mutation that exercises the RECONSTRUCTION check specifically. */
+        acb_t tmp;
+        acb_init(tmp);
+        for (slong l = 0; l < dPQ; l++) {
+            acb_set(tmp, acb_mat_entry(alpha, l, 0));
+            acb_set(acb_mat_entry(alpha, l, 0), acb_mat_entry(alpha, l, 1));
+            acb_set(acb_mat_entry(alpha, l, 1), tmp);
+        }
+        acb_clear(tmp);
+    }
+
+    /* INDEPENDENT bases: D_l of S_{P,Q}, and C^{jk}_m per block (re-extracted, NOT
+     * via alpha_inv). Mirrors aic_corner_build_blocks but kept local for
+     * independence from the production builder. */
+    acb_mat_t CoPQ;
+    acb_mat_init(CoPQ, d, d);
+    aic_corner_Co(CoPQ, &ae.A, P, Q, prec);
+    acb_mat_t *Dl;
+    slong dD;
+    aic_corner_extract(&Dl, &dD, CoPQ, &ae.A, prec);
+    AIC_CHECK_MSG(dD == dPQ, "T9(iv): dim {D_l}=%ld != dPQ=%ld", (long) dD,
+                  (long) dPQ);
+
+    /* (a) orthonormal columns: ||alpha^dag alpha - I_N||_op. */
+    acb_mat_t ad, gram, eye, gdiff;
+    acb_mat_init(ad, N, dPQ);
+    acb_mat_init(gram, N, N);
+    acb_mat_init(eye, N, N);
+    acb_mat_init(gdiff, N, N);
+    acb_mat_conjugate_transpose(ad, alpha);
+    acb_mat_mul(gram, ad, alpha, prec);          /* alpha^dag alpha */
+    acb_mat_one(eye);
+    acb_mat_sub(gdiff, gram, eye, prec);
+    double orth = mid_opnorm_d(gdiff, prec);
+
+    /* (b) reconstruction: for each block column (b,m), R = sum_l alpha[l,off+m] D_l
+     * must equal C^{jk}_m. */
+    double recon = 0.0;
+    slong off = 0;
+    for (slong j = 0; j < p; j++)
+        for (slong k = 0; k < q; k++) {
+            acb_mat_t CoBlk;
+            acb_mat_init(CoBlk, d, d);
+            aic_corner_Co(CoBlk, &ae.A, Pp[j], Qp[k], prec);
+            acb_mat_t *Cm;
+            slong dB;
+            aic_corner_extract(&Cm, &dB, CoBlk, &ae.A, prec);
+            for (slong m = 0; m < dB; m++) {
+                acb_mat_t R, dr;
+                acb_mat_init(R, n, n);
+                acb_mat_init(dr, n, n);
+                acb_mat_zero(R);
+                for (slong l = 0; l < dPQ; l++) {  /* R = sum_l alpha[l,off+m] D_l */
+                    acb_mat_t sc;
+                    acb_mat_init(sc, n, n);
+                    acb_mat_scalar_mul_acb(sc, Dl[l],
+                                           acb_mat_entry(alpha, l, off + m), prec);
+                    acb_mat_add(R, R, sc, prec);
+                    acb_mat_clear(sc);
+                }
+                acb_mat_sub(dr, R, Cm[m], prec);   /* == 0 (block elt preserved) */
+                double e = mid_opnorm_d(dr, prec);
+                if (e > recon) recon = e;
+                acb_mat_clear(dr); acb_mat_clear(R);
+            }
+            for (slong m = 0; m < dB; m++) acb_mat_clear(Cm[m]);
+            if (Cm) flint_free(Cm);
+            acb_mat_clear(CoBlk);
+            off += dB;
+        }
+
+    printf("T9(iv) entry oracle [scale=%.2f tr=%d]: ||a^dag a - I||=%.3e "
+           "max||sum_l a[l,*]D_l - C^{jk}||=%.3e\n", col_scale, transpose_mut,
+           orth, recon);
+    AIC_CHECK_MSG(orth < 1e-9,
+                  "T9(iv): alpha columns not orthonormal (||a^dag a - I||=%.3e) -- "
+                  "alpha-entry scale/transpose bug", orth);
+    AIC_CHECK_MSG(recon < 1e-9,
+                  "T9(iv): block basis element NOT reconstructed (max %.3e) -- "
+                  "alpha entries wrong (independent of the solve)", recon);
+
+    acb_mat_clear(gdiff); acb_mat_clear(eye); acb_mat_clear(gram); acb_mat_clear(ad);
+    for (slong l = 0; l < dD; l++) acb_mat_clear(Dl[l]);
+    if (Dl) flint_free(Dl);
+    acb_mat_clear(CoPQ);
+    arb_clear(ngrad); arb_clear(ng); arb_clear(nai); arb_clear(na);
+    acb_mat_clear(alpha);
+    acb_mat_clear(Q); acb_mat_clear(P);
+    acb_mat_clear(Qp[1]); acb_mat_clear(Qp[0]);
+    acb_mat_clear(Pp[1]); acb_mat_clear(Pp[0]);
+    aic_assoc_ecstar_clear(&ae);
+    aic_ucp_kraus_clear(&phi);
+}
+
+/* T9(iv) MUTATION-PROOF: fork children that run t9_entry_oracle with a mutation
+ * and confirm SIGABRT (one of (a)/(b) goes RED). Mirrors test_t9_failloud. Also
+ * re-confirms the beta->1.5 beta mutation (which the round-trip was BLIND to) is
+ * now caught at the ENTRY level: a beta scale changes alpha (its columns are
+ * <D_l, Co_{P,Q}(C)>_F, computed from beta's blocks... ) -- but beta does NOT feed
+ * alpha's columns, only the solve. So the relevant entry mutation is on alpha
+ * itself (col_scale / transpose). The beta->1.5 beta soundness is instead covered
+ * by the ||gamma|| guard (FIX 2 certified) + the round-trip's surjectivity role;
+ * the entry oracle's job is to catch alpha-entry corruption the round-trip misses. */
+static void t9_entry_check_aborts(double col_scale, int transpose_mut,
+                                  const char *what)
+{
+    pid_t pid = fork();
+    if (pid == 0) {
+        t9_entry_oracle(col_scale, transpose_mut, 256);
+        _exit(0);                /* reached only if NOT aborted */
+    }
+    int status = 0;
+    waitpid(pid, &status, 0);
+    AIC_CHECK_MSG(WIFSIGNALED(status) && WTERMSIG(status) == SIGABRT,
+                  "T9(iv) mutation %s did not abort via SIGABRT (WIFSIGNALED=%d, "
+                  "WTERMSIG=%d)", what, WIFSIGNALED(status),
+                  WIFSIGNALED(status) ? WTERMSIG(status) : -1);
+    printf("T9(iv) mutation %s rejected via SIGABRT (entry oracle has teeth)\n",
+           what);
+}
+
+static void test_t9(void)
+{
+    const slong prec = 256;
+    /* (i) eta=0 exact oracle. p=q=2: P=diag(1,1,0,0), Q=diag(0,0,1,1). */
+    slong Psup2[2] = {0, 1}, Qsup2[2] = {2, 3};
+    t9_identity("id(4) p=q=2", 4, Psup2, 2, Qsup2, 2, prec);
+    /* p=2, q=1: Q a single rank-1 block. */
+    slong Qsup1[1] = {2};
+    t9_identity("id(4) p=2,q=1", 4, Psup2, 2, Qsup1, 1, prec);
+    /* (ii) eta>0 bounds. */
+    t9_eta_pos(prec);
+    /* (iii) fail-loud teeth. */
+    test_t9_failloud();
+    /* (iv) INDEPENDENT eta=0 entry oracle (FIX 1) + its mutation-proof. */
+    t9_entry_oracle(1.0, 0, prec);                 /* no mutation: GREEN */
+    t9_entry_check_aborts(1.5, 0, "col0 scale 1.5 (breaks orthonormality (a))");
+    t9_entry_check_aborts(1.0, 1, "swap cols 0,1 (breaks reconstruction (b))");
+}
+
 int main(void)
 {
     test_t5();   /* headline eta=0 oracle first */
@@ -773,6 +1526,10 @@ int main(void)
     test_t4();
     test_t6();
     test_t7();   /* oblique oracle: gives build_L/extract teeth */
+    test_t8_oblique();  /* Increment 2a: compressed product oracle (oblique star) */
+    test_t8_unit();     /* Increment 2a: Ptilde unit of (S_P,.) */
+    test_t8_bound();    /* Increment 2a: ||X.Y - X*Y|| O(eta) bound */
+    test_t9();          /* Increment 2a: lem_alpha block bijection */
     aic_test_report("test_corner");
     printf("OK test_corner\n");
     return 0;

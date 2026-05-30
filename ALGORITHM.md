@@ -1528,6 +1528,57 @@ one-sided), `src/aic_corner_extract.c` (coord↔operator apply + SVD extraction)
 (779 LOC — joins the oversized-test split list `aic-w4o.4`). Certified `dim S`
 rank defers to `aic-w4o.1` (double-path SVD now, like `idemp`/`assoc`). `.tex`
 typo escalation (Increment 2, lem_alpha): `tex:1109` `β_{jk}=Co_{P_j,Q_j}` should
-read `Co_{P_j,Q_k}` (proof `tex:1114` `δ_{jl}δ_{km}` requires `Q_k`). Increment 2
-(compressed product, `lem_alpha`, `lem_PQ_Hilb`, Ha-map, `lem_PQR`,
-`lem_1d_proj`) is the next deliverable on this bead.
+read `Co_{P_j,Q_k}` (proof `tex:1114` `δ_{jl}δ_{km}` requires `Q_k`).
+
+## Module `corner` (Increment 2a) — compressed product + `lem_alpha` block bijection (bead aic-czm)
+
+Adds the §7 product machinery on top of Increment 1.
+
+### Compressed product (`.tex:1077–1082`)
+`X·Y = Co_{P,R}(X⋆Y)` for `X∈S_{P,Q}`, `Y∈S_{Q,R}` — the star `X⋆Y=Φ̃(XY)`
+(`aic_ecstar_star`) then the d×d `Co_{P,R}` via `aic_corner_apply`
+(`aic_corner_cdot`). `(S_P,·)` is an O(δ+ε)-C* algebra with unit
+`P̃=Co_P(P)` (`aic_corner_Ptilde`). **Finding (load-bearing for the test design):
+`Co_{P,R}` is a NO-OP on a valid `X⋆Y` at η=0** — the star already lands
+(approximately) in `S_{P,R}`, so `Co_{P,R}(X⋆Y)=X⋆Y` exactly at η=0 (the paper's
+"close to the ambient product", `.tex:1081`); the compression step is visible
+only at η>0. So the two cdot teeth are distinct: T8(a) catches a dropped *star*
+(non-vacuity gap 0.0556 on the oblique `compress_idemp(4,2)` fixture, mutation-RED),
+T8(b)'s η>0 arm catches a dropped *compression* (`X·Y==X⋆Y` at η>0, RED).
+Measured `‖X·Y−X⋆Y‖/η ≈ 0.006`.
+
+### `lem_alpha` block bijection (`.tex:1086–1119`)
+`α=Σ α_{jk}`, `α_{jk}=Co_{P,Q}|_{S_{Pj,Qk}} : ⊕_{jk} S_{Pj,Qk}→S_{P,Q}`;
+`β_{jk}=Co_{Pj,Qk}`; `βα=1+γ`, the contraction `‖γ‖<1` makes `βα` invertible and
+`α⁻¹=(βα)⁻¹β` (certified `acb_mat_solve`). Built as explicit matrices in the
+extracted corner coordinates: `α[l,⟨jk⟩m]=⟨D_l,Co_{P,Q}(C^{jk}_m)⟩_F`,
+`β[⟨jk⟩m,l]=⟨C^{jk}_m,Co_{Pj,Qk}(D_l)⟩_F` (block index `b=j·q+k`, running column
+offset). Used only for `p,q≤2` (`.tex:1084`). **`.tex` typo (documented, Law 1):**
+`tex:1109` prints `β_{jk}=Co_{P_j,Q_j}`; the codomain `S_{Pj,Qk}` and the proof
+`tex:1114` (`δ_{jl}δ_{km}`) require `Co_{P_j,Q_k}` — implemented `Q_k`, the `Q_j`
+build is mutation-RED (`‖γ‖` jumps 0→1). The dim-count bijection oracle
+`N=Σ dim S_{Pj,Qk}=dim S_{P,Q}` is a fail-loud assert (`.tex:1124`).
+
+### Two soundness fixes from the hostile review (no blockers)
+(1) **The `α⁻¹·α≈I` round-trip is a tautology** (`α⁻¹=(βα)⁻¹β` ⇒ `α⁻¹α=I` for
+any α,β — a β→1.5β mutation kept it green). Replaced by an **independent η=0 entry
+oracle**: α at η=0 is the exact change-of-basis isometry, so `‖α†α−I‖<tol`
+(orthonormal columns) AND `Σ_l α[l,·]D_l == C^{jk}_m` (reconstruction, no `α⁻¹`
+path) — mutation-RED under a column-scale AND a column-swap (the swap is invisible
+to `α†α` but caught by reconstruction). (2) **The `‖γ‖<1` gate is now a CERTIFIED
+upper bound** (`aic_corner_gamma_opnorm_ub`): `‖M‖_op ≤ ‖mid(M)‖_op + ‖rad(M)‖_F`,
+the radius term via rigorous `mag_t` arithmetic — the decision uses the upper end
+< 1 (honors the arb ladder), sidestepping the `aic_mat_opnorm` Gram false-fail on
+near-zero off-diagonals (bead aic-2yo). Measured radius contribution ~5e-72 at
+the tested η (negligible); self-mutation-proven (mid=0.999/rad=0.01 → 1.009 fails).
+
+### Files (Increment 2a)
+`src/aic_corner_product.c` (cdot + Ptilde, 67 LOC), `src/aic_corner_alpha.c`
+(α assembly + γ + solve, 183 LOC), `src/aic_corner_alpha_build.c`
+(build_blocks/free_blocks/alpha_dims + the certified-norm helper, 160 LOC),
+header + tests extended (73 checks total). `lem_alpha` hypotheses are not
+separately asserted — they are sufficient conditions for `‖γ‖<1`, which is the
+load-bearing guard (`tex:1114`); the `prop_P` basin assert in `aic_corner_Co`
+gates gross overlap upstream. **Increment 2b** (the 1d-projection cluster:
+`lem_PQ_Hilb` Hilbert inner product, the Ha-map, `lem_PQR`, `lem_1d_proj`,
+equivalence) is the remaining deliverable on this bead.

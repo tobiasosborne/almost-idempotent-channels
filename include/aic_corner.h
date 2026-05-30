@@ -131,6 +131,89 @@ void aic_corner_apply(acb_mat_t out, const aic_ecstar *A, const acb_mat_t T,
 void aic_corner_extract(acb_mat_t **C_out, slong *dim_S_out, const acb_mat_t Co,
                         const aic_ecstar *A, slong prec);
 
+/* ============================ Increment 2a =============================== *
+ * The compressed product (compr_prod, .tex:1077-1082) and the block bijection
+ * alpha (lem_alpha, .tex:1086-1119). The full why lives in
+ * src/aic_corner_product.c.
+ */
+
+/* The COMPRESSED PRODUCT X . Y = Co_{P,R}(X * Y) (.tex:1078-1080, eq compr_prod),
+ *   (X,Y) |-> X . Y : S_{P,Q} x S_{Q,R} -> S_{P,R}.
+ * Computes Z = X * Y (the STAR aic_ecstar_star, n x n) then applies the d x d
+ * compression Co_{P,R} (prebuilt by aic_corner_Co) to Z via aic_corner_apply.
+ *   `out`   : n x n (n = A->n), caller-initialised, must NOT alias X or Y.
+ *   `CoPR`  : d x d, = Co_{P,R} (A->dim_A x A->dim_A).
+ *   `X`,`Y` : n x n; X in S_{P,Q}, Y in S_{Q,R} (the caller's responsibility).
+ * The paper's spec ||X . Y - X * Y|| <= O(delta+eps) ||X|| ||Y|| (.tex:1081) is
+ * the correctness bound; tests/test_corner.c asserts it. The STAR is LOAD-BEARING
+ * (CLAUDE.md callout): dropping it (plain X.Y) is RED on the oblique fixture. */
+void aic_corner_cdot(acb_mat_t out, const aic_ecstar *A, const acb_mat_t CoPR,
+                     const acb_mat_t X, const acb_mat_t Y, slong prec);
+
+/* The unit of (S_P, .): Ptilde = Co_P(P) = Co_{P,P}(P) (.tex:1082). Builds
+ * Co_{P,P} (aic_corner_Co with Q=P) and applies it to P (aic_corner_apply).
+ *   `out` : n x n, caller-initialised, must NOT alias P.
+ *   `P`   : n x n Hermitian delta-projection.
+ * Then ||Ptilde . X - X||, ||X . Ptilde - X|| <= O(delta+eps) ||X|| for X in S_P
+ * (.tex:1082; machine-zero at eta=0); tests assert it. */
+void aic_corner_Ptilde(acb_mat_t out, const aic_ecstar *A, const acb_mat_t P,
+                       slong prec);
+
+/* The block bijection alpha of lem_alpha (.tex:1086-1119). Given p Hermitian
+ * P_j and q Hermitian Q_k with P = sum_j P_j, Q = sum_k Q_k (the caller passes
+ * the SUMS and the PARTS), builds
+ *   alpha   = sum_{jk} Co_{P,Q}|_{S_{Pj,Qk}} : (+)_{jk} S_{Pj,Qk} -> S_{P,Q}
+ *   beta    = sum_{jk} Co_{Pj,Qk}            : S_{P,Q} -> (+)_{jk} S_{Pj,Qk}
+ * as explicit matrices between the direct-sum COORDINATE space (dim N =
+ * sum_{jk} dim S_{Pj,Qk}, blocks contiguous) and S_{P,Q}'s coordinate space
+ * (dim d_PQ = dim S_{P,Q}). The columns of alpha are alpha_{jk}(C^{jk}_m) =
+ * Co_{P,Q}(C^{jk}_m) re-coordinated in S_{P,Q}'s basis {D_l}; the columns of
+ * beta are beta_{jk}(D_l) = Co_{Pj,Qk}(D_l) re-coordinated in {C^{jk}_m}.
+ *
+ * .tex TYPO (escalated, bead aic-czm): tex:1109 prints beta_{jk} = Co_{P_j,Q_j};
+ * the proof tex:1114 (delta_jl delta_km) and the codomain S_{Pj,Qk} both require
+ * Co_{P_j,Q_k}. We implement Co_{Pj,Qk} (see src/aic_corner_product.c).
+ *
+ * Computes gamma = beta alpha - I_N and ASSERTS a CERTIFIED UPPER BOUND on
+ * ||gamma||_op is < 1 (the lem_alpha hypothesis pq(delta+eps) < const; fail loud,
+ * Rule 4). The bound is ||mid(gamma)||_op + ||rad(gamma)||_F >= ||gamma||_op
+ * (FIX 2 — the midpoint alone discarded gamma's certified radius, a soundness hole
+ * per the arb ladder). Then alpha is a bijection (so N == d_PQ is ASSERTED, the
+ * dim-count oracle .tex:1124) with the certified inverse alpha^{-1} =
+ * (beta alpha)^{-1} beta (acb_mat_solve, certified).
+ *
+ * OUTPUTS (all caller-initialised to the shapes below; *N_out, *dPQ_out written):
+ *   `alpha`   : d_PQ x N. `alpha_inv` : N x d_PQ (NULL to skip).
+ *   `norm_alpha`, `norm_alpha_inv` : initialised arb_t, certified upper bounds on
+ *               ||alpha||_op, ||alpha^{-1}||_op (NULL to skip; informational, they
+ *               gate nothing).
+ *   `gamma_norm` : initialised arb_t, the CERTIFIED UPPER BOUND on ||gamma||_op
+ *               (the contraction constant tested < 1; NULL to skip). Always
+ *               computed internally for the assert.
+ *   `gamma_rad`  : initialised arb_t, the ||rad(gamma)||_F radius contribution
+ *               folded into gamma_norm (NULL to skip; ~1e-72 in the tight regime,
+ *               so gamma_norm is dominated by ||mid(gamma)||_op). Lets the caller
+ *               report how much certified width the guard accounts for.
+ * Because the output shapes depend on N (data-dependent), alpha/alpha_inv are
+ * caller-allocated via the dims aic_corner_alpha_dims reports first. */
+void aic_corner_alpha(acb_mat_t alpha, acb_mat_t alpha_inv,
+                      arb_t norm_alpha, arb_t norm_alpha_inv, arb_t gamma_norm,
+                      arb_t gamma_rad,
+                      slong *N_out, slong *dPQ_out,
+                      const aic_ecstar *A,
+                      const acb_mat_t *P_parts, slong p, const acb_mat_t P,
+                      const acb_mat_t *Q_parts, slong q, const acb_mat_t Q,
+                      slong prec);
+
+/* Report the direct-sum dimension N = sum_{jk} dim S_{Pj,Qk} and d_PQ =
+ * dim S_{P,Q} WITHOUT building alpha (so the caller can allocate alpha/alpha_inv
+ * to the right shape, then call aic_corner_alpha). Builds the per-block Co's and
+ * Co_{P,Q}, sums the extracted dims. */
+void aic_corner_alpha_dims(slong *N_out, slong *dPQ_out, const aic_ecstar *A,
+                           const acb_mat_t *P_parts, slong p, const acb_mat_t P,
+                           const acb_mat_t *Q_parts, slong q, const acb_mat_t Q,
+                           slong prec);
+
 #ifdef __cplusplus
 }
 #endif
