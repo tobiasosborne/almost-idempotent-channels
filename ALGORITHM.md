@@ -1449,3 +1449,85 @@ assoc payoff with the unitality sign witness (see the Increment-1 T9 section).
 (shared `aic_funcalc_int_step_norm`), `src/aic_funcalc_sgn.c` (dispatch),
 `src/aic_funcalc_proj.c` (prop_P spectral relax), `include/aic_funcalc.h`,
 `src/aic_funcalc_internal.h`. Research: `docs/research/sgn_global_research.md`.
+
+## Module `corner` (Increment 1) — compression maps `Co_{P,Q}` and corner subspaces `S_{P,Q}` (bead aic-czm)
+
+Realizes §7 "Subspaces associated with projections" (`.tex:1052–1076`), the
+substrate the th_main master loop (`cstar_build`) and §8 (`dhom`) are built on.
+This is the first step of the **th_main critical path**
+(`corner → projection → dhom → errreduce → cstar_build`); the §5 approximate
+unitary group and §4 `unitfix` are auxiliary (the constructive Route-A projection
+bypasses the §6 Lefschetz machinery, so it does not need them).
+
+### Paper technique vs constructive route (Law 3)
+The paper's `Co_{P,Q}` is an operator on the (possibly infinite-dim) Banach
+algebra A, snapped to an exact idempotent by the holomorphic functional calculus
+of `prop_P`. In finite dim A is a d-dim space (d = dim A) with a
+Frobenius-orthonormal operator basis `{B_k}`, so an operator on A **is** a d×d
+matrix. We build the left/right star-multiplication superoperators `L_P`, `R_Q`
+as d×d coordinate matrices, form `2M−1 = L_P R_Q + R_Q L_P − I` (with
+`M = ½(L_P R_Q + R_Q L_P)`), and call `aic_prop_P` (`θ(2M−1)`, the eig-free
+Newton–Schulz route) to get the exact idempotent `Co` (d×d). The paper's
+`O(δ+ε)` bound is the spec; the tests assert it.
+
+### The construction (`.tex:1054–1066`)
+`Co_{P,Q} = θ(L_P R_Q + R_Q L_P − 1)` where `(L_P)_{ij} = ⟨B_i, P⋆B_j⟩_F`,
+`(R_Q)_{ij} = ⟨B_i, B_j⋆Q⟩_F`. **The star, not the plain product** (load-bearing
+domain callout): `P⋆B_j = aic_ecstar_star(A,P,B_j) = Φ̃(P·B_j)` — every "product
+in A" routes through the Choi–Effros star; `acb_mat_mul` appears only for the
+Frobenius inner products and the d×d coordinate-matrix products `L_P R_Q`,
+`R_Q L_P`. The identity `L_P R_Q + R_Q L_P − 1 = 2M − I` is exactly the `prop_P`
+substitution, so the basin assert `‖M²−M‖ < 1/4` (= `‖(2M−1)²−I‖/4`) guards it
+(fail-loud, Rule 4). One-sided variants `Co_{P,1} = θ(2L_P−1) = aic_prop_P(L_P)`
+(R₁=id ⇒ symmetric combo collapses to `L_P`) and `Co_{1,Q} = aic_prop_P(R_Q)`;
+`Co_P := Co_{P,P}`. Relations (`.tex:1061–1064`): `Co²=Co` (exact after θ),
+`Co_{P,Q}(X)† = Co_{Q,P}(X†)`, `‖L_P R_Q − Co‖, ‖R_Q L_P − Co‖ ≤ O(δ+ε)`.
+
+### `S_{P,Q} = Img Co = Ker(1−Co)` extraction (`.tex:1064`)
+`dim S = round(Re Tr Co)`, **cross-checked** against the count of singular values
+> 0.5 of `Co` (fail loud on mismatch, Rule 4). The basis `C_m = Σ_k u_m[k] B_k`
+from the top-`dim S` **LEFT** singular vectors of `Co` (the operator→coord bridge
+`x_k = ⟨B_k,X⟩_F`). `Co` is in general an **oblique** idempotent (`L_P,R_Q` need
+not commute / be self-adjoint in coords), so its nonzero singular values are ≥ 1
+and the **left** singular vectors span `Img Co` (range), not the right ones
+(co-range = range of `Co†`) — the same subtlety as `assoc_extract`. Extraction is
+the fast double path (LAPACK `zgesvd` via `aic_latd_svd`; the certified
+degenerate-SVD wall `aic-w4o.1` deferred); relation defects are arb-certified.
+
+### Cross-checks (Rule 6) and the hostile-review blocker
+`tests/test_corner.c`, 33 checks at prec=256: T1 `Co²=Co` (η=0 machine-zero,
+η>0 `3.3e-74`); T2 involution (relation + **closed-form** `Co_{Q,P}(X†)=QX†P`
+companion + non-vacuity guard — the bare relation is structurally robust, the
+historical "test that can't fail" trap); T3 `‖L_P R_Q − Co‖/η ≈ 0.007`
+(measured O(δ+ε) constant, non-vacuity asserted); T4 almost-containment
+(`.tex:1074`, exact-fixed + `P₁⊊P`); T5 **η=0 oracle** (identity channel,
+A=M_n: `Co(X)=PXQ` machine-zero, `dim S = rank(P)·rank(Q)`, subspace match via
+the gauge-free projector `Π_S`); T6 degenerate dims (0 / dim_A / 1, via the
+fail-loud extract).
+
+The hostile review (mandatory, found a blocker as on every core module) proved
+T1–T6 were **blind** to two load-bearing facts: (1) star-vs-plain product —
+every fixture used either the identity channel (star≡plain) or the dep+conj
+family (orthogonal Φ̃, where the d×d `L_P` is machine-identical for star vs
+plain), so a `build_L` that dropped the star kept all 28 checks green
+byte-for-byte; (2) left-vs-right singular vectors — every `Co` was orthogonal
+(σ∈{0,1}, left==right). **Fix:** T7, an **oblique** fixture `compress_idemp(4,2)`
+(Φ̃ oblique, σ_max=√3, exactly idempotent → clean oracle), `P` = rank-1 projector
+onto `(e₀+e₁)/√2`, `Q=|e₀⟩⟨e₀|`, giving `Co` σ_max = 2/√3 > 1. (a) independent
+`build_L` oracle `L_exp[i,j] = ⟨B_i, Φ̃(P B_j)⟩_F` via `aic_assoc_superop_apply`
+(machine-zero) with non-vacuity gap `‖L_act − L_plain‖ = 0.667`; (b) oblique-`Co`
+fixed-point `Co(C_m)=C_m` (machine-zero). Both mutation-proven RED: star→plain
+makes (a) RED at 0.667; left→right makes (b) RED at 0.408. **Surprise:** the
+reviewer's suggested diagonal `P,Q` gave an *orthogonal* `Co` (the symmetric
+combination washes out obliqueness) — a rotated rank-1 `P` was needed.
+
+### Files + deferred
+`include/aic_corner.h`, `src/aic_corner_compress.c` (`build_L`/`build_R`/`Co`/
+one-sided), `src/aic_corner_extract.c` (coord↔operator apply + SVD extraction),
+`src/aic_corner_internal.h` (shared `aic_corner_frob_ip`), `tests/test_corner.c`
+(779 LOC — joins the oversized-test split list `aic-w4o.4`). Certified `dim S`
+rank defers to `aic-w4o.1` (double-path SVD now, like `idemp`/`assoc`). `.tex`
+typo escalation (Increment 2, lem_alpha): `tex:1109` `β_{jk}=Co_{P_j,Q_j}` should
+read `Co_{P_j,Q_k}` (proof `tex:1114` `δ_{jl}δ_{km}` requires `Q_k`). Increment 2
+(compressed product, `lem_alpha`, `lem_PQ_Hilb`, Ha-map, `lem_PQR`,
+`lem_1d_proj`) is the next deliverable on this bead.
