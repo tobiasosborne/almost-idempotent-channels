@@ -577,6 +577,144 @@ static void test_assert_hermitian_relative(void)
     acb_mat_clear(D);
 }
 
+/* --- 8. aic_mat_opnorm Gram radius-accumulation false-fail (bead aic-qgs) ---- */
+/* The Gram path of aic_mat_opnorm / aic_mat_singular_values previously routed the
+ * RAW acb_mat_mul output G = A^dag A through the certified-eig Hermiticity
+ * predicate. When A is built by a deep matmul chain that CANCELS — the canonical
+ * case is D = X^2 - I with X^2 ~ I (so D is SMALL in magnitude ~1e-3) while X
+ * carries a LARGE accumulated radius (~1e-70, from the oblique-star products in
+ * the corner machinery) — the Gram entries are small-magnitude (~1e-5) yet carry
+ * a large accumulated radius (~1e-72). The aic-2yo magnitude-relative Hermiticity
+ * floor tol*(1+|G_ij|+|G_ji|) is then ~tol (since |G| << 1), ~1e3x SMALLER than
+ * the radius, so the predicate FALSE-FAILS and aic_mat_opnorm SIGABRTs on a
+ * matrix that is genuinely Hermitian. This was a BLOCKER for the corner machinery
+ * (aic_corner_Co / dim_S) on genuinely-oblique (eta>0) S_P wrappers (FINDINGS
+ * §C5/§C10; the §C10 measurement ||(2M-1)^2-I|| ~1e-3, deeply in-basin).
+ *
+ * FIX (aic_mat_gram, src/aic_mat_norms.c): split the certified Gram into an
+ * EXACTLY-Hermitian midpoint matrix Gmid (zero radius -> the predicate passes for
+ * the right reason) plus a rigorous Weyl perturbation bound R >= ||G_true - Gmid||;
+ * run the certified eig on Gmid and inflate by R. NOT symmetrization alone: the
+ * off-diagonal midpoints of A^dag A are ALREADY exact conjugates, so the residual
+ * the predicate flags is purely the difference-ball RADIUS, which (G+G^dag)/2 does
+ * not remove (the diagnosis in the bead missed this; recorded in the report).
+ *
+ * This test reproduces the trigger at unit level: X a near-involution with a
+ * SEEDED ~1e-70 radius, D = X^2 - I (small magnitude, large radius), then assert
+ * aic_mat_opnorm(D) COMPLETES (no abort) and its midpoint matches the independent
+ * midpoint-route ||mid(D)||_op (the §C5 workaround value) to tolerance, with a
+ * sound ball that contains it.
+ *
+ * MUTATION-PROVEN (recorded in the increment report): reverting aic_mat_gram to
+ * hand the raw Gram to herm_max_eig (or to mere (G+G^dag)/2 symmetrization)
+ * re-introduces the SIGABRT here — verified by hand, restored. The pre-fix probe
+ * tests/test_qgs_probe.c aborted with exactly this message; this is its permanent
+ * unit-level form. */
+static double opnorm_mid_route(const acb_mat_t A, slong prec)
+{
+    /* ||mid(A)||_op: drop the accumulated radii (the §C5 workaround at test layer),
+     * an independent value to cross-check the certified opnorm midpoint against. */
+    slong r = acb_mat_nrows(A), c = acb_mat_ncols(A);
+    acb_mat_t M;
+    acb_mat_init(M, r, c);
+    for (slong i = 0; i < r; i++)
+        for (slong j = 0; j < c; j++)
+            acb_get_mid(acb_mat_entry(M, i, j), acb_mat_entry(A, i, j));
+    arb_t op;
+    arb_init(op);
+    aic_mat_opnorm(op, M, prec);
+    double o = arf_get_d(arb_midref(op), ARF_RND_NEAR);
+    arb_clear(op);
+    acb_mat_clear(M);
+    return o;
+}
+
+static void test_opnorm_gram_radius_qgs(void)
+{
+    const slong prec = 256;
+    const slong n = 3;
+
+    /* X: a near-involution (X^2 ~ I to ~1e-3), with a SEEDED ~1e-70 absolute
+     * radius on every entry (mimics the deep oblique-star radius accumulation the
+     * corner machinery feeds in). */
+    acb_mat_t X;
+    acb_mat_init(X, n, n);
+    acb_set_d(acb_mat_entry(X, 0, 0), 1.0);
+    acb_set_d(acb_mat_entry(X, 1, 1), -1.0);
+    acb_set_d(acb_mat_entry(X, 2, 2), 1.0);
+    acb_set_d(acb_mat_entry(X, 0, 1), 1e-3);
+    acb_set_d(acb_mat_entry(X, 1, 0), 1e-3);
+    acb_set_d(acb_mat_entry(X, 0, 2), 2e-3);
+    acb_set_d(acb_mat_entry(X, 2, 0), -2e-3);
+    acb_set_d(acb_mat_entry(X, 1, 2), 3e-3);
+    acb_set_d(acb_mat_entry(X, 2, 1), 3e-3);
+    mag_t r;
+    mag_init(r);
+    mag_set_d(r, 1e-70);
+    for (slong i = 0; i < n; i++)
+        for (slong j = 0; j < n; j++) {
+            arb_add_error_mag(acb_realref(acb_mat_entry(X, i, j)), r);
+            arb_add_error_mag(acb_imagref(acb_mat_entry(X, i, j)), r);
+        }
+    mag_clear(r);
+
+    /* D = X^2 - I: small magnitude (~4e-3), large accumulated radius (~2e-70).
+     * Its Gram D^dag D has small-magnitude off-diagonals (~1e-5) with radius
+     * ~1e-72 -- the exact aic-qgs false-fail trigger (this IS what
+     * aic_funcalc_int_def_X2 forms and op-norms). */
+    acb_mat_t X2, D;
+    acb_mat_init(X2, n, n);
+    acb_mat_init(D, n, n);
+    acb_mat_sqr(X2, X, prec);
+    acb_mat_one(D);
+    acb_mat_sub(D, X2, D, prec); /* D = X^2 - I */
+
+    /* (1) THE FIX: aic_mat_opnorm(D) must COMPLETE (no SIGABRT) and be finite.
+     * Before the fix this aborted in the Gram-Hermiticity predicate. */
+    arb_t op;
+    arb_init(op);
+    aic_mat_opnorm(op, D, prec); /* must not abort */
+    double opd = arf_get_d(arb_midref(op), ARF_RND_NEAR);
+    AIC_CHECK_MSG(arb_is_finite(op),
+                  "aic-qgs: opnorm(X^2-I) ball must be finite (no nan/inf)");
+
+    /* (2) VALUE: the certified midpoint matches the independent midpoint-route
+     * ||mid(D)||_op (the §C5 workaround value) to tolerance. */
+    double op_ref = opnorm_mid_route(D, prec);
+    AIC_CHECK_MSG(op_ref > 1e-4,
+                  "aic-qgs test integrity: ||mid(D)||_op=%.3e too small (the input "
+                  "is not exercising a non-trivial opnorm)", op_ref);
+    AIC_CHECK_MSG(fabs(opd - op_ref) <= 1e-9 * (op_ref + 1.0),
+                  "aic-qgs: opnorm(X^2-I)=%.6e disagrees with ||mid(D)||_op=%.6e",
+                  opd, op_ref);
+
+    /* (3) BALL SANITY: the certified opnorm ball must be TIGHT — the Weyl
+     * inflation R (~1e-72 here) must not blow up the result. Assert the ball
+     * radius is tiny relative to the midpoint (a wide/0-straddling ball, e.g. from
+     * a non-finite-eps fallback or a runaway R, would fail this). */
+    double op_rad = mag_get_d(arb_radref(op));
+    AIC_CHECK_MSG(op_rad <= 1e-9 * (opd + 1.0),
+                  "aic-qgs: opnorm ball radius=%.3e too large relative to mid=%.6e "
+                  "(Weyl inflation R should be ~machine level here)", op_rad, opd);
+
+    /* (4) singular_values shares the Gram path: it must also complete and its
+     * largest singular value must equal the opnorm (both = sqrt(lambda_max)). */
+    arb_ptr sv = _arb_vec_init(n);
+    aic_mat_singular_values(sv, D, prec); /* must not abort */
+    double sv0 = arf_get_d(arb_midref(sv + 0), ARF_RND_NEAR);
+    AIC_CHECK_MSG(arb_is_finite(sv + 0) && fabs(sv0 - opd) <= 1e-9 * (opd + 1.0),
+                  "aic-qgs: singular_values[0]=%.6e != opnorm=%.6e", sv0, opd);
+    _arb_vec_clear(sv, n);
+
+    printf("  test8 opnorm Gram radius (aic-qgs): opnorm(X^2-I)=%.6e completes "
+           "(was SIGABRT); =||mid(D)||_op=%.6e; sigma_max=%.6e\n", opd, op_ref, sv0);
+
+    arb_clear(op);
+    acb_mat_clear(D);
+    acb_mat_clear(X2);
+    acb_mat_clear(X);
+}
+
 int main(void)
 {
     test_norms_exact();
@@ -586,6 +724,7 @@ int main(void)
     test_singular_values();
     test_herm_max_eig_fallback();
     test_assert_hermitian_relative();
+    test_opnorm_gram_radius_qgs();
 
     aic_test_report("test_mat");
     printf("OK test_mat\n");

@@ -140,16 +140,35 @@ with the concrete evidence from where they bit.
   are blind to the left/right distinction — needs an oblique fixture.
 
 ### C5. The `aic_mat_opnorm` Gram-path Hermiticity false-fail (implementation, recurring)
-- **Status:** CONFIRMED recurring; worked around; root-cause OPEN (bead **aic-qgs**;
-  neighbour of aic-2yo).
-- `aic_mat_opnorm` forms the Gram `M†M` and routes through a relative-Hermiticity
-  check that **false-fails** when an off-diagonal Gram entry has midpoint ~0 but a
-  matmul-**accumulated** arb radius exceeding the absolute floor — even though `M`
-  is tight and genuinely Hermitian. Hit by corner (`lem_alpha` γ, Ha-map `G−I`,
-  `lem_PQR`), projection (basin assert), dhom (everywhere). **Workaround:** use the
-  certified mid+radius upper bound `aic_corner_gamma_opnorm_ub` (`‖mid(M)‖_op +
-  ‖rad(M)‖_F`) for op-norms of near-zero-off-diagonal / star-defect matrices.
-  Until aic-qgs is fixed, new modules must use that helper.
+- **Status:** RESOLVED (bead **aic-qgs**; root-cause fix in `src/aic_mat_norms.c`
+  `aic_mat_gram`; regression `tests/test_mat.c` test8, mutation-proven). The
+  `aic_corner_gamma_opnorm_ub` mid+radius workaround can now be **progressively
+  retired** (NOT in the aic-qgs change — a separate cleanup).
+- `aic_mat_opnorm` / `aic_mat_singular_values` form the Gram `M†M` and route through
+  the relative-Hermiticity predicate (`aic_mat_int_is_hermitian`), which **false-failed
+  and SIGABRTed** when a deep matmul chain that CANCELS feeds in a matrix whose Gram
+  entries are SMALL in magnitude (`~1e-6`) yet carry a LARGE matmul-**accumulated**
+  arb radius (`~1e-72`): the magnitude-relative floor `tol·(1+|G_ij|+|G_ji|)` is then
+  `~tol` (since `|G|≪1`), `~1e3×` smaller than the radius. The predicate tests the
+  radius of the DIFFERENCE ball `|G_ij−conj(G_ji)|`, so it fired even though `G=M†M`
+  is genuinely Hermitian. Hit by corner (`lem_alpha` γ, Ha-map `G−I`, `lem_PQR`),
+  projection (basin assert), dhom, and the oblique S_P-wrapper corner (§C10).
+- **The diagnosed fix (a) — symmetrize `G←(G+G†)/2` — is INSUFFICIENT** (the bead's
+  diagnosis missed this): the off-diagonal midpoints of `M†M` are ALREADY exact
+  conjugates, so the residual the predicate flags is purely the difference-ball
+  RADIUS, which no midpoint manipulation removes (arb subtraction adds the radii;
+  verified empirically). **The root-cause fix (rigorous, the bead's option (b) in
+  spirit):** `aic_mat_gram` splits the certified Gram into an EXACTLY-Hermitian
+  midpoint matrix `Gmid` (zero radius → the predicate passes for the right reason)
+  plus a rigorous Weyl perturbation bound `R ≥ ‖G_true−Gmid‖_op ≤ ‖G_true−Gmid‖_F`;
+  the certified eig runs on `Gmid` and the eigenvalues are inflated by `R` (Weyl's
+  inequality for Hermitian matrices) before the `sqrt`. This is the substrate version
+  of the `aic_corner_gamma_opnorm_ub` mid+radius idea. It changes NO value on tight
+  inputs (`R~2^-prec` there, below the existing global-enclosure radius — the
+  test_mat exact special cases, precision ladder, singular values, and aic-2yo graded
+  Gram all stay green with the SAME numbers) and does NOT touch the
+  `herm_max_eig`/`is_hermitian` guard, intact for its DIRECT callers (CP-cert
+  `herm_max_eig(-C)`, the aic-2yo teeth).
 
 ### C6. δ-inclusion lower bound: the basis sweep is BASIS-BLIND — use σ_min of the coordinate matrix
 - **Status:** RESOLVED (route in `src/aic_dhom_sigmin.c`; guard switch in
@@ -266,8 +285,18 @@ with the concrete evidence from where they bit.
   `two_block=1` is mainly the cross-check seam.
 
 ### C10. The OBLIQUE `S_P`-wrapper corner path hits the aic-qgs Gram false-fail in the `sgn`-basin opnorm (a new §C5 manifestation); blocks the genuinely-oblique `lem_extension` end-to-end on a compressed parent
-- **Status:** CONFIRMED (cstar_build I4, bead aic-097, `lem_extension`). A new
-  manifestation of the §C5 / aic-qgs `aic_mat_opnorm` Gram-Hermiticity false-fail,
+- **Status:** RESOLVED by the §C5 / aic-qgs `aic_mat_gram` fix (exact-Hermitian
+  midpoint Gram + Weyl `R` inflation). The blocker below is GONE: `aic_corner_dim_S`
+  / `aic_corner_Co` now COMPLETE on the oblique `S_P` wrapper of `make_mixconj(5,3,
+  0.06)` over the 2-dim corner `span(e1,e2)` — verified by the aic-qgs RED→GREEN
+  probe (pre-fix: SIGABRT in the opnorm Gram-Hermiticity path; post-fix: `dim
+  S_{P,Q}=1, dim S_P=1, dim S_Q=1`). **Follow-up:** the genuinely-oblique
+  `S_P`-WRAPPER-as-parent end-to-end `lem_extension` (deferred from I4 to aic-qgs)
+  can now be implemented as a `test_cstar_extension` T3 leg, and the
+  `aic_corner_gamma_opnorm_ub` workaround retired — both separate cleanups, NOT in
+  the aic-qgs substrate change. — Original report (cstar_build I4, bead aic-097,
+  `lem_extension`): a manifestation of the §C5 / aic-qgs
+  `aic_mat_opnorm` Gram-Hermiticity false-fail,
   surfaced because I4 is the FIRST customer to run the corner machinery (`aic_corner
   _Co` / `dim_S` / `ha`) on a **genuinely-oblique (η>0) parent** — either an `S_P`
   wrapper (`aic_cstar_subalg`) used as `A_parent`, or a raw `ae.A` with an OBLIQUE
