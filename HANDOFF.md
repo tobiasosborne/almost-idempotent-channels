@@ -45,16 +45,118 @@ bracket holds. **§C12 non-vacuity SHARP:** cb `‖v⁻¹‖_cb=1.535` vs vacuou
 `A=ImgΦ̃` inflates it; this is WHY O2≠the Frobenius σ_min proxy). Direction tooth: wrong
 trace → 2.0 (η=0 rect oracle) / 4.97 (mixconj) — `tr_sys=2` pinned. Smith MOOT for O2.
 
-**▶ NEXT AGENT PICKS UP HERE — `factorize` (`th_factorization`, bead `aic-tff`), the
-paper's FINAL headline.** Now UNBLOCKED: O2 provides the certified `‖Δ̃‖_cb,‖Υ̃‖_cb ≤
-1+O(η)` upper bounds it needs. D4 is **BUILDABLE-MODULO** (FINDINGS §D4,
-`docs/research/factorize_d4_research.md`): Steps 4–5 (1-design CP-ization reusing
-`aic_dhom_pauli`; `lem_RC` partial-trace+SVD) are explicit finite-dim; the only open item
-is the composite `O(η)` CONSTANT (per-instance + canary, like `c_0`). Public interface
-adds already landed in O1 (`aic_opspace_build_vinv` + `n_B` field). Increment skeleton
-F1–F4 in the research doc §6. Also OPEN: the O2 cb-norm UNIVERSALITY canary (dim sweep of
-`‖v‖_cb`,`‖v⁻¹‖_cb` — currently per-instance + bracket only; O1's `a_cb_flat` is the
-lower-bound analogue) — file/extend a canary bead if `factorize` needs it.
+---
+
+## ▶ DETAILED HANDOFF — NEXT AGENT PICKS UP HERE: `factorize` (`th_factorization`, `aic-tff`)
+
+`th_main` and `th_main_ext` are DONE; **`factorize` (`th_factorization`, `.tex:2730-2899`)
+is the paper's FINAL headline and the only remaining constructive result.** It is now
+fully unblocked — O2 supplies the last missing input (the certified cb upper bounds).
+
+### 0. Read order before writing any code
+1. `docs/research/factorize_d4_research.md` — **THE plan.** It has the 7-step pipeline
+   mapped to `.tex`+modules (§1), the per-step HARD-WALL-vs-BUILDABLE-MODULO verdict (§2,
+   verdict: **BUILDABLE-MODULO, not a wall**), `lem_RC` in full (§3), the interface §12
+   needs (§4), the composite-`O(η)`-constant analysis (§5), and the **F1–F4 increment
+   skeleton (§6)** — follow it. Note §4 was written BEFORE O2 was built ("O2 a filed
+   bead"); the "O2 interface — NOW LIVE" box below SUPERSEDES §4's forward-looking adds.
+2. `paper/src/approximate_algebras.tex:2730-2899` (th_factorization + lem_RC) + shard
+   `paper/shards/shard-H-almost-idemp-factorization.md`.
+3. `paper/FINDINGS.md` §D4 (the escalation — composite constant; BUILDABLE-MODULO),
+   §C2 (the star — every product is `Φ̃(XY)`), §C12/§C12.O2/§D3 (the opspace interface),
+   §A2 (the per-block-vs-embedded Pauli design — Step 4 wants the GENUINE per-block `S_jk`).
+4. `MODULE_PLAN.md` L7 row (`factorize` is the last module; result→module map).
+
+### 1. The plan (research doc §6): glue + verification, 4 increments, η=0 oracle is the spine
+- **F1** — `Δ̃ = ι∘v`, `Υ̃ = v⁻¹∘Φ̃` (NON-UCP); certify `Δ̃Υ̃=Φ̃`, `Υ̃Δ̃=1_B` (exact by
+  construction) + `‖Δ̃‖_cb,‖Υ̃‖_cb ≤ 1+O(η)` (← O2, see box). `.tex:2749-2767`.
+- **F2** — `Δ` (Step 4): per-block 1-design `D_j` (genuine Pauli `aic_dhom_pauli`),
+  `Δ'(X)=Σ_s p_s Φ(Δ̃(X U_s†)Δ̃(U_s))`, CP-check (Choi PSD), unitalize `(Δ'(I_B))^{-1/2}`
+  (`aic_funcalc_pow`). `.tex:2771-2829`.
+- **F3** — `lem_RC` + `Υ` (Step 5): `R_j → C_j` (partial trace over `L_j`) → `ξ_j` (top
+  SVD), assert `σ_max(C_j) ≥ 1−O(η)` (Rule 4); `L_j`, `Υ'_j(X)=L_j†(Φ(X)⊗1_F)L_j`,
+  unitalize. `.tex:2840-2899`.
+- **F4** — end-to-end `‖ΔΥ−Φ‖_cb`, `‖ΥΔ−1_B‖_cb` (diamond SDP on Choi differences); the
+  measured composite `C=‖ΔΥ−Φ‖_cb/η` bounded + dimension-independent (FINDINGS §D2 robust
+  canary, NOT a within-family ratio); duals `Enc=Υ*`, `Dec=Δ*` read off. `.tex:2733-2739`.
+- **THE η=0 ORACLE (build this FIRST, the cleanest cross-check, Rule 6):** for an
+  EXACT-idempotent Φ, `Δ̃=ι∘v` and `Υ̃=v⁻¹∘Φ̃` must reduce to the `th_idemp_structure`
+  decode (`aic_idemp_decompose`: `Δ`=inclusion, `Υ`=`Γ∘Co_M`) with `ΔΥ=Φ` and `ΥΔ=1_B`
+  EXACTLY (zero defect). Reuse the `idemp`/`assoc` η=0 channels.
+
+### 2. ▶ O2 INTERFACE — NOW LIVE (supersedes research-doc §4's "do it now" adds)
+All three §4 forward-looking adds have LANDED. The next agent calls these directly:
+- **`v` at n=1:** `v->vE[i] = v(E_i)` (each `N×N`), from `aic_cstar_build`'s `aic_dhom_v`.
+  `Δ̃(X) = Σ_i x_i vE[i]` (ambient `N×N`). No change needed (`include/aic_dhom.h`).
+- **`v⁻¹` builder (for `Υ̃ = v⁻¹∘Φ̃`):** `aic_opspace_build_vinv(&vinvB, &dim_A, &n_B, v,
+  prec)` → `vinvB[k] = v⁻¹(B_k)` (each `n_B×n_B`), free with `aic_opspace_vinv_clear`
+  (`include/aic_opspace.h`). This is the SAME inverse O2 certifies — use it, don't re-derive.
+- **Inverse Smith level:** `aic_opspace_result.n_B` (= `Σ_l d_l`); block dims from `v->B->d`.
+- **Certified cb UPPER bounds (the `tilde_DelUps` inputs `‖Δ̃‖_cb,‖Υ̃‖_cb ≤ 1+O(η)`):**
+  `aic_opspace_result.cb_upper` (= `‖v‖_cb`) and `cbinv_upper` (= `‖v⁻¹‖_cb`), filled by
+  `aic_opspace_certify_cb_upper(r, v, Y0_fwd, Y1_fwd, Y0_inv, Y1_inv, prec)` (after
+  `aic_opspace_certify` fills O1). **PRACTICAL CAVEAT (the one thing to plan for):** those
+  `(Y0,Y1)` are Watrous-SDP **dual feasible points** that come from a MOSEK solve — there
+  is NO pure-C runtime SDP. So to certify the cb-upper bound for a factorize FIXTURE
+  channel you must (a) extend `tools/gen_fixtures_opspace_o2.jl`'s corpus with that channel
+  (it ccalls `aic_opspace_choi_shim_d` then solves + commits the feasible points to
+  `tests/fixtures_opspace_o2.inc.h`), then (b) read them in the C test. The η=0 oracle and
+  the O1 HOPM lower bound need NO MOSEK — only the certified η>0 UPPER bound does.
+- **IMPORTANT — `‖v⁻¹‖_cb` can be notably > 1 at finite η** (measured 1.535 for
+  mixconj(6,2,0.03), η-proxy 0.05) because `A=ImgΦ̃` is OBLIQUE — this is the GENUINE
+  operator/cb norm (NOT the Frobenius σ_min proxy 1.027; §C12). `factorize`'s composite
+  constant inherits this, so the measured `C` may be larger than naive; the canary must
+  confirm it does NOT grow with dim (it is dim-independent, just not tiny).
+
+### 3. Key reuse map (all CLOSED + green)
+`aic_assoc_regularize`/`aic_assoc_ecstar_from_phi` (Φ̃, A, star — Steps 1-2);
+`aic_cstar_build` (the iso v — Step 3); `aic_opspace_*` (cb-certificate — see box);
+`aic_dhom_pauli` (the genuine per-block `S_jk` 1-design — Step 4, NOT the embedded
+`aic_dhom_diag_build` sum, §A2); `aic_ucp_*` (Choi/Stinespring/compose/CP-check);
+`aic_funcalc_pow` (inverse-sqrt unitalization); `aic_idemp_decompose` (η=0 oracle decode);
+`aic_cbnorm_*` / the diamond SDP (F4 `‖ΔΥ−Φ‖_cb`); `aic_mat_partial_trace_*` + SVD (lem_RC).
+
+### 4. Gotchas inherited (don't relearn the hard way)
+- **The star (§C2):** every product in `A` is `Φ̃(XY)` via `aic_ucp_apply`, never plain
+  `acb_mat_mul`. The η=0 identity channel is BLIND to this — test on an oblique/η>0 fixture
+  with a star→plain mutation guard.
+- **A is OBLIQUE (§C3/§C4):** project into A with `Φ̃` (= `·⋆I`), not the Frobenius `Π_A`.
+- **cb ≠ operator ≠ Frobenius (§C12):** the cb bounds are the OPERATOR-norm objects; the
+  Frobenius σ_min is vacuous for ampliation. F4's `‖·‖_cb` must be the diamond SDP, not a
+  Frobenius surrogate.
+- **The composite constant (§D4/§5) is the ONE open item** — posture (matches `c_0`,
+  opspace): MEASURE `C` per instance, assert bounded + dim-independent (the §D2 robust
+  canary: bounded abs-max + no-upward-trend over an n-sweep), file the ANALYTIC `C` as a
+  research bead chained after `aic-1bc`. Do NOT block on it; do NOT fake it.
+- **Convention-pinning lesson (this session, §C12.O2-PIN):** for any new SDP/norm
+  convention, PIN it empirically against an independent oracle — do NOT trust a derivation
+  (design doc OR LLM research leg; both were wrong on the O2 normalization). Sonnet for
+  survey, Opus/empirics for derivation.
+
+### 5. O2 loose ends (this session) the next agent may want to close
+- **The cb-norm UNIVERSALITY canary is NOT yet a dim-sweep at O2** — `‖v‖_cb`,`‖v⁻¹‖_cb`
+  are checked per-instance + the HOPM≤SDP bracket only (O1's `a_cb_flat` is the lower-bound
+  analogue). If `factorize` (or a reviewer) needs the `.tex:484` dimension-independence
+  certified at O2, add a dim-sweep canary (extend the fixture corpus + a test like
+  `cstar_build` T2b). File a bead if pursued.
+- **O2's certified bound needs committed MOSEK feasible points** (§2 caveat) — the corpus
+  in `tools/gen_fixtures_opspace_o2.jl` is 3 channels; extend it for new test channels.
+- **Precision posture:** O1's `cb_forward`/`a_cb` are DOUBLE gate midpoints (HOPM);
+  O2's `cb_upper`/`cbinv_upper` are RIGOROUS arb upper bounds restored from the committed
+  double feasible points (the midpoint-radius fix, §C12.O2-SUBTLETY). The η=0 oracle is
+  exact `[1,1]`.
+- **`aic-0at`** (the ecstar axiom-defect SDP upper bound) is a DISTINCT, still-OPEN bead —
+  NOT closed by O2 (which is the opspace cb-norm SDP). Don't conflate.
+
+### 6. First commands
+```
+bd show aic-tff && bd update aic-tff --claim
+make test                 # confirm green baseline (~5 min, 30 binaries)
+# read docs/research/factorize_d4_research.md §6 (F1-F4), then build F1 (the η=0 oracle first)
+```
+Orchestration: research(Sonnet survey only) → decide route(Opus/you) → implement(Opus,
+TDD, ≤200 LOC/file) → independent build-verify → hostile review(Opus, MANDATORY) → fix →
+commit + push. No parallel Julia. Push after every commit.
 
 ---
 
