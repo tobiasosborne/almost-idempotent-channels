@@ -486,8 +486,65 @@ with the concrete evidence from where they bit.
   magnitude tooth; that discriminant stays on the single-block mixconj fixtures, T3).
 
 ### C12. `th_main_ext` (§10 opspace) cb-defect MUST be the OPERATOR-norm inclusion inf — the Frobenius coordinate σ_min ampliation is a "test that cannot fail"
-- **Status:** CONFIRMED (opspace design review, bead aic-zwo; pre-implementation —
-  flagged so the next session does NOT build a vacuous module). Cross-ref §C6, D3.
+- **Status:** CONFIRMED + RESOLVED for O1 (opspace operator-norm ampliation machinery
+  IMPLEMENTED + fix-pass hardened, bead aic-zwo; `include/aic_opspace.h`,
+  `src/aic_opspace_ampliate.c` (HOPM kernel) + `src/aic_opspace_apply.c` (the
+  `1_{M_n}⊗f` block-ampliation primitives, Rule 10 split) + `src/aic_opspace_map.c`
+  (opmap builders) + `src/aic_opspace_entry.c` (public entry points + the I1/I2
+  factorize adds, Rule 10 split) + `src/aic_opspace_cert.c`; `tests/test_opspace.c`,
+  89 checks). The vacuous Frobenius-σ_min route was NOT built. The header
+  PRECISION-POSTURE note was corrected (finding 4): the HOPM kernel is PURE DOUBLE
+  (`out` = arb_set_d, a zero-radius wrap), so T-cross tests the prec of the M_1 / M_1⁻¹
+  ASSEMBLY (~1e-15), a coarse gate consistent with `aic_dhom_v_sigma_min` — NOT a
+  genuine arb-vs-double ALGORITHM cross-check. Cross-ref §C6, D3.
+- **O1 IMPLEMENTED (the faithful operator-norm route, 2026-05-31).** `aic_opspace_*`
+  measures the OPERATOR-norm ampliated max-stretch via a scale-invariant HOPM over the
+  op-norm unit ball of `M_n⊗B` (forward `‖v_n‖_op`) / `M_n⊗A` (inverse `‖v_n^{-1}‖_op`,
+  the eps-C* subspace → polar-then-PROJECT accept guard, the ecstar pattern). a_n =
+  1/‖v_n^{-1}‖_op. Smith truncation: forward N_max = N = v->n, inverse n_B = Σ_l d_l
+  (D3). **HONESTY:** HOPM is a LOWER bound on the op-norm stretch (good witness, maybe
+  suboptimal), so O1 certifies the η=0 complete isometry, the prop_inc_ext doubling,
+  and the universality canary — NOT `‖v‖_cb ≤ 1+O(eps)` (the SDP UPPER bound is the
+  SEPARATE O2 increment, a bead to be filed). MEASURED: η=0 oracle (block_cond_exp,
+  noiseless_subsystem) → `‖v_n‖_op == ‖v_n^{-1}‖_op == 1` to 1e-12 for n=1,2,4,...,n_B
+  (a COMPLETE ISOMETRY, exactly §C12 (a)); η>0 mixconj → a_n = 0.97–0.998 (O(η)-close
+  to 1), a_cb_flat (a_n across the ampliation level n) = 1.00004–1.0005 (genuinely
+  level-INDEPENDENT, the prop_inc_ext/Smith content); doubling a_{2n} ≥ a_n/2 holds.
+  double vs arb@53 agree to ~1e-15.
+- **§C12 NON-VACUITY tooth (measured, sharp).** On mixconj(6,3,0.02), scaling one
+  vE[0] by 1.6 INFLATES the operator-norm forward stretch `‖v_n‖_op` from 1.000006 to
+  1.600141 (Δ ≈ +0.60 at n=1 AND n=2 — the op-norm HOPM catches the inflated witness
+  direction), while the Frobenius `σ_min(M_1)` is UNCHANGED (1e-14 = machine noise) —
+  AND `σ_min(I_{n²}⊗M_1) = σ_min(M_1)` is level-independent for ANY v. So a
+  Frobenius-σ_min ampliation canary is provably BLIND to this operator-norm effect (the
+  exact "test that cannot fail"), and the op-norm route is faithful. This is the
+  mutation-proven discriminant (`test_opspace.c` test_c12_nonvacuity).
+- **STRUCTURAL-AMPLIATION "test that cannot fail" CAUGHT + CLOSED (O1 hostile review,
+  2026-05-31, fix-pass aic-zwo).** The first opspace test suite (72 checks) had a
+  §C12-class hole: a hostile review crippled `apply_fn` (the `1_{M_n}⊗v` block map,
+  `src/aic_opspace_apply.c`) to process ONLY the (0,0) block — i.e. computed the
+  ampliation AS IF it zeroed every off-diagonal block — and ALL 72 checks stayed
+  GREEN. The entire mathematical content of th_main_ext (the block ampliation
+  structure) was tested by nothing with teeth, because the real fixtures give a
+  level-INDEPENDENT `a_n ≈ 1.0005`, so a structural bug that preserves the stretch
+  RATIO is invisible to the stretch/flatness checks. CLOSED by the
+  **structural-ampliation cross-check tooth** (`test_opspace.c` test_struct_ampliation,
+  + the §C12 n=2 arm tied to it): it pins the production ampliation
+  `aic_opspace_ampliate_forward` (driving the SAME `aic_opmap_apply_fn` the HOPM uses)
+  against an INDEPENDENT explicit Kronecker block assembly at n=2,3 with genuinely
+  nonzero off-diagonal blocks (reference block (k,l) = `aic_dhom_v_apply(v, X_{kl})`, a
+  path with no opmap coordinate matrix). Measured agreement: max|ampliate − block_ref|
+  = 0 (η=0) / 1.1e-15 (η>0), off-diagonal reference content ≈ 1.0–1.4 (genuinely
+  nonzero). **Mutation-proven:** the (0,0)-block-only cripple (MUTATION-D) now makes
+  the structural tooth RED (max-diff 1.165 ≫ 1e-9) AND the §C12 n=2 arm RED (level-2
+  struct-diff 1.808, the dropped inflated off-diagonal `1.6·vE[0]` block); reverted.
+  Other O1 fix-pass items: the §C12 n=2 stretch arm threshold tightened 0.3 → 0.5
+  toward the genuine +0.60 move; the AXIS-D confounded KAPPA "halves-ratio(hi/lo dim)"
+  arm DROPPED (the fixture array mixes dim_A=4/9 and the d=7 N-spike confounds a
+  position-split — a genuine c∝dim_A law gives halves-ratio 0.206, does NOT trip
+  KAPPA=1.6; the rigorous dim-A TREND sweep lives in cstar_build T2b on the SAME v,
+  opspace inherits it), keeping the mutation-proven abs-max `c < C_ABS` boundedness arm.
+  Check count 72 → 89.
 - **The trap.** th_main_ext's content is that the OPERATOR-norm cb-inclusion
   `a_n = inf ‖(1_{M_n}⊗v)(X)‖_op/‖X‖_op` stays `≥ 1−δ'` uniformly in n (the non-trivial
   prop_inc_ext induction `a_{2n}≥a_n/2`, `.tex:1493-1503`). The opspace design draft
@@ -564,8 +621,12 @@ with the concrete evidence from where they bit.
   form because its `c_0` is a smooth, monotone-in-dim quantity there (no geometry spike).
 
 ### D3. cb-norm truncation `N` (shard F, `tex:1447-1561`)
-- **Status:** RESOLVED (2026-05-31, bead **aic-2jd** / **aic-zwo**). The conjecture
-  `n≤dim A` is superseded by a THEOREM. Two independent research legs
+- **Status:** RESOLVED (2026-05-31, bead **aic-2jd** / **aic-zwo**); O1 IMPLEMENTED.
+  `src/aic_opspace_*` truncates the operator-norm ampliated stretch at the Smith
+  levels: forward `N_max = N = v->n`, inverse `n_B = Σ_l d_l` (the doubling sweep
+  `1,2,4,...,n_B`). The op-norm route is the FAITHFUL one (§C12); the Frobenius
+  σ_min reuse §3.2 of `opspace_design.md` proposed was NOT built (vacuous). The
+  conjecture `n≤dim A` is superseded by a THEOREM. Two independent research legs
   (`docs/research/opspace_paper_leg.md`, `opspace_web_leg.md`) converged on **Smith's
   lemma** (R.R. Smith, "Completely bounded maps between C*-algebras," *J. London Math.
   Soc.* (2) **27** (1983) 157–166; textbook: Pisier, *Introduction to Operator Space
@@ -592,10 +653,37 @@ with the concrete evidence from where they bit.
   (HOPM ≤ SDP, the aic-0at agreement check). See `opspace_web_leg.md` §1–§2.
 
 ### D4. `th_factorization` is an outline (`tex:2742`, shard H)
-- **Status:** OPEN (bead **aic-1sk**). The labelled proof block ends without executing
-  the CP-ization (Steps 4–5); the constructions in `tex:2771-2899` are prose. The
-  composite `O(η)` constant is unspecified. Reconstruct the closure before
-  `factorize` is trustworthy.
+- **Status:** ASSESSED — **BUILDABLE-MODULO, not a hard wall** (2026-05-31, bead
+  **aic-1sk** research; `docs/research/factorize_d4_research.md`). The labelled proof
+  block ends without executing the CP-ization (Steps 4–5); the constructions in
+  `tex:2771-2899` are prose. But every object in Steps 4–5 is an explicit finite-dim
+  matrix expression, so the prose is a *closure* gap, not a constructivity wall.
+  Per-step verdict (research §2): (D4-a) the unitary 1-design CP-ization of `Δ̃`
+  (`tex:2771-2801`) is BUILDABLE-MODULO (trivial) — the per-block Heisenberg-Weyl
+  design is already built (`aic_dhom_pauli`, the genuine per-block `S_{jk}`, NOT the
+  embedded sum); (D4-b) `lem_RC`'s `C_j = d_{L_j}^{−1} Tr_{L_j}(R_j)` + `ξ_j` (top SVD)
+  (`tex:2840-2864`) is BUILDABLE-MODULO (partial trace + SVD, all finite matrix ops,
+  `lem_RC` is itself constructive); the closure chain (`tex:2895`) is a sequence of
+  `O(η)`-triangle steps each backed by an already-stated bound. **The ONLY open item is
+  the composite `O(η)` CONSTANT `C` (research §5, escalation 5)** — a CERTIFICATION gap,
+  NOT a constructivity wall: the algorithm runs and produces `Δ,Υ,B`; `C = ‖ΔΥ−Φ‖_cb/η`
+  is composed of the prop_P `c1`, the iso `c0` (itself analytically OPEN via
+  cor_improvement `c_0`, §D2/bead `aic-1bc`), and the CP-ization `c2,c3`, none
+  multiplied out in the paper. **Recommended posture (project standard):** measure `C`
+  per instance + assert it is bounded & dimension-independent (the §D2 robust canary),
+  handled per-instance + canary like `c_0` — file the analytic `C` as a research bead
+  chained after `aic-1bc`. So `factorize` is reachable after opspace O1 (η=0 oracle +
+  η>0 measured path) / O2 (the certified η>0 `tilde_DelUps` upper bound). The
+  increment skeleton (F1–F4) is in the research doc §6.
+- **opspace interface adds landed (2026-05-31, fix-pass aic-zwo).** The research §4
+  highest-value adds are now exposed so `factorize` plugs in cleanly: (I1) `v⁻¹` is a
+  PUBLIC builder `aic_opspace_build_vinv` (`include/aic_opspace.h`) returning `v⁻¹(B_k)
+  ∈ B` as `dim_A` operators — the SAME M_1⁻¹ the inverse stretch certifies, so
+  `Υ̃ = v⁻¹∘Φ̃` uses the certified-and-used inverse (round-trip test `v⁻¹(v(E_i)) = E_i`
+  to 7.8e-17, `test_opspace` test_vinv_roundtrip); (I2) the inverse Smith level
+  `n_B = Σ_l d_l` is a first-class `aic_opspace_result.n_B` field. Still gated on O2 for
+  the certified `‖Δ̃‖_cb,‖Υ̃‖_cb ≤ 1+O(η)` UPPER bound (research §4(b); O1's `cb_forward`
+  is a LOWER bound).
 
 ### D5. The certified degenerate-eigenvalue wall (`aic-w4o.1`)
 - **Status:** OPEN (the recurring deferral). FLINT's certified eig needs a *simple*
