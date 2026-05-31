@@ -1,6 +1,82 @@
 # HANDOFF.md — almost-idempotent-channels
 
-## ▶ LATEST CHECKPOINT (2026-05-31, session: th_main_ext O2 — certified cb UPPER bound) — READ FIRST
+## ▶ LATEST CHECKPOINT (2026-05-31, session: factorize F1–F3 DONE + F4 designed) — READ FIRST
+
+Orchestrated session (serial: research/competition → implement (Opus) → independent
+build-verify → hostile review (Opus) → fix → commit + push, per increment). **Net:
+`factorize` (`th_factorization`, the paper's FINAL headline, bead `aic-tff`) is THREE-
+QUARTERS done — the constructive UCP pair `Δ: B→B(H)`, `Υ: B(H)→B` through the genuine
+C\* algebra `B` is BUILT, hostile-reviewed, and pushed (F1–F3). F4 (end-to-end
+verification + duals + the dim-independence canary) is the only remaining increment and
+is fully DESIGNED.** `master` is clean and pushed (HEAD `5f84906` + this checkpoint),
+**31/31 test binaries green** (parallel gate, zero warnings), `test_factorize` n=70.
+
+**What this session shipped (each through the full pipeline + a hostile review that
+returned SHIP with real mutation-proven teeth):**
+- **F1** (`58befe7`) — the NON-UCP `Δ̃ = ι∘v`, `Υ̃ = v⁻¹∘Φ̃` (`.tex:2749-2752`). Exact
+  identities `Δ̃Υ̃=Φ̃`, `Υ̃Δ̃=1_B` + the η=0 oracle, all machine-precision. Reuses
+  `aic_cstar_build` (v) + `aic_opspace_build_vinv` (v⁻¹) + `aic_assoc` (Φ̃).
+- **F2** (`c674599`) — the UCP encode `Δ` via the unitary-1-design CP-ization
+  (`.tex:2771-2801`). The payoff MEASURED: `Δ̃` NOT CP (minEig −2.1e-3) → `Δ'` CP
+  (+9.4e-6); `‖Δ−Δ̃‖=O(η)`. Per-block Choi PSD via the §C5 midpoint+Weyl gate.
+- **F3** (`b6c9865`) — the UCP decode `Υ` via `lem_RC` (`.tex:2840-2899`), the hardest
+  increment. η=0 oracle `ΥΔ=1_B`/`ΔΥ=Φ` exact; η>0 `Υ` UCP, `‖Υ−Υ̃‖=O(η)`. Built from
+  a **3-way design competition** (Opus deep + Opus adversarial + Sonnet independent →
+  `docs/research/factorize_f3_synthesis.md`) that decisively resolved the partial-trace-
+  direction bug-class (`partial_trace_left`, verified vs `aic_mat.h`) and the F-ancilla
+  ordering (`1_F⊗·`, the D5 pin: F-LEFT 4.4e-2 vs F-RIGHT 7.6e-1 at r>1).
+- Design docs (`67f7f9c`): the three F3 specs + the synthesis; **FINDINGS §C13** (the
+  F-LEFT `.tex`-deviation [Law 1], the structurally-vacuous ξ_j tooth, and the
+  `m≥2 ∧ η>0` coverage debt → F4).
+
+### ▶ NEXT AGENT PICKS UP HERE: F4 (the final increment; `aic-tff` then CLOSES)
+
+**Read `docs/research/factorize_f4_design.md` first — it is the API-verified blueprint
+(638 lines).** Verdicts locked there:
+- **Split F4.1 (no Julia) then F4.2 (Julia+MOSEK).** F4.1 ALONE closes the constructive
+  headline (certified `Δ,Υ,B` + η=0-exact + per-instance-certified `O(η)` + the four
+  duals); F4.2 is the universality-certification refinement.
+- **F4.1:** build `J_DelUps = Choi(ΔΥ)−Choi(Φ)` and `J_UpsDel = Choi(ΥΔ−1_B)`; η=0 oracle
+  (`ΔΥ=Φ`, `ΥΔ=1_B` exact, J=0 to machine); the always-valid eig-free per-instance UPPER
+  bound `aic_cbnorm_eigfree_ball_choi` (`[‖J‖_F/n, 2‖J‖_F]`); the duals `Dec=Δ*`, `Enc=Υ*`
+  (mind the swap; by `‖Λ*‖_⋄=‖Λ‖_cb` the dual defects EQUAL the primal ones — free).
+- **F4.2:** the FAITHFUL `‖ΔΥ−Φ‖_cb` via `aic_cbnorm_certify` (MOSEK MAX-primal+MIN-dual,
+  committed-fixture dance mirroring `gen_fixtures_opspace_o2.jl`) + the §D2 ROBUST dim-
+  independence canary `C=‖ΔΥ−Φ‖_cb/η` over a `make_mixconj_blocks` dim sweep. The eig-free
+  bound CANNOT do the canary (its `2N` looseness fakes a `c=O(N)` law — the §C12 trap);
+  the canary needs the tight SDP. This fixture also repays the §C13(c) `m≥2 ∧ η>0` debt
+  (pass `eta`, NOT the ~700× smaller `eps_assoc`, as the build's eps scale — §C11 caveat).
+- **`ΥΔ−1_B`-on-`⊕M_{d_l}`:** route (i) — the ambient `M_{n_B}` Convention-A Choi
+  (`n_B²×n_B²`) fed to the SQUARE self-map `aic_cbnorm_certify` (`n=n_B`, the (2/n)
+  convention, Tr_2=`partial_trace_right`). NOT the rect factor-1 convention (that's for
+  the asymmetric `v*`). Verify `‖ΥΔ−1_B‖_cb` (`.tex:2739`) as headline + a cheap
+  un-ampliated `UpsDel2` spot-check.
+- **The ONE empirical probe (not a competition — the design judged it predictable):**
+  route (i) ambient-`n_B²` vs route (ii) `dim_B`-basis Choi for `ΥΔ−1_B`; η=0 is BLIND
+  (J=0 both ways) so confirm at η>0 they give the same diamond norm. If it surprises,
+  escalate.
+- File/LOC plan: `src/aic_factorize_verify.c` (+ maybe `_dual.c`), `aic_factorize_shim.{c,h}`,
+  `tools/gen_fixtures_factorize_f4.jl`, `tests/fixtures_factorize_f4.inc.h`; tests T7 (η=0
+  oracle), T8 (η>0 eig-free + the route probe), T9 (MOSEK-certified canary).
+
+**The one open escalation (NOT a wall):** the analytic composite constant `C` in
+`‖ΔΥ−Φ‖_cb ≤ C·η` is a filed-research item chained after `aic-1bc` (cor_improvement `c_0`);
+posture = MEASURE per-instance + assert dimension-INDEPENDENCE (not smallness — `C` may be
+larger than naive since `‖v⁻¹‖_cb` is already 1.535 for oblique A). Per FINDINGS §D4 this
+is BUILDABLE-MODULO, the project-standard deferral.
+
+**First commands:** `bd show aic-tff` (F1–F3 progress in the notes); `make -j64 build/test_factorize && ./build/test_factorize` (70 green baseline, ~instant — do NOT run the serial `make test`, ~10 min; see below); then build F4.1 per the design doc §B (η=0 oracle FIRST).
+
+**Test-speed (resolved this session — memory `make-test-speed-parallel.md`):** `make test`
+~10 min is the Makefile (recompiles all 79 `src/*.c` into each of 31 binaries, no `-j`/no
+`.o` caching, serial run loop). Use `make -j64 all` (~15 s build) + a parallel `xargs -P 32`
+run (~184 s, gated by the `test_cstar_build` long pole) for the full gate; a single binary
+during dev. Pitfall: `pkill -f "make test"` self-matches the shell → exit 144; use
+`pkill -x make`.
+
+---
+
+## ▶ PRIOR CHECKPOINT (2026-05-31, session: th_main_ext O2 — certified cb UPPER bound)
 
 Orchestrated session. **Net: opspace O2 (`aic-pjr`) is DONE — the certified Watrous-SDP
 cb-norm UPPER bound `‖v‖_cb, ‖v⁻¹‖_cb ≤ 1+O(ε)` for the th_main_ext iso `v: B→A` is
