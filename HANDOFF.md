@@ -1,6 +1,53 @@
 # HANDOFF.md — almost-idempotent-channels
 
-## ▶ LATEST CHECKPOINT (2026-05-31, session: factorize F1–F3 DONE + F4 designed) — READ FIRST
+## ▶ LATEST CHECKPOINT (2026-05-31, session: factorize F4.1 + F3-fix landed; hostile review INTERRUPTED) — READ FIRST
+
+Orchestrated session. **Net: factorize F4.1 (end-to-end verify + dual channels)
+and a root-cause F3 robustness fix (PSD-cone Kraus extraction) are BUILT, green,
+and COMMITTED — but the mandatory Core-tier hostile review was INTERRUPTED by a
+session crash and has NOT signed off.** `test_factorize` n=121 (was 70),
+no-regression green (`test_ucp` 373, `test_idemp` 76, `test_opspace_choi` 41),
+zero warnings. F4.2 (the MOSEK dim-independence canary) is the only increment left.
+
+### What landed (committed this session; hostile review still PENDING)
+- **F4.1** — `src/aic_factorize_verify.c` (`J_DelUps = Choi(ΔΥ)−Choi(Φ)` N²×N²;
+  `J_UpsDel = Choi(ΥΔ−P_B)` n_B²×n_B²; eig-free per-instance `O(η)` bounds) +
+  `src/aic_factorize_dual.c` (`Dec=Δ*`, `Enc=Υ*` Kraus read-off). T7 η=0 oracle
+  (`‖J‖_F~1e-75`, exact), T8 η>0 eig-free (single + MULTI-block; `hi/η∈[3.1,5.9]`),
+  the §D route-(i)-vs-(ii) probe (`offblk=0`, routes agree). `.tex:2730-2739,2159`.
+- **F3-fix** (FINDINGS §C14) — the paper's `Δ′` is only `O(η)`-CP: its manifest-CP
+  form (`.tex:2791-2796`) is exact only if `Δ̃` is an EXACT hom, but `v` is only an
+  `O(η)`-iso, so the multi-block η>0 UCP-`Δ` per-block Choi has an `O(η²)` negative
+  eig that tripped the strict Kraus PSD gate. Fix: `aic_ucp_choi_to_kraus_latd_tol`
+  (PSD-cone clip + certified mass guard + fail-loud on genuine non-CP); the strict
+  `aic_ucp_choi_to_kraus_latd` delegates to it unchanged. Clipped mass ~`0.01·η²`
+  (measured), ≪ the `1e-2` ceiling. Repays the §C13(c) m≥2∧η>0 coverage debt AND
+  unblocks F4.2's canary. Also the §A.2 `−1_B`=`P_B` conditional-expectation fix.
+- Side work: PR #2 (docs frictions report) merged with an F5/W5 correction;
+  wishlist filed as beads `aic-l5b`(W2,P1)/`xxk`/`7hg`/`pvs`/`7xx`/`dka`/`e57`/`tk7`.
+
+### ▶ NEXT AGENT PICKS UP HERE
+1. **COMPLETE the interrupted F4.1+F3-fix hostile review** (Rule 9 — NOT signed
+   off). The chief open item — `neg_tol=1e-3` / `ceiling=1e-2` robustness toward
+   η→1/4 — is resolved ANALYTICALLY: `minEig ≈ −0.005·η²` ⇒ `|minEig|<3.1e-4<1e-3`
+   across all valid `η<1/4` (margin ~3×); the `η≥1/4` region is out-of-hypothesis
+   and the build does not run there. Still confirm leaks / Convention-A index order
+   / dual direction / probe non-vacuity. Run BOUNDED (per-point `timeout`); do NOT
+   sweep `t` past ~0.1 (CLAUDE.md "Probe/sweep hygiene").
+2. **F4.2** — `docs/research/factorize_f4_design.md` §C: the shim
+   (`src/aic_factorize_shim.c`), `tools/gen_fixtures_factorize_f4.jl` (square
+   self-map diamond SDP, POISON guards), committed `tests/fixtures_factorize_f4.inc.h`,
+   T9 consumer + the `make_mixconj_blocks` dim-canary. Then `aic-tff` closes.
+
+### Incident (do not repeat — CLAUDE.md "Probe/sweep hygiene", bead aic-xo0)
+A throwaway review probe `tests/test_zprobe.c` swept the mixing knob to `t=0.45`
+(η past 1/4, outside the `ρ(Φ²−Φ)<1/4` regularization basin) with no per-point
+timeout → the pipeline BUILD hung forever → the session crashed and the review's
+in-process state was lost. The probe was named `test_*.c`, so the Makefile glob
+would also have run it in `make test`. The underlying Rule-4 gap (hang instead of
+fail-loud out-of-regime) is bead `aic-xo0`.
+
+## ▶ PRIOR CHECKPOINT (2026-05-31, session: factorize F1–F3 DONE + F4 designed)
 
 Orchestrated session (serial: research/competition → implement (Opus) → independent
 build-verify → hostile review (Opus) → fix → commit + push, per increment). **Net:

@@ -23,6 +23,22 @@
  * decompositions — callers must compare AS CHANNELS (rebuild Choi), never
  * operator-by-operator.
  *
+ * TOLERANCE-AWARE variant (aic_ucp_choi_to_kraus_latd_tol; FINDINGS §C14). The
+ * paper's almost-idempotent CP-ization Delta'(X)=sum_s p_s Phi(Dtilde(XU_s^dag)
+ * Dtilde(U_s)) (.tex:2786-2789) is manifestly CP (.tex:2791-2796) ONLY when
+ * Dtilde is an EXACT unital homomorphism; for the extended O(eta)-isomorphism
+ * Dtilde=v the manifest-positive form holds to O(eta), so the resulting UCP Delta
+ * has a per-block Choi that is PSD only to O(eta^2) — a small NEGATIVE eigenvalue
+ * of order O(eta^2) (measured worst block-Choi minEig = -2.5e-6 at eta=2.3e-2,
+ * -1.5e-7 at eta=7.9e-3, -2.9e-8 at eta=2.4e-3: minEig/eta^2 ~ -0.005, NOT
+ * O(eta)). The strict gate above (thr ~ 1e-15) rejects that as not-CP and aborts.
+ * The _tol variant admits eigenvalues in (-neg_tol, keep_thr] as cone-defect /
+ * noise (DROPPING them — the PSD-CONE PROJECTION onto the nearest genuinely-CP
+ * map), accumulates the clipped negative mass as the certified cone-defect
+ * magnitude, and STILL fails loud for lambda <= -neg_tol (a genuine non-CP input,
+ * a real bug). The strict default delegates with neg_tol = keep_thr, so every
+ * existing caller is byte-for-byte unchanged.
+ *
  * Carrier rank (lem_carrier, .tex:1724): the carrier dim is the rank of
  * Q = sum_a K_a K_a^dag, i.e. the count of eigenvalues of Q above
  *   thr = dim_K * DBL_EPSILON * ||Q||_F.
@@ -56,12 +72,14 @@ static double frob_norm(const double _Complex *A, slong n)
     return sqrt(s);
 }
 
-void aic_ucp_choi_to_kraus_latd(aic_ucp_kraus *phi, const acb_mat_t C,
-                                slong dim_K, slong dim_H)
+void aic_ucp_choi_to_kraus_latd_tol(aic_ucp_kraus *phi, const acb_mat_t C,
+                                    slong dim_K, slong dim_H, double neg_tol,
+                                    double *clipped_neg_out)
 {
     slong n = dim_K * dim_H;
     assert(acb_mat_nrows(C) == n && acb_mat_ncols(C) == n &&
            "choi_to_kraus_latd: C must be (dim_K*dim_H) square");
+    assert(neg_tol >= 0.0 && "choi_to_kraus_latd_tol: neg_tol must be >= 0");
 
     double _Complex *Ca = malloc((size_t) (n * n) * sizeof(double _Complex));
     double _Complex *evecs = malloc((size_t) (n * n) * sizeof(double _Complex));
@@ -69,24 +87,36 @@ void aic_ucp_choi_to_kraus_latd(aic_ucp_kraus *phi, const acb_mat_t C,
     assert(Ca && evecs && evals && "choi_to_kraus_latd: out of memory");
 
     aic_latd_from_acb_mat(Ca, C);
-    double thr = (double) n * DBL_EPSILON * frob_norm(Ca, n);
+    double thr = (double) n * DBL_EPSILON * frob_norm(Ca, n); /* keep_thr */
     aic_latd_eig_hermitian(evals, evecs, Ca, n); /* ascending */
 
-    /* count kept eigenpairs (lambda > thr); PSD => negatives are noise below thr.
-     * A clearly-negative eigenvalue (< -thr) means C is not PSD: fail loud. */
+    /* THREE eigenvalue regimes (ascending sweep; FINDINGS §C14):
+     *   lambda > keep_thr            -> KEEP as Kraus (PSD signal);
+     *   lambda in (-neg_tol, keep_thr] -> DROP (numerically-zero tail OR an
+     *                                   approximately-CP-cone DEFECT). If lambda<0
+     *                                   accumulate |lambda| into the clipped mass
+     *                                   (the certified cone-defect magnitude) — this
+     *                                   is the PSD-CONE PROJECTION: we keep only the
+     *                                   nonnegative part, i.e. the NEAREST genuinely-CP
+     *                                   map to C (within the clipped mass of C);
+     *   lambda <= -neg_tol           -> a GENUINELY non-PSD (not-CP) input: a real
+     *                                   bug or a non-CP argument. Still FAIL LOUD
+     *                                   (Rule 4) — sqrt'ing it would make NaN Kraus,
+     *                                   and corrupted output is worse than a crash. */
     slong r = 0;
+    double clipped = 0.0;
     for (slong a = 0; a < n; a++) {
-        /* A clearly-negative eigenvalue (< -thr) means C is not PSD; sqrt'ing it
-         * below would produce NaN Kraus ops. Fail loud in EVERY build (not just
-         * with assertions enabled) — corrupted output is worse than a crash
-         * (CLAUDE.md Rule 4), matching aic_ucp_is_cp_choi. */
-        if (evals[a] <= -thr) {
-            flint_printf("aic_ucp_choi_to_kraus_latd: eigenvalue %g < -thr=%g; "
-                         "C is not PSD (not CP) — cannot extract Kraus ops "
-                         "(Rule 4: fail loud)\n", evals[a], -thr);
+        if (evals[a] <= -neg_tol) {
+            flint_printf("aic_ucp_choi_to_kraus_latd_tol: eigenvalue %g <= "
+                         "-neg_tol=%g; C is not PSD (not CP) beyond the admitted "
+                         "cone tolerance — cannot extract Kraus ops (Rule 4: fail "
+                         "loud)\n", evals[a], -neg_tol);
             flint_abort();
         }
-        if (evals[a] > thr) r++;
+        if (evals[a] > thr)
+            r++;
+        else if (evals[a] < 0.0)
+            clipped += -evals[a];           /* cone-defect mass (clipped to 0) */
     }
     assert(r >= 1 && "choi_to_kraus_latd: zero rank (the zero map is not UCP)");
 
@@ -110,9 +140,28 @@ void aic_ucp_choi_to_kraus_latd(aic_ucp_kraus *phi, const acb_mat_t C,
     }
     assert(out_a == r);
 
+    if (clipped_neg_out)
+        *clipped_neg_out = clipped;
+
     free(evals);
     free(evecs);
     free(Ca);
+}
+
+void aic_ucp_choi_to_kraus_latd(aic_ucp_kraus *phi, const acb_mat_t C,
+                                slong dim_K, slong dim_H)
+{
+    /* STRICT default: delegate with neg_tol = keep_thr (the historical
+     * (dim_K*dim_H)*eps_mach*||C||_F gate). For lambda <= -keep_thr the _tol
+     * routine fails loud EXACTLY as the old strict gate did; no caller of this
+     * symbol sees any behaviour change. */
+    slong n = dim_K * dim_H;
+    double _Complex *Ca = malloc((size_t) (n * n) * sizeof(double _Complex));
+    assert(Ca && "choi_to_kraus_latd: out of memory");
+    aic_latd_from_acb_mat(Ca, C);
+    double thr = (double) n * DBL_EPSILON * frob_norm(Ca, n);
+    free(Ca);
+    aic_ucp_choi_to_kraus_latd_tol(phi, C, dim_K, dim_H, thr, NULL);
 }
 
 slong aic_ucp_carrier_rank_latd(const acb_mat_t Q, slong dim_K)

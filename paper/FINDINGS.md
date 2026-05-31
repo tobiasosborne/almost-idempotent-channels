@@ -664,6 +664,59 @@ with the concrete evidence from where they bit.
 
 ---
 
+### C14. `factorize` F2/F3/F4 — Δ′ is only **O(η)-completely-positive**, not exactly CP (the multi-block η>0 Kraus extraction needs PSD-cone projection); and the §A.2 `1_B`=`P_B` conditional-expectation fix
+- **Status:** CONFIRMED (factorize F4, bead aic-tff; surfaced by the FIRST m≥2 ∧ η>0 test, the §C13(c) coverage debt). Root cause verified against `.tex:2786-2796`. The constructive route (PSD-cone projection in the Choi→Kraus extraction) is BUILDABLE-MODULO — **not a wall**.
+
+- **(a) THE PAPER PRESENTS Δ′ AS EXACTLY CP, BUT IT IS CP ONLY TO O(η).** The 1-design CP-ization
+  `Δ′(X)=Σ_s p_s Φ(Δ̃(XU_s†)Δ̃(U_s))` (`.tex:2786-2789`) is argued completely positive at
+  `.tex:2791-2796` by writing, for `X=Y†Y`, `Δ′_n(Y†Y)=Σ_s p_s Φ_n(Δ̃_n(Y†(I⊗U_s†))·Δ̃_n((I⊗U_s)Y))≥0`
+  (manifestly PSD: each term is `Φ(Z_s†Z_s)` with `Z_s=Δ̃((I⊗U_s)Y)`, `Φ` CP). **That manifest form
+  requires the EXACT term-equality** `Δ̃(Y†YU_s†)Δ̃(U_s)=Δ̃(Y†U_s†)Δ̃(U_sY)`, which holds iff `Δ̃` is
+  an EXACT unital homomorphism (then both sides `=h(Y†Y)` since `h(U_s†)h(U_s)=h(I_B)=1`). But
+  `Δ̃=v` is only an *extended O(η)-isomorphism* (`v(XY)=v(X)⋆v(Y)+O(η)`, the Choi–Effros star
+  `≠` the ordinary product — §C2). So the equality holds only to **O(η)**, and **Δ′ (hence the
+  unitalized UCP `Δ=Δ′(I)^{-1/2}Δ′(·)Δ′(I)^{-1/2}`) is completely positive only to O(η).** At
+  m≥2 ∧ η>0 the per-block Choi of `Δ` carries a small NEGATIVE eigenvalue of order **O(η²)**
+  (MEASURED `−2.5e-6` at η=2.3e-2, `−8.7e-8` at η=4e-3 → ratio 28.7 ≈ η²-ratio 33; both arb
+  `herm_max_eig` and LAPACK agree, ≫ machine noise). **SINGLE-block Δ′ is exactly CP** (T4 minEig
+  `+9.4e-6`): for one block the per-block Pauli twirl makes `Δ̃` effectively multiplicative on the
+  relevant combination, so the O(η) hom-defect cancels — which is WHY this never surfaced before F4.
+
+- **The abort it caused.** `aic_ucp_choi_to_kraus_latd` (`src/aic_ucp_latd.c:79-89`) fail-loud-aborts
+  on any eigenvalue `< −thr` (`thr ~ 1e-9`). The W_j Stinespring extraction
+  (`aic_factorize_upsilon.c`, `.tex:2831-2838` Choi_Delta) and the F4.1 dual read-off
+  (`aic_factorize_dual.c`, Dec=Δ*/Enc=Υ* via the full-UCP Choi) both hit the O(η²) negative at
+  multi-block η>0 and aborted — blocking the §C13(c) debt AND F4.2's dim-independence canary
+  (which sweeps `make_mixconj_blocks` at η>0).
+
+- **CONSTRUCTIVE ROUTE (not a bandaid, Rule 3; not a wall).** A tolerance-aware PSD-cone-projecting
+  Choi→Kraus extraction `aic_ucp_choi_to_kraus_latd_tol(.., neg_tol, *clipped_neg_out)`: clip
+  eigenvalues in `(−neg_tol, keep_thr]` to 0 (the cone defect), accumulate the clipped negative
+  mass, but **STILL fail-loud abort on `λ ≤ −neg_tol`** (a genuine non-CP — an O(1) or O(η)-scale
+  negative). The strict `aic_ucp_choi_to_kraus_latd` is preserved BYTE-FOR-BYTE by delegating to
+  `_tol` with `neg_tol=thr` (existing callers unchanged). The factorize sites pass a `neg_tol` that
+  ADMITS the O(η²) defect but ABORTS an O(1) one, and `aic_factorize_upsilon_build` ASSERTS the
+  accumulated clipped mass is O(η²)-small (fail loud otherwise — the genuine-bug guard). The W_j
+  become the Kraus of the NEAREST genuinely-CP map (`Δ` projected onto the CP cone), within O(η²)
+  of `Δ`. **Why this is sound, not a fudge:** th_factorization only requires `‖Δ−Δ̃‖_cb≤O(η)`
+  (`.tex:2801`), so even an O(η) cone-projection stays within spec — and the measured defect is the
+  far-smaller O(η²). lem_RC's R_j/C_j and Υ′ then proceed; their O(η) bounds absorb the O(η²)
+  perturbation.
+
+- **(b) THE §A.2 AMBIENT-`M_{n_B}` CHOI OF `ΥΔ−1_B`: the `−1_B` term is the CONDITIONAL EXPECTATION
+  `P_B`, not the full identity.** `factorize_f4_design.md` §A.2/§B.1 says "subtract `1_B(E_pq)=E_pq`
+  for every ambient unit `E_pq`." That is WRONG for off-block-diagonal `E_pq`: `Δ` reads only the
+  block-diagonal coordinates of its `M_{n_B}` input (so `ΥΔ(E_pq)=0` for off-block `E_pq`), so
+  subtracting `E_pq` leaves `−E_pq` on every off-block column → `‖J_UpsDel‖_F=√(#off-block units)
+  =2.83` even at η=0 (a "test that cannot pass", §C12 class). The correct `1_B` extension to ambient
+  `M_{n_B}` is the **conditional expectation `P_B` onto the block-diagonal** (`P_B(E_pq)=E_pq` for
+  in-block, `=0` for off-block), making `ΥΔ−P_B` zero on off-block input (both terms drop it) and
+  `=ΥΔ−id_B` on in-block input. Then the ambient cb-norm `=` the in-`B` cb-norm (the off-block
+  columns of `J_UpsDel` are zero — this IS why route (i) ≡ route (ii); §D probe `offblk=0.000`).
+  Mutation-proven (revert `P_B`→full-`I` → `‖J_UpsDel‖_F=2.83` RED). Source: `aic_factorize_verify.c`.
+
+---
+
 ## D. Open questions / escalations (unresolved)
 
 ### D1. Does a dimension-independent spectral gap (`Ω(1)`) always exist for `dim A>1`?

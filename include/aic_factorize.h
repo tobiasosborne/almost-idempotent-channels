@@ -209,8 +209,13 @@ void aic_factorize_delta(acb_mat_t out, const aic_factorize *F,
  *   W_j[a*e_j + c, p] = D_{j,c}[a, p]   (a in L_j, c in E_j, p in H),  e_j = E_j.
  * `Wj` is OUTPUT: aic_mat-init'd HERE to (d_j*e_j) x N (caller clears it);
  * *e_j_out receives E_j (the per-block Stinespring rank). REQUIRES F->delta_ready.
- * Do NOT use aic_ucp_kraus_to_stinespring (it is ancilla(E_j)-MAJOR, D2 warning). */
-void aic_factorize_upsilon_Wj(acb_mat_t Wj, slong *e_j_out,
+ * Do NOT use aic_ucp_kraus_to_stinespring (it is ancilla(E_j)-MAJOR, D2 warning).
+ * The Choi->Kraus extraction is TOLERANCE-AWARE (FINDINGS §C14): the UCP Delta is
+ * CP only to O(eta^2), so the per-block Choi has a small O(eta^2) negative
+ * eigenvalue, projected onto the PSD cone (aborts only on a genuine non-CP
+ * eigenvalue <= -1e-3). `clipped_out` (if non-NULL) receives the clipped negative
+ * cone-defect mass for this block (the genuine-bug guard asserts it is small). */
+void aic_factorize_upsilon_Wj(acb_mat_t Wj, slong *e_j_out, double *clipped_out,
                               const aic_factorize *F, slong j, slong prec);
 
 /* R_j = sum_s p_{js} (U_{js}^dag (x) 1_{E_j}) W_j W_j^dag (U_{js} (x) 1_{E_j})
@@ -263,6 +268,52 @@ void aic_factorize_upsilon(acb_mat_t out, const aic_factorize *F,
  * r>1, f_left=1 gives O(eta), f_left=0 gives O(1) — the decisive D5 distinguisher.
  * REQUIRES F->upsilon_ready. */
 double aic_factorize_upsilon_d5_pin(const aic_factorize *F, int f_left, slong prec);
+
+/* ---- Increment F4.1 — end-to-end verification + dual channels --------------
+ * (src/aic_factorize_verify.c: the composed-map Choi + eig-free bound;
+ *  src/aic_factorize_dual.c: the dual-channel Kraus read-off.)
+ * Realizes the th_factorization headline bounds (.tex:2733 DelUps, .tex:2739
+ * ||Upsilon Delta - 1_B||_cb) and the dual factorization (.tex:2159). Design:
+ * docs/research/factorize_f4_design.md §A/§B. */
+
+/* J_DelUps = Choi(Delta Upsilon) - Choi(Phi) (.tex:2733), N^2 x N^2, Hermitian
+ * indefinite (a difference of two unital UCP Convention-A Choi). Delta Upsilon(W)
+ * = Delta(Upsilon(W)) is a self-map on M_N; its Choi is built by looping E_pq over
+ * the N^2 AMBIENT M_N standard units (NOT aic_dhom_B_matunit), applying Upsilon
+ * then Delta, writing the N x N output into Convention-A position (p,q); Choi(Phi)
+ * = aic_ucp_kraus_to_choi(., F->phi). `J` caller-init'd N^2 x N^2. REQUIRES
+ * F->delta_ready && F->upsilon_ready (asserts, Rule 4). */
+void aic_factorize_choi_delups(acb_mat_t J, const aic_factorize *F, slong prec);
+
+/* J_UpsDel = Choi(Upsilon Delta - 1_B) (.tex:2739), route (i): the AMBIENT
+ * M_{n_B} Convention-A Choi, n_B^2 x n_B^2. Loops E_pq over the n_B^2 ambient
+ * M_{n_B} standard units (DRIFT #1: MANUAL, NOT aic_dhom_B_matunit), applies Delta
+ * then Upsilon, subtracts 1_B(E_pq)=E_pq (1_B is the identity MAP on M_{n_B}).
+ * `J` caller-init'd n_B^2 x n_B^2. REQUIRES F->delta_ready && F->upsilon_ready. */
+void aic_factorize_choi_upsdel(acb_mat_t J, const aic_factorize *F, slong prec);
+
+/* Eig-free certified bracket on ||Delta Upsilon - Phi||_cb (resp.
+ * ||Upsilon Delta - 1_B||_cb): builds the respective J, calls
+ * aic_cbnorm_eigfree_ball_choi with n = N (resp. n_B). On return hi = 2||J||_F is
+ * a RIGOROUS per-instance UPPER bound (lo ~ ||J||_F/n); eta=0 gives [0,0]. NOT
+ * dimension-faithful (the 2N looseness is O(N); the tight SDP + dim-independence
+ * canary are F4.2). `lo`, `hi` caller-init'd arb_t. */
+void aic_factorize_eigfree_delups(arb_t lo, arb_t hi, const aic_factorize *F,
+                                  slong prec);
+void aic_factorize_eigfree_upsdel(arb_t lo, arb_t hi, const aic_factorize *F,
+                                  slong prec);
+
+/* Dual channels (.tex:2159: Dec = Delta*, Enc = Upsilon*). Build the Convention-A
+ * Choi of Delta (resp. Upsilon) by the E_pq pattern, then extract Kraus via
+ * aic_ucp_choi_to_kraus_latd. The returned aic_ucp_kraus stores {K_a}; the dual's
+ * Schrodinger action is Phi*(rho) = Sum_a K_a rho K_a^dag. DRIFT #2 dims:
+ *   Dec (= Delta*): dim_K = n_B, dim_H = N (Choi(Delta) is (n_B*N)^2).
+ *   Enc (= Upsilon*): dim_K = N, dim_H = n_B (Choi(Upsilon) is (N*n_B)^2).
+ * The caller OWNS the returned struct and must aic_ucp_kraus_clear it. Dec is TP
+ * iff Delta unital; Enc is TP iff Upsilon unital. REQUIRES F->delta_ready (Dec) /
+ * F->upsilon_ready (Enc). */
+void aic_factorize_dec_kraus(aic_ucp_kraus *dec, const aic_factorize *F, slong prec);
+void aic_factorize_enc_kraus(aic_ucp_kraus *enc, const aic_factorize *F, slong prec);
 
 #ifdef __cplusplus
 }

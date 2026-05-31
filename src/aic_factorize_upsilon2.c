@@ -174,9 +174,24 @@ void aic_factorize_upsilon_build(aic_factorize *F, double tol_sigma, slong prec)
     F->xi = flint_malloc(sizeof(acb_mat_t) * m);
     F->L  = flint_malloc(sizeof(acb_mat_t) * m);
 
+    /* The genuine-bug guard (Rule 4; FINDINGS §C14). Accumulate the PSD-cone defect
+     * mass clipped by each W_j extraction. The almost-idempotent UCP Delta is CP
+     * only to O(eta^2), so this should be O(eta^2)-small (measured worst per-block
+     * minEig -2.5e-6 at eta=2.3e-2, summed over blocks ~ a few 1e-6). If it exceeds
+     * AIC_FACTORIZE_CONE_MASS_CEIL = 1e-2 the construction is FAR more broken than
+     * the O(eta)-CP theory predicts (a real bug / non-CP input slipped past the
+     * per-eigenvalue 1e-3 abort floor by spreading mass over many eigenvalues) —
+     * fail loud, do NOT swallow. 1e-2 is ~4000x above the measured worst and below
+     * an O(1) cone violation; it is also above the largest eta in scope so an
+     * O(eta) (not O(eta^2)) cone defect would trip it. */
+#define AIC_FACTORIZE_CONE_MASS_CEIL 1e-2
+    double total_clipped = 0.0;
+
     for (slong j = 0; j < m; j++) {
         slong dj = B->d[j], e_j;
-        aic_factorize_upsilon_Wj(F->W[j], &e_j, F, j, prec);  /* W_j (inits) */
+        double clipped_j = 0.0;
+        aic_factorize_upsilon_Wj(F->W[j], &e_j, &clipped_j, F, j, prec); /* W_j (inits) */
+        total_clipped += clipped_j;
         F->e[j] = e_j;
         acb_mat_t Rj;
         acb_mat_init(Rj, dj * e_j, dj * e_j);
@@ -197,6 +212,19 @@ void aic_factorize_upsilon_build(aic_factorize *F, double tol_sigma, slong prec)
         aic_factorize_int_build_Lj(F->L[j], F, j, F->W[j], F->xi[j], e_j,
                                    /*f_left=*/1, prec);
     }
+
+    /* The genuine-bug guard: total clipped PSD-cone-defect mass must be O(eta^2)-
+     * small. PRINT it (visibility, CLAUDE.md Rule 12 concrete numbers), then
+     * ASSERT the ceiling (Rule 4 — fail loud if the construction is more broken
+     * than the O(eta)-CP theory predicts; FINDINGS §C14). */
+    flint_printf("aic_factorize_upsilon_build: total PSD-cone-defect mass clipped "
+                 "across %wd block(s) = %.6e (ceiling %.1e)\n",
+                 m, total_clipped, AIC_FACTORIZE_CONE_MASS_CEIL);
+    assert(total_clipped <= AIC_FACTORIZE_CONE_MASS_CEIL &&
+           "upsilon_build: clipped PSD-cone-defect mass exceeds ceiling — the UCP "
+           "Delta is more non-CP than O(eta^2) (FINDINGS §C14; Rule 4)");
+#undef AIC_FACTORIZE_CONE_MASS_CEIL
+
     F->upsilon_ready = 1;
 
     /* Upsilon'(1_H) and the inverse-sqrt basin assert (D6). */

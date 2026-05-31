@@ -391,6 +391,30 @@ LAPACK/BLAS. Compiler flags following the sibling: `-Wall -Wextra -Wpedantic
 -Wshadow -Wstrict-prototypes -O2 -g -std=c11` (keep `-Wshadow`; it has caught
 real bugs in the sibling).
 
+## Probe/sweep hygiene — don't hang the session (2026-05-31 incident)
+
+A throwaway hostile-review probe hung an entire session and the in-flight
+review's state was lost on exit. The avoidable mistakes, recorded so no future
+agent repeats them:
+
+- **Scratch/probe `.c` files MUST NOT match `tests/test_*.c`.** The Makefile
+  auto-discovers that glob (`TEST_SRC := $(wildcard tests/test_*.c)`) into
+  `make all`/`make test` and the parallel run loop *executes* it — a hanging
+  probe hangs the whole gate. Put throwaway code outside `tests/` (a `/tmp`
+  build, or a name that does not start with `test_` that you delete
+  immediately), never as `tests/test_zprobe.c`.
+- **Stay inside the `η < 1/4` regime.** `Φ̃ = θ(2Φ−1)` needs `ρ(Φ²−Φ) < 1/4`
+  (`.tex:520`); a fixture sweep that pushes the mixing knob so `η ≳ 1/4` leaves
+  both the `η`-idempotence hypothesis and the regularization basin —
+  `funcalc`/`cstar_build` are not guaranteed to converge there and can **spin
+  without a fail-loud abort** (that Rule-4 gap is filed as a bead). For
+  `make_mixconj*`, `t ≲ 0.1` is safe; `t = 0.45` is not a valid
+  almost-idempotent channel — do not feed it to the pipeline.
+- **Bound every exploratory sweep.** Wrap each heavy pipeline build in a
+  per-point `timeout`, or run it backgrounded, so one non-converging point
+  cannot hang forever. Note `pkill -f "make test"` self-matches the shell
+  (exit 144) — use `pkill -x make`.
+
 ## Session completion ("landing the plane")
 
 This repo is **under git + beads** (initialized 2026-05-28). A **git remote now

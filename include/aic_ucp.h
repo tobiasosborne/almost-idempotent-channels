@@ -187,6 +187,25 @@ void aic_ucp_choi_diff(acb_mat_t C, const aic_ucp_kraus *phi1,
 void aic_ucp_choi_to_kraus_latd(aic_ucp_kraus *phi, const acb_mat_t C,
                                 slong dim_K, slong dim_H);
 
+/* TOLERANCE-AWARE Choi->Kraus with a PSD-cone projection (bead aic-tff, FINDINGS
+ * §C14). Same eigendecomposition as the strict variant, with three regimes:
+ *   lambda > keep_thr=(dim_K*dim_H)*eps_mach*||C||_F  -> KEEP as Kraus;
+ *   lambda in (-neg_tol, keep_thr]                    -> DROP (cone-defect/noise);
+ *                                                        |lambda| (if <0) added to
+ *                                                        *clipped_neg_out;
+ *   lambda <= -neg_tol                                -> FAIL LOUD (genuine non-CP).
+ * This extracts the Kraus of the NEAREST genuinely-CP map (C projected onto the PSD
+ * cone), needed for the almost-idempotent (O(eta)-CP) Delta of th_factorization
+ * whose per-block Choi is PSD only to O(eta^2). `clipped_neg_out` (if non-NULL)
+ * receives the TOTAL clipped negative mass = sum of |lambda| over the dropped
+ * negative eigenvalues (the certified cone-defect magnitude; the genuine-bug guard
+ * checks it is O(eta^2)-small). `neg_tol` must be >= 0. The strict
+ * aic_ucp_choi_to_kraus_latd delegates here with neg_tol = keep_thr. `phi` is
+ * OUTPUT (init'd here; caller clears). */
+void aic_ucp_choi_to_kraus_latd_tol(aic_ucp_kraus *phi, const acb_mat_t C,
+                                    slong dim_K, slong dim_H, double neg_tol,
+                                    double *clipped_neg_out);
+
 /* Carrier rank: number of eigenvalues of Q = sum_a K_a K_a^dag above
  * threshold = dim_K * eps_mach * ||Q||_F (double path, LAPACKE_zheev). This is
  * the dimension of the carrier M. The CERTIFIED rank (arb) is gap-dependent and

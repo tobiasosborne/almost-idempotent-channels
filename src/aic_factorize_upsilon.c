@@ -56,7 +56,25 @@
 #include "aic_mat.h"
 #include "aic_ucp.h"
 
-void aic_factorize_upsilon_Wj(acb_mat_t Wj, slong *e_j_out,
+/* The PSD-CONE EXTRACTION TOLERANCE for the almost-idempotent W_j Choi
+ * (paper/FINDINGS.md §C14). The UCP Delta of th_factorization is CP only to
+ * O(eta^2): its per-block Choi Cj_choi has a small negative eigenvalue of order
+ * O(eta^2) (measured worst -2.5e-6 at eta=2.3e-2, scaling as ~0.005*eta^2),
+ * because Delta'(.tex:2788) is manifestly CP only when Dtilde=v is an EXACT
+ * *-hom, and v is an O(eta)-iso (the star != ordinary product). We admit that
+ * cone defect (project onto the PSD cone) but ABORT a genuine non-CP input:
+ *
+ *   AIC_FACTORIZE_CONE_NEG_TOL = 1e-3 — the per-eigenvalue abort floor passed to
+ *     aic_ucp_choi_to_kraus_latd_tol. ABSOLUTE (not relative): chosen because the
+ *     measured O(eta^2) defect ~1e-6 (at eta~1e-2) sits FAR below 1e-3, while a
+ *     genuine O(1) non-CP eigenvalue, OR an unexpectedly-O(eta) negative one
+ *     (eta~1e-2 >> 1e-3, signalling the construction is MORE broken than the
+ *     O(eta)-CP theory predicts), trips the abort. "Measure then pin": 1e-3 is
+ *     ~400x above the worst measured defect, ~10x below the smallest eta scale.
+ */
+#define AIC_FACTORIZE_CONE_NEG_TOL 1e-3
+
+void aic_factorize_upsilon_Wj(acb_mat_t Wj, slong *e_j_out, double *clipped_out,
                               const aic_factorize *F, slong j, slong prec)
 {
     assert(F != NULL && e_j_out != NULL);
@@ -86,9 +104,16 @@ void aic_factorize_upsilon_Wj(acb_mat_t Wj, slong *e_j_out,
         }
 
     /* Extract Kraus {D_{j,c}: H -> L_j} (each d_j x N; e_j = rank). Delta_j's Choi
-     * is degenerate -> the double path (aic-w4o.1 precedent). */
+     * is degenerate -> the double path (aic-w4o.1 precedent). TOLERANCE-AWARE: the
+     * UCP Delta is CP only to O(eta^2), so Cj_choi has a small O(eta^2) negative
+     * eigenvalue (paper/FINDINGS.md §C14); the _tol extraction projects it onto the
+     * PSD cone (drops the cone defect) and returns the clipped mass, but STILL
+     * aborts on a genuine <= -AIC_FACTORIZE_CONE_NEG_TOL eigenvalue (Rule 4). */
     aic_ucp_kraus phi_j;
-    aic_ucp_choi_to_kraus_latd(&phi_j, Cj_choi, dj, N);
+    double clipped = 0.0;
+    aic_ucp_choi_to_kraus_latd_tol(&phi_j, Cj_choi, dj, N,
+                                   AIC_FACTORIZE_CONE_NEG_TOL, &clipped);
+    if (clipped_out) *clipped_out = clipped;
     slong e_j = phi_j.r;
     assert(e_j >= 1 && "upsilon_Wj: empty Stinespring (Delta_j is zero?)");
 
