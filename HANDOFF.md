@@ -31,14 +31,27 @@ JLL; coordinate with umbrella `aic-7xx`), the `test_errreduce` 115s cost, and th
 clock-skew (`make` "Clock skew detected" warnings; Ninja "manifest dirty" → use default Make
 generator).
 
-**▶ NEXT (autonomous wave plan, laptop-tractable first):** `aic-xo0` (fail-loud-not-hang —
-researched + scoped: root cause = no precondition check at `aic_assoc_regularize` entry; add a
-Gelfand `rho(Phi^2-Phi)<1/4` certify there + a SUBPROCESS-based fail-loud test; ~40 LOC; see the
-bead notes) → Wave B capability modules (`aic-7hg` channel constructors, `aic-xxk` ucp_power/
-compress, `aic-pvs` non-Herm eig, `aic-w4o.2` acb SVD) → Wave C consume the package (`aic-obc`
-Julia ccall, then `aic-95g.2` JLL / `.3` Python) → Wave D robustness/test-teeth → Wave E
-heavy-but-smart (`aic-bag` F4.2 on SMALL dims n=2-5 + dual reformulation) → Wave F research
-escalations. The 2 pre-existing reds (`test_cstar_build`/`test_opspace_o2`) are also fair game.
+**▶ ALSO DONE THIS SESSION (beyond the CMake migration):** `aic-xo0` (fail-loud entry guard on
+`aic_assoc_regularize` + the project's FIRST executable fail-loud test — a reusable fork+SIGALRM
+watchdog subprocess harness; reframing: the pipeline never actually HUNG, and `make_mixconj`
+CANNOT go out-of-regime at any t — FINDINGS §C15), `aic-36j` (regenerated the stale opspace_o2
+MOSEK dual fixture — legitimate: the F3 ucp fix changed v's Kraus representation; the bracket +
+η=0 oracle safeguards confirm v is sound), `aic-54y` (robustified the th_main `.tex:484`
+universality canary to an AND-gate = ratio>1.25 AND slope>0.28 — the m=3 1.2622 was a LONE n=10
+geometry outlier, slope 0.08 ≪ 0.36, so **th_main dimension-independence HOLDS**). **BOTH
+pre-existing master slow-suite reds are now CLEARED** (a full `ctest` confirmation was the last
+step). New beads filed: `aic-w9f` (visibility deferral), `aic-rcm` (test_errreduce 115s cost),
+the laptop clock-skew bug.
+
+**▶ NEXT (autonomous wave plan, laptop-tractable first):** Wave B capability modules
+(`aic-7hg` channel constructors — high value, also supplies diverse/out-of-regime fixtures the
+codebase currently lacks; `aic-xxk` ucp_power/compress, `aic-pvs` non-Herm eig zgeev, `aic-w4o.2`
+acb SVD) → Wave C consume the package (`aic-obc` Julia ccall now that CMake builds libaic.so,
+then `aic-95g.2` JLL / `.3` Python) → Wave D robustness/test-teeth → Wave E heavy-but-smart
+(`aic-bag` F4.2 on SMALL dims n=2-5 + dual reformulation) → Wave F research escalations
+(`aic-1bc` analytic c0, `aic-3qv` Ω(1)-gap, `aic-ynu` Artin-Wedderburn). Build/test:
+`make` or `cmake --build build`; `ctest --test-dir build -L fast` (sub-second gate); full
+`ctest --test-dir build` (slow set arb-heavy, ~8 min at -j3).
 
 ## ▶ PRIOR CHECKPOINT (2026-05-31, session: HEADLINE CLOSED on F4.1; F4.2 → v0.2; packaging planned) — READ FIRST
 
