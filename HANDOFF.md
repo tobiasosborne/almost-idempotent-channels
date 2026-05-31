@@ -50,18 +50,31 @@ Read `paper/FINDINGS.md` §C (the "tests that can't fail" the reviews keep catch
 **§C5/§C10 (the `aic-qgs` Gram false-fail) is now RESOLVED** — the
 `aic_corner_gamma_opnorm_ub` workaround is retireable (separate cleanup).
 
-**▶ NEXT FRONTIER (th_main is done; these are the post-th_main steps):**
-1. **`aic-1vp`** — the `aic_sgn` convergence wall: Stage-2 oblique-wrapper
-   `lem_extension` fails to converge for ambient `n≥6` or block `m≥3` (a
-   convergence-BASIN issue, prec-independent; `FINDINGS §C11`). Both independent I5
-   impls hit it. Diagnose: `aic_sgn` basin-coverage gap (fix: wider-basin sgn =
-   `aic-68c` scaled-Newton/Kenney–Laub, or an eig-based fallback) vs the §D1/`aic-3qv`
-   structural gap-degeneracy stop condition. Fixing it extends the η>0 oblique canary
-   + closes the η>0 multi-class coverage gap. THE immediate next step.
-2. **`th_main_ext` (§10 `opspace`, `aic-zwo`)** — the tensor/cb-norm extension;
-   constructive modulo the cb-truncation `N` (open escalation D3).
-3. **`factorize` (`th_factorization`, `aic-tff`)** — the FINAL headline; carries the
-   D4 stop condition (the paper's proof is an OUTLINE; escalate per the mandate).
+**th_main is now FULLY ROBUST.** Beyond the I1–I5 build, this session also fixed
+every substrate blocker the oblique master loop exposed: **aic-qgs** (the
+`aic_mat_opnorm` Gram-Hermiticity false-fail → Weyl midpoint+R enclosure, CLOSED),
+the **aic_sgn radius-floor wall** (`aic-1vp`: midpoint-iterate + a-posteriori
+certificate, CLOSED), and the **m≥3 G-twist involution-tol** (the `extension.c`
+`lem_approx` caller: `eps_target=O(η)`, `unit_tol=2.0` for the Ha-twisted codomain).
+The η=0 oracle is EXACT vs `idemp_decompose`; the `.tex:484` universality canary is
+flat (η=0) and bounded across m≥3 (η>0); the η>0 MULTI-CLASS merge is exercised
+(`test_cstar_build` n=101). All 27 binaries green.
+
+**▶ NEXT FRONTIER (th_main complete + robust; the remaining paper results):**
+1. **`th_main_ext` (§10 `opspace`, `aic-zwo`)** — the tensor/cb-norm extension
+   (`1_{M_n}⊗v` is a δ-iso for the SAME δ, all n, `tex:1447-1561`). THE next module.
+   Constructive modulo the **cb-truncation `N`** (open escalation **D3**/`aic-2jd`:
+   "for all n" must be truncated, conjecture `n≤dim A` — needs proof or a certified-N
+   procedure before a cb-bound is rigorous; the ampliation machinery + conjectured-N
+   tests are buildable now). Research §10 first (is D3 a hard wall or buildable-modulo?).
+2. **`factorize` (`th_factorization`, `aic-tff`)** — the paper's FINAL headline,
+   gated by `th_main_ext`. Carries the **D4 stop condition** (`aic-1sk`): the proof is
+   an OUTLINE (Steps 4–5 CP-ization are prose; the composite O(η) constant unstated).
+   Per the mandate this is a documented escalation — reaching it means surfacing it.
+3. **Robustness/cleanup** (non-blocking): `aic-5aq` (operator-ON corner basis → G=I →
+   recover the tight involution tol), `aic-92i` (superseded by aic-5aq), the
+   `aic_corner_gamma_opnorm_ub` workaround retirement (now that aic-qgs is fixed),
+   the Julia `ccall` layer (E5).
 
 ---
 
