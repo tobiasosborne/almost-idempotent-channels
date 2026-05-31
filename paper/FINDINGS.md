@@ -330,6 +330,48 @@ with the concrete evidence from where they bit.
   a ~29× gap). T3b is a CORNER-LOCAL extension (`P+Q = span(e1,e2) ≠ 1_5`, printed
   honestly); the valid non-vacuous content is the merging1 multiplicativity star tooth.
 
+### C11. I5 master loop (`aic_cstar_build`, proof of th_main) — load-bearing subtleties, the promoted §G findings, and the open coverage gaps
+- **Status:** CONFIRMED (cstar_build I5, bead aic-097). This entry is the canonical
+  home for the design-doc §G-series findings that became load-bearing in shipped I5
+  code (the code cites `FINDINGS §C11`; the detailed derivations remain in
+  `docs/research/cstar_build_design.md` §6 G1/G5 and `cstar_masterloop_spec.md`).
+- **Nontriviality-on-wrapper (promoted design §G1).** `aic_projection_nontrivial`'s
+  internal nontriviality assert uses the AMBIENT `‖1_n − P‖` (vacuous on an S_P
+  wrapper, whose unit is `Ptilde_m ≠ 1_n`). The Stage-1 greedy loop therefore
+  verifies nontriviality ITSELF after the projector call: `‖Ptilde_m − P'‖_op ≥ 0.15`
+  via the §C5 midpoint opnorm (route (b): no projection-module change). A split
+  returning the wrapper unit (`P' = Ptilde_m`) trips this RED (mutation-proven).
+- **`aic_cstar_errreduce_unit` generalizes §C7 to a non-`1_n` unit (load-bearing at
+  I5).** Stock `aic_errreduce` hardcodes `unit_def = ‖v(I_B) − 1_n‖` (FINDINGS §C7),
+  which is ~1 and spuriously trips `AIC_ERRREDUCE_C0_CERT` for the Stage-2 maps into
+  an S_P wrapper (unit `Ptilde`) and the Stage-3 intermediate merges (unit = the
+  running `P_total ≠ 1_n`). `errreduce_unit` certifies against the SUPPLIED unit,
+  reusing every `aic_errreduce` primitive. CAVEAT (review finding, follow-up bead):
+  it relaxes `aic_dhom_approx`'s `unit_tol` to 2.0, which also loosens that routine's
+  involution-symmetry assert (a genuine involution break in `[eps, 2.0]` is not caught
+  HERE; the Newton contraction + max_steps guards DO still catch divergence).
+- **c_0 is the MEASURED first-call constant (§D2, promoted design §G5).** Fixed from
+  the first `aic_errreduce`; later calls gated `c0 ≤ 3·nominal + 5` (coarse last-resort;
+  the precise universality canary is the test-level `c_hi/c_lo ≤ 2.5` ratio, the
+  `.tex:484` check). The analytic c_0 stays open (aic-1bc).
+- **OPEN coverage gaps (η=0-only at present; follow-up beads):** every η>0 fixture
+  that stays in the funcalc basin is a SINGLE equivalence class, so (a) the Stage-3
+  MULTI-CLASS merge and (b) the `errreduce_unit` Stage-3 running-`P_total≠1_n` branch
+  run only at η=0 (machine-zero defects). A η>0 fixture with ≥2 distinct classes that
+  stays in-basin is needed to exercise them — blocked by the next item.
+- **The `aic_sgn` convergence wall (CONFIRMED by BOTH independent I5 implementations;
+  the next frontier).** The Stage-2 oblique-wrapper `lem_extension` drives
+  `aic_sgn` (Newton–Schulz, via `aic_corner_Co`→`aic_prop_P`) on near-boundary corner
+  matrices that FAIL to converge (`aic_sgn_newton_schulz: no convergence in 100 iters`)
+  for ambient `n ≥ 6` or block `m ≥ 3`; higher prec (512) does not help (a convergence-
+  BASIN issue, not precision). So the η>0 universality/oblique tests are scoped to the
+  in-basin `n ∈ {4,5}, m=2`; the clean dimension-independence evidence is the η=0 sweep
+  (constant FLAT at 0 to dim_A=20). This is diagnosable as either an `aic_sgn` basin-
+  coverage gap (fix: a wider-basin sgn — the aic-68c scaled-Newton/Kenney–Laub candidate
+  — or an eig-based fallback for the hard corner matrices) OR, if a wrapper spectrum is
+  genuinely gap-degenerate, the §D1 / aic-3qv structural stop condition. Diagnose before
+  extending the oblique canary.
+
 ---
 
 ## D. Open questions / escalations (unresolved)

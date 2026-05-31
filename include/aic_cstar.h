@@ -412,6 +412,83 @@ void aic_cstar_lem_extension(aic_dhom_B *B_out, aic_dhom_v *v_out,
                              const acb_mat_t P, const acb_mat_t Q,
                              const aic_ecstar *A_parent, slong prec);
 
+/* ============================ Increment 5 =============================== *
+ * aic_cstar_build (.tex:1414-1444): the MASTER LOOP — constructive proof of
+ * th_main (.tex:460): every finite-dim eps-C* algebra A is O(eps)-isomorphic to
+ * a genuine C* algebra B = (+)_C M_{|C|}. The isomorphism v : B -> A is a
+ * c_0*eps'-isomorphism (c_0 from cor_improvement, .tex:1317; eps' = O(eps)).
+ * The constant c_0 is DIMENSION-INDEPENDENT (.tex:461; see FINDINGS §D2).
+ *
+ * approximate_algebras.tex:1414-1415 — proof of th_main (verbatim):
+ *   "Let c_0 be the constant from Corollary cor_improvement. We will construct a
+ *    c_0*eps-isomorphism v from some C* algebra B to the eps-C* algebra A in three
+ *    stages. The first stage yields a c_0*eps-inclusion v_comm : B_comm -> A, where
+ *    B_comm is a commutative C* algebra. The second stage involves the parallel
+ *    construction of c_0*eps'-isomorphisms from some matrix algebras to approximate
+ *    direct summands of A. At the third stage, those algebras and isomorphisms are
+ *    merged."
+ *
+ * THREE-STAGE LOOP (.tex:1414-1443):
+ *   Stage 1 (.tex:1417-1426): greedy commutative skeleton. Start from a single
+ *            nontrivial projection P found by aic_projection_nontrivial(A), split
+ *            {P_1=P, P_2=1_A-P}, errreduce. Then WHILE some dim S_{P_m} > 1: build
+ *            the S_{P_m} wrapper, find P' in it (nontriviality verified against the
+ *            wrapper unit Ptilde_m, FINDINGS §C11), replace P_m by {P', Ptilde_m-P'},
+ *            cor_merge_sum + cor_improvement. Terminates by the maximum-dimensionality
+ *            contradiction (.tex:1417): <= dim_A + 1 iterations.
+ *   Setup (.tex:1428): the m one-dimensional P_j are subdivided into equivalence
+ *            classes via dim S_{P_j,P_k} == 1 (same class) / 0 (distinct).
+ *   Stage 2 (.tex:1430-1441): per class C = {r_0,...,r_{s-1}}, build the c_0*eps'-
+ *            isomorphism v_C : M_{|C|} -> S_{P_C} inductively, M_{r-1} -> M_r via the
+ *            compression Co_{P_[1,r]}, aic_cstar_lem_extension, and cor_improvement.
+ *   Stage 3 (.tex:1443): merge classes via cor_merge_sum + cor_improvement;
+ *            S_{P_C,P_D}=0 for distinct C,D (lem_add_dim) is asserted before each merge.
+ *
+ * PAPER TECHNIQUE vs CONSTRUCTIVE ROUTE (CLAUDE.md Law 3). The paper asserts the
+ * EXISTENCE of a maximum-dimensionality commutative inclusion (Stage 1) and reads off
+ * the equivalence classes; in finite dim the greedy split loop CONSTRUCTS that
+ * skeleton and terminates by the very contradiction the proof uses. The c_0 is fixed
+ * to the MEASURED value of the first cor_improvement (FINDINGS §D2; the analytic c_0
+ * is bead aic-1bc). Every primitive is from a CLOSED, green module (I1-I4, errreduce,
+ * projection, corner, dhom).
+ *
+ * INPUTS:
+ *   A   : BORROWED eps-C* algebra (the aic_ecstar from aic_assoc_ecstar_from_phi
+ *         or a genuine M_d via aic_cstar_matrix_algebra). ASSERT A->n >= 1, dim_A >= 1.
+ *   eps : the eps of A (e.g. aic_ecstar_defect_assoc for a genuine eps-C* algebra,
+ *         0.0 for an exact idempotent). The O(eps) denominator for c_0 and iso_def.
+ *   prec: arb working precision.
+ *
+ * OUTPUTS:
+ *   B_out    : OUTPUT OWNED genuine C* algebra B = (+)_C M_{|C|} (aic_dhom_B).
+ *              Allocated here. num_blocks = number of equivalence classes; d[l] =
+ *              |C_l|; dim_B = sum_l d[l]^2 = dim_A (bijective case). Free with
+ *              aic_dhom_B_clear(B_out).
+ *   v_out    : OUTPUT OWNED c_0*eps'-isomorphism v : B -> A (aic_dhom_v). Allocated
+ *              here. v_out->B points at B_out (keep B_out alive for v_out's lifetime);
+ *              v_out->A = A. Free with aic_dhom_v_clear(v_out).
+ *   iso_def  : OUTPUT certified arb ball: the isomorphism defect of v, = the max of
+ *              the four aic_errreduce inclusion-defects of the FINAL v_out. A true
+ *              c_0*eps'-isomorphism has iso_def <= AIC_ERRREDUCE_C0_CERT*max(eps',tol).
+ *              Caller-initialised arb_t; pass NULL to skip.
+ *
+ * ASSERTS (fail loud, Rule 4):
+ *   A->n >= 1 and A->dim_A >= 1;
+ *   Stage 1 loop terminates in <= dim_A + 1 iterations (contradiction, .tex:1417);
+ *   each aic_projection_nontrivial succeeds (a degenerate spectrum on a >1-dim
+ *     sub-algebra is the aic-3qv stop condition, FINDINGS §D1 — abort, do NOT skip);
+ *   the S_{P_m} nontriviality holds against the wrapper unit Ptilde_m (FINDINGS §C11);
+ *   each aic_errreduce certifies a c_0*eps'-inclusion (AIC_ERRREDUCE_C0_CERT gate)
+ *     and c_0 stays within 3x the nominal (universality canary, FINDINGS §D2);
+ *   Stage 3 off-diagonal zero (aic_cstar_off_diag_zero) for distinct class pairs;
+ *   final v is bijective (aic_errreduce_is_bijective: dim_B == dim_A AND sigma_min>0).
+ *
+ * On the eta=0 oracle (A from an exact idempotent Phi): B matches the block structure
+ * of th_idemp_structure (aic_idemp_decompose) exactly (num_blocks, d[l] in bijection),
+ * iso_def ~ machine-zero, v bijective. (The canonical cross-check, Rule 6.) */
+void aic_cstar_build(aic_dhom_B *B_out, aic_dhom_v *v_out, arb_t iso_def,
+                     const aic_ecstar *A, double eps, slong prec);
+
 #ifdef __cplusplus
 }
 #endif
