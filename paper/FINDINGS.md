@@ -359,18 +359,41 @@ with the concrete evidence from where they bit.
   MULTI-CLASS merge and (b) the `errreduce_unit` Stage-3 running-`P_total≠1_n` branch
   run only at η=0 (machine-zero defects). A η>0 fixture with ≥2 distinct classes that
   stays in-basin is needed to exercise them — blocked by the next item.
-- **The `aic_sgn` convergence wall (CONFIRMED by BOTH independent I5 implementations;
-  the next frontier).** The Stage-2 oblique-wrapper `lem_extension` drives
-  `aic_sgn` (Newton–Schulz, via `aic_corner_Co`→`aic_prop_P`) on near-boundary corner
-  matrices that FAIL to converge (`aic_sgn_newton_schulz: no convergence in 100 iters`)
-  for ambient `n ≥ 6` or block `m ≥ 3`; higher prec (512) does not help (a convergence-
-  BASIN issue, not precision). So the η>0 universality/oblique tests are scoped to the
-  in-basin `n ∈ {4,5}, m=2`; the clean dimension-independence evidence is the η=0 sweep
-  (constant FLAT at 0 to dim_A=20). This is diagnosable as either an `aic_sgn` basin-
-  coverage gap (fix: a wider-basin sgn — the aic-68c scaled-Newton/Kenney–Laub candidate
-  — or an eig-based fallback for the hard corner matrices) OR, if a wrapper spectrum is
-  genuinely gap-degenerate, the §D1 / aic-3qv structural stop condition. Diagnose before
-  extending the oblique canary.
+- **The `aic_sgn` convergence wall — RESOLVED for the radius-floor case (bead aic-1vp,
+  2026-05-31).** Diagnosed: NOT a basin gap and NOT precision. The Stage-2 oblique-
+  wrapper `lem_extension` corner matrices were genuinely IN-BASIN (`‖I−X²‖_op ~ 0.1–0.6
+  ≪ 1`, spec cleanly near {0,1}, gap ≈ 0.998) but carried a WIDE inherited arb radius
+  (~2.7e-70 from the upstream corner star-product matmul chain). The Newton-Schulz /
+  global-Newton iteration reached the involution by k≈6–7 (`‖Y²−I‖_mid ~ 1e-72`), but
+  the inherited radius INFLATES ~2.75×/step through `acb_mat_sqr/mul`; once it dominates
+  the iterate's deviation from the true sign (k≈7), the ball-arithmetic MIDPOINT itself
+  drifts off the involution, so the midpoint step never falls below `tol = 2^-(prec-8)
+  ≈ 2.2e-75` and the 100-iter cap fired. Higher prec made it WORSE (lower tol, further
+  below the radius floor ~1e-72). **Fix (the house midpoint-iteration + a-posteriori-
+  certificate pattern):** `aic_sgn_newton_schulz`/`_denman_beavers`/`_newton_global` now
+  iterate on `mid(X)` (radius stripped once at entry, `aic_funcalc_int_to_midpoint`),
+  then GATE the result by a shared a-posteriori certificate `aic_funcalc_int_certify_sign`
+  (`‖Y²−I‖_F` AND `‖YX−XY‖_F < tol`, `tol = max(2^−(prec/2), in_rad)·8√n` — a SANITY
+  BACKSTOP, prec-floor-dominated in practice (~2.9e-39 at prec=256 ≫ the ~1e-70 input
+  radius); the `‖YX−XY‖` arm is computed on the radius-carrying X. The actual SOUNDNESS
+  is NOT this tol magnitude — it is the away-from-0 basin/Gelfand precondition (on X,
+  before midpointing: `ρ(I−X²)<1` keeps spec off the imaginary axis so `sgn(mid X)=
+  sgn(X_true)`) + the `Y₀=mid(X)` seeding (Higham Thm 5.6, correct inertia; the cert
+  alone cannot tell +sgn from −sgn). Hostile-review-corrected: earlier comments
+  oversold this as "from the input radius" — the prec-floor dominates.) A genuinely
+  out-of-basin X still FAILS LOUD (basin guard / Gelfand precondition / certificate). On a zero-radius tight
+  input the strip is a no-op → BYTE-FOR-BYTE the prior behavior (existing in-basin
+  cross-checks unchanged; T-global-3's `acb_mat_equal` dispatch check still green).
+  **CONFIRMED:** `aic_cstar_build` on `make_mixconj(6,2,0.03)` now COMPLETES
+  (num_blocks=1, d=[2], dim_B=4, iso_def=5.35e-2, iso_def/eta=2.57 — O(eta), v bijective,
+  σ_min=0.974); the n=6,m=2 wall is GONE (also n=4,5 m=2 all complete). Regression +
+  mutation-proof in `tests/test_funcalc.c` (`test_wide_radius`, `test_out_of_basin_failloud`).
+  **STILL OPEN (separate, downstream of sgn):** `make_mixconj(6,3,0.02)` (`m≥3`) now gets
+  PAST the sgn wall but hits a DIFFERENT abort in `aic_dhom_approx`
+  (`involution-symmetry 1.5e-1 > tol 1e-10 at step 1`) — the error-reduction Newton step,
+  not sgn. The multi-block / higher-`m` oblique canary needs that resolved next (new bead);
+  the sgn basin-coverage concern (aic-68c scaled-Newton / eig fallback) is NOT needed for
+  the radius-floor case the corner path actually produces.
 
 ---
 

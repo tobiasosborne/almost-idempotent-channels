@@ -46,6 +46,23 @@
  * step_norm) drops below a prec-appropriate tol. A hard cap of 100 steps is a
  * fail-loud abort: at ||I-X^2|| < 1 the quadratic rate reaches prec=256 in < 12
  * steps, so hitting the cap means a bug, not slow input.
+ *
+ * WIDE-RADIUS MIDPOINT FIX (bead aic-1vp, FINDINGS §C11). When X carries a WIDE
+ * inherited arb radius (~1e-70, e.g. from the upstream corner star-product matmul
+ * chain) the iteration is run on a MIDPOINT COPY of X (radius stripped once at
+ * entry, aic_funcalc_int_to_midpoint). WHY: the inherited radius propagates and
+ * INFLATES through acb_mat_sqr/mul (~2.75x/step); once it dominates the iterate's
+ * deviation from the true sign (k~6-7), the ball-arithmetic MIDPOINT itself drifts
+ * off the involution, so the midpoint step never settles below the prec-tol floor
+ * (2^-(prec-8) ~ 2.2e-75 at prec=256) and the 100-iter cap fires on a genuinely
+ * IN-BASIN X. On mid(X) the flow is clean (spec near +/-1, away from 0), reaching
+ * the involution by k~6-8. RIGOR is restored a-posteriori: the result Y is GATED
+ * by aic_funcalc_int_certify_sign (||Y^2-I|| AND ||YX-XY|| < tol against the ORIGINAL
+ * radius-carrying X; tol is a prec-floor sanity backstop, see that routine — the
+ * soundness rests on the away-from-0 basin precondition + the mid(X) seed, NOT on
+ * tol). A genuinely out-of-basin X still FAILS LOUD (Rule 4) — it aborts. On a
+ * zero-radius (tight) input the strip is a no-op and the iteration is BYTE-FOR-BYTE
+ * the prior behavior (the existing in-basin cross-checks are unchanged).
  */
 #include <assert.h>
 #include <stdio.h>
@@ -53,6 +70,7 @@
 
 #include <flint/acb_mat.h>
 #include <flint/arb.h>
+#include <flint/mag.h>
 
 #include "aic_mat.h"
 #include "aic_funcalc.h"
@@ -78,12 +96,18 @@ void aic_sgn_newton_schulz(acb_mat_t out, const acb_mat_t X, slong prec)
     arb_init(step);
     aic_funcalc_int_tol(tol, prec);
 
+    /* Iterate on the MIDPOINT of X (strip the inherited radius once), recording
+     * the max input radius for the a-posteriori certificate (bead aic-1vp). On a
+     * tight zero-radius input this is a no-op and Y_0 = X byte-for-byte. */
+    mag_t in_rad;
+    mag_init(in_rad);
+
     acb_mat_t Y, Ynext, T, three_I;
     acb_mat_init(Y, n, n);
     acb_mat_init(Ynext, n, n);
     acb_mat_init(T, n, n);
     acb_mat_init(three_I, n, n);
-    acb_mat_set(Y, X);                       /* Y_0 = X */
+    aic_funcalc_int_to_midpoint(Y, X, in_rad); /* Y_0 = mid(X) */
 
     int k;
     for (k = 0; k < AIC_SGN_MAX_ITERS; k++) {
@@ -104,8 +128,12 @@ void aic_sgn_newton_schulz(acb_mat_t out, const acb_mat_t X, slong prec)
                 AIC_SGN_MAX_ITERS);
         abort();
     }
+    /* A-posteriori certificate against the ORIGINAL X (restores rigor after the
+     * midpoint iteration; fail-loud on a non-involution / non-commuting result). */
+    aic_funcalc_int_certify_sign(Y, X, in_rad, "aic_sgn_newton_schulz", prec);
     acb_mat_set(out, Y);
 
+    mag_clear(in_rad);
     acb_mat_clear(three_I);
     acb_mat_clear(T);
     acb_mat_clear(Ynext);
@@ -128,11 +156,16 @@ void aic_sgn_denman_beavers(acb_mat_t out, const acb_mat_t X, slong prec)
     arb_init(step);
     aic_funcalc_int_tol(tol, prec);
 
+    /* Iterate on mid(X) (bead aic-1vp): a wide inherited radius would otherwise
+     * both stall the midpoint step AND blow up the per-step certified inverse. */
+    mag_t in_rad;
+    mag_init(in_rad);
+
     acb_mat_t Y, Yinv, Ynext;
     acb_mat_init(Y, n, n);
     acb_mat_init(Yinv, n, n);
     acb_mat_init(Ynext, n, n);
-    acb_mat_set(Y, X);                       /* Y_0 = X */
+    aic_funcalc_int_to_midpoint(Y, X, in_rad); /* Y_0 = mid(X) */
 
     int k;
     for (k = 0; k < AIC_SGN_MAX_ITERS; k++) {
@@ -158,8 +191,10 @@ void aic_sgn_denman_beavers(acb_mat_t out, const acb_mat_t X, slong prec)
                 AIC_SGN_MAX_ITERS);
         abort();
     }
+    aic_funcalc_int_certify_sign(Y, X, in_rad, "aic_sgn_denman_beavers", prec);
     acb_mat_set(out, Y);
 
+    mag_clear(in_rad);
     acb_mat_clear(Ynext);
     acb_mat_clear(Yinv);
     acb_mat_clear(Y);

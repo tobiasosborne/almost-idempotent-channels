@@ -17,18 +17,42 @@
  *     spectrum the certified simple-eig path CANNOT handle.
  *  5. precision ladder (bead aic-5ty): aic_sgn at prec=53 vs prec=256 agree.
  *
+ *  6. WIDE-RADIUS in-basin (bead aic-1vp, FINDINGS §C11): a near-involution X with
+ *     ||X^2-I||_op << 1 but a seeded WIDE entry radius (~1e-70, the upstream corner
+ *     star-product inherited radius). Pre-fix aic_sgn ABORTED ("no convergence in
+ *     100 iters") on this genuinely in-basin input; post-fix it returns a certified
+ *     sign (||Y^2-I|| and ||YX-XY|| small, a prec-floor sanity-backstop tol (see certify_sign)). Teeth: a
+ *     genuinely OUT-of-basin X (||X^2-I||>1) still FAILS LOUD (forked SIGABRT — the
+ *     midpoint fix must not mask a real out-of-basin input).
+ *
  * Mutation-proof (CLAUDE.md Rule 7): the cross-checks were confirmed RED by
  * temporarily replacing the Newton-Schulz update 1/2 Y(3I - Y^2) with the wrong
  * coefficient 1/2 Y(2I - Y^2). The corrupted iteration no longer converges to a
  * fixed point, so the convergence guard aborted the suite (exit 134) before the
  * identity checks even ran — the regression is caught loudly. Coefficient
  * restored to 3; the suite is GREEN again. Stated here per Rule 7.
+ *
+ * Mutation-proof for check 6 (bead aic-1vp): (a) REVERTING the midpoint fix (set
+ * Y_0 = X via acb_mat_set instead of aic_funcalc_int_to_midpoint in
+ * aic_sgn_newton_schulz) makes test_wide_radius RED — the 100-iter cap fires and the
+ * suite aborts (exit 134), confirmed by hand 2026-05-31. (b) the out-of-basin tooth
+ * (forked) fires SIGABRT; weakening the certificate (e.g. arb_lt -> arb_le with an
+ * inflated tol, or dropping the ||YX-XY|| arm) would let a non-sign pass — recorded
+ * RED by hand. Restored; suite GREEN.
  */
+#include <signal.h>
+#include <sys/wait.h>
+#include <unistd.h>
+
 #include <flint/acb.h>
 #include <flint/acb_mat.h>
 #include <flint/arb.h>
+#include <flint/mag.h>
 
 #include "aic_funcalc.h"
+/* the certified-domain probe aic_funcalc_int_def_X2 is a funcalc internal (the
+ * public wrappers abort); the test drives it directly like test_funcalc_global.c. */
+#include "../src/aic_funcalc_internal.h"
 #include "aic_mat.h"
 #include "aic_test.h"
 
@@ -274,6 +298,132 @@ static void test_precision_ladder(void)
     acb_mat_clear(S256); acb_mat_clear(S53); acb_mat_clear(X);
 }
 
+/* --- 6. WIDE-RADIUS in-basin: aic_sgn certifies; out-of-basin fails loud --- */
+
+/* X = 2P - I, P = rank-2 projector on span(e1,e2) + small Hermitian perturbation
+ * (eps), then a seeded uniform entry radius `rad` (the inherited corner radius).
+ * In-basin: ||X^2-I||_op = O(eps) < 1, but the wide radius pre-fix stalled the
+ * Newton-Schulz midpoint step below the prec-tol floor (bead aic-1vp). */
+static void build_wide_radius(acb_mat_t X, slong n, double eps, double rad,
+                              slong prec)
+{
+    acb_mat_t P, I;
+    acb_mat_init(P, n, n);
+    acb_mat_init(I, n, n);
+    acb_mat_zero(P);
+    acb_set_si(acb_mat_entry(P, 0, 0), 1);
+    acb_set_si(acb_mat_entry(P, 1, 1), 1);
+    for (slong i = 0; i < n; i++)
+        for (slong j = i + 1; j < n; j++) {
+            acb_t z;
+            acb_init(z);
+            acb_set_d_d(z, eps * (((i + 2 * j) % 3) - 1),
+                        eps * (((i + j) % 3) - 1));
+            acb_add(acb_mat_entry(P, i, j), acb_mat_entry(P, i, j), z, prec);
+            acb_conj(z, z);
+            acb_add(acb_mat_entry(P, j, i), acb_mat_entry(P, j, i), z, prec);
+            acb_clear(z);
+        }
+    acb_mat_scalar_mul_2exp_si(X, P, 1);   /* 2P */
+    acb_mat_one(I);
+    acb_mat_sub(X, X, I, prec);            /* 2P - I */
+    mag_t r;
+    mag_init(r);
+    mag_set_d(r, rad);
+    acb_mat_add_error_mag(X, r);           /* seed the wide inherited radius */
+    mag_clear(r);
+    acb_mat_clear(I);
+    acb_mat_clear(P);
+}
+
+static void test_wide_radius(void)
+{
+    const slong prec = 256;
+    const slong n = 6;
+    acb_mat_t X, S, S2, I, XS, SX, comm;
+    acb_mat_init(X, n, n);
+    acb_mat_init(S, n, n);
+    acb_mat_init(S2, n, n);
+    acb_mat_init(I, n, n);
+    acb_mat_init(XS, n, n);
+    acb_mat_init(SX, n, n);
+    acb_mat_init(comm, n, n);
+    /* eps=0.04 -> ||X^2-I||_op ~ 0.45 (solidly in-basin), rad ~ 2.7e-70 (the
+     * upstream corner star-product inherited radius that pre-fix stalled NS). */
+    build_wide_radius(X, n, 0.04, 2.7e-70, prec);
+
+    /* the input is genuinely IN-BASIN: ||X^2-I||_op ~ 0.45 < 1 (this is the whole
+     * point — pre-fix the in-basin input still ABORTED on the wide radius). */
+    arb_t b, one;
+    arb_init(b);
+    arb_init(one);
+    arb_one(one);
+    aic_funcalc_int_def_X2(b, X, prec);
+    AIC_CHECK_MSG(arb_lt(b, one),
+                  "test_wide_radius: fixture not in-basin (||X^2-I||_op not < 1)");
+    arb_clear(one);
+    arb_clear(b);
+
+    /* GREEN: aic_sgn returns (pre-fix it ABORTED here, 100-iter cap). */
+    aic_sgn(S, X, prec);
+
+    /* certified sign: ||sgn^2 - I|| and ||X sgn - sgn X|| small. The tol tracks
+     * the input radius (rad * O(sqrt(n))), not 1e-40 — the wide ball legitimately
+     * carries ~rad-scale slack (absorbed by the certificate sanity-backstop tol). */
+    arb_t tol;
+    arb_init(tol);
+    set_tol(tol, 1e-66);                   /* prec-floor tol ~2^-128*8*sqrt(6) ~6e-38 dominates the ~2.7e-70 input radius */
+    acb_mat_sqr(S2, S, prec);
+    acb_mat_one(I);
+    AIC_CHECK_ACB_MAT_CLOSE(S2, I, tol);   /* sgn(X)^2 = I */
+    acb_mat_mul(XS, X, S, prec);
+    acb_mat_mul(SX, S, X, prec);
+    acb_mat_sub(comm, XS, SX, prec);
+    arb_t cnorm;
+    arb_init(cnorm);
+    aic_mat_frobenius_norm(cnorm, comm, prec);
+    AIC_CHECK_MSG(arb_lt(cnorm, tol),
+                  "test_wide_radius: [X, sgn(X)] not within tol (cert arm)");
+    arb_clear(cnorm);
+    arb_clear(tol);
+
+    acb_mat_clear(comm); acb_mat_clear(SX); acb_mat_clear(XS);
+    acb_mat_clear(I); acb_mat_clear(S2); acb_mat_clear(S); acb_mat_clear(X);
+}
+
+/* Teeth: a genuinely OUT-of-basin X (||X^2-I||_op = 3 > 1) must FAIL LOUD even
+ * with a seeded wide radius — the midpoint fix must NOT mask a real out-of-basin
+ * input (the basin guard / Gelfand precondition / certificate still abort).
+ * Forked child (mirrors test_corner T9): the child SIGABRTs, the parent asserts. */
+static void test_out_of_basin_failloud(void)
+{
+    pid_t pid = fork();
+    if (pid == 0) {
+        const slong prec = 256, n = 3;
+        acb_mat_t X, S;
+        acb_mat_init(X, n, n);
+        acb_mat_init(S, n, n);
+        acb_mat_zero(X);
+        acb_set_d(acb_mat_entry(X, 0, 0), 2.0);    /* X = diag(2,-2,0.5) */
+        acb_set_d(acb_mat_entry(X, 1, 1), -2.0);   /* X^2 = diag(4,4,0.25), */
+        acb_set_d(acb_mat_entry(X, 2, 2), 0.5);    /* ||X^2-I||_op = 3 > 1 */
+        mag_t r;
+        mag_init(r);
+        mag_set_d(r, 2.7e-70);
+        acb_mat_add_error_mag(X, r);               /* same wide radius */
+        mag_clear(r);
+        aic_sgn(S, X, prec);                       /* must abort (out of basin) */
+        _exit(0);                                  /* reached only if NOT aborted */
+    }
+    int status = 0;
+    waitpid(pid, &status, 0);
+    AIC_CHECK_MSG(WIFSIGNALED(status) && WTERMSIG(status) == SIGABRT,
+                  "test_out_of_basin_failloud: out-of-basin X did not abort via "
+                  "SIGABRT (WIFSIGNALED=%d, WTERMSIG=%d) — the midpoint fix "
+                  "masked a real out-of-basin input", WIFSIGNALED(status),
+                  WIFSIGNALED(status) ? WTERMSIG(status) : -1);
+}
+
 int main(void)
 {
     test_identities();
@@ -281,6 +431,8 @@ int main(void)
     test_prop_P();
     test_degenerate_projector();
     test_precision_ladder();
+    test_wide_radius();
+    test_out_of_basin_failloud();
 
     aic_test_report("test_funcalc");
     printf("OK test_funcalc\n");

@@ -10,10 +10,47 @@
 
 #include <flint/acb_mat.h>
 #include <flint/arb.h>
+#include <flint/mag.h>
 
 /* ||X^2 - I||_op as a certified arb ball into `out` (operator norm = largest
  * singular value, via aic_mat_opnorm). X must be square (asserted). */
 void aic_funcalc_int_def_X2(arb_t out, const acb_mat_t X, slong prec);
+
+/* MIDPOINT copy: write mid(X) (every entry's radius stripped) into `out`, and
+ * return the LARGEST entrywise radius of X (max over re/im of every entry) in
+ * `in_rad` (caller-initialised mag_t). The wide-radius sgn fix (bead aic-1vp,
+ * FINDINGS §C11) iterates the Newton-Schulz / global-Newton flow on this
+ * midpoint: an inherited input radius (~1e-70 from the upstream corner star-
+ * product matmul chain) propagates through acb_mat_sqr/mul and DRAGS THE MIDPOINT
+ * off the involution once it dominates, so the iteration's midpoint step never
+ * settles below the prec-tol floor (2^-(prec-8) ~ 2.2e-75 at prec=256) and the
+ * cap-abort fires on a genuinely in-basin X. mid(X) is well-conditioned for sgn
+ * here (spec(X) near +/-1, away from 0), so sgn(mid X) is sgn(X_true) within the
+ * propagated radius; the a-posteriori certificate (below) restores rigor.
+ * `out` must be n x n, initialised; `out` may NOT alias `X`. */
+void aic_funcalc_int_to_midpoint(acb_mat_t out, const acb_mat_t X, mag_t in_rad);
+
+/* A-POSTERIORI SIGN CERTIFICATE (shared by global-Newton and Newton-Schulz, bead
+ * aic-1vp). After the midpoint iteration, certify that Y is a genuine sign of X:
+ *     ||Y^2 - I||_F < tol   AND   ||YX - XY||_F < tol   (certified balls).
+ * tol = max(2^-(prec/2), in_rad) * 8 * sqrt(n) — a SANITY BACKSTOP, not a tight
+ * enclosure. In the operating regime the prec-floor 2^-(prec/2) DOMINATES (e.g.
+ * ~2.9e-39 at prec=256, vs an inherited input radius ~1e-70), so the certificate
+ * rejects GROSS failures (a non-converged / wrong Y has ||Y^2-I|| or ||[X,Y]|| =
+ * O(1) >> tol) while admitting a converged midpoint sign (||Y^2-I|| ~ the midpoint
+ * iteration's machine floor ~1e-74 << tol); the in_rad term only binds if in_rad >
+ * 2^-(prec/2). The ||YX-XY|| arm IS computed on the radius-carrying X, so it tests
+ * sgn(mid X) against the TRUE input ball. SOUNDNESS does NOT rest on this tol
+ * magnitude: it rests on (i) the away-from-0 basin/Gelfand precondition asserted on
+ * the radius-carrying X BEFORE to_midpoint (rho(I-X^2)<1 keeps spec(X) off the
+ * imaginary axis, so sgn(mid X)=sgn(X_true)), and (ii) the Y0=mid(X) seeding (Higham
+ * Thm 5.6: Newton/NS converges to the correct-INERTIA sign — the certificate alone
+ * cannot distinguish +sgn from -sgn). A straddling / too-large ball is a FAIL-LOUD
+ * abort (Rule 4): a genuinely out-of-basin input must still abort, NOT silently
+ * return the midpoint sign. `who` is the caller name; X carries its radius. */
+void aic_funcalc_int_certify_sign(const acb_mat_t Y, const acb_mat_t X,
+                                  const mag_t in_rad, const char *who,
+                                  slong prec);
 
 /* Abort (fail loud) unless ||X^2 - I||_op is CERTAINLY < 1, the validity domain
  * of |X|, sgn(X), theta(X) (tex:516, tex:520). Returns the certified bound on

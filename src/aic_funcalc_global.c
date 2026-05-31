@@ -42,6 +42,17 @@
  * involution commuting with X: ||Y^2-I|| < tol AND ||XY-YX|| < tol (certified
  * balls; a straddle aborts, Rule 4). With the certified precondition and Y_0=X,
  * Higham Thm 5.6 pins Y=sgn(X) (rules out -sgn and wrong-inertia involutions).
+ * Factored into the shared aic_funcalc_int_certify_sign (bead aic-1vp), whose
+ * uses a prec-floor sanity-backstop tol (see aic_funcalc_int_certify_sign; soundness is the basin precond + mid(X) seed, not tol) so the certificate does not stall
+ * below the radius floor on a wide-radius input.
+ *
+ * WIDE-RADIUS MIDPOINT FIX (bead aic-1vp, FINDINGS §C11). Like Newton-Schulz, the
+ * convergence loop runs on mid(X) (radius stripped once): an inherited input radius
+ * (~1e-70) propagates through the per-step acb_mat_inv/add, drags the iterate's
+ * midpoint off the involution, and the midpoint step never falls below the prec-tol
+ * floor — the 100-iter cap then fires on an in-basin X. On mid(X) the flow is clean;
+ * rigor is restored by the a-posteriori certificate against the ORIGINAL X. The
+ * Gelfand precondition is still certified on the original X (rigorous, radius-aware).
  */
 #include <assert.h>
 #include <stdio.h>
@@ -49,6 +60,7 @@
 
 #include <flint/acb_mat.h>
 #include <flint/arb.h>
+#include <flint/mag.h>
 
 #include "aic_mat.h"
 #include "aic_funcalc.h"
@@ -134,11 +146,15 @@ void aic_sgn_newton_global(acb_mat_t out, const acb_mat_t X, slong prec)
     arb_init(step);
     aic_funcalc_int_tol(tol, prec);
 
+    /* Iterate on mid(X) (bead aic-1vp); strip the inherited radius once at entry. */
+    mag_t in_rad;
+    mag_init(in_rad);
+
     acb_mat_t Y, Yinv, Ynext;
     acb_mat_init(Y, n, n);
     acb_mat_init(Yinv, n, n);
     acb_mat_init(Ynext, n, n);
-    acb_mat_set(Y, X);                       /* Y_0 = X */
+    aic_funcalc_int_to_midpoint(Y, X, in_rad); /* Y_0 = mid(X) */
 
     int k;
     for (k = 0; k < AIC_SGN_MAX_ITERS; k++) {
@@ -161,46 +177,13 @@ void aic_sgn_newton_global(acb_mat_t out, const acb_mat_t X, slong prec)
         abort();
     }
 
-    /* A-posteriori certificate: ||Y^2 - I|| < tol AND ||XY - YX|| < tol. */
-    acb_mat_t Y2, D, XY, YX;
-    acb_mat_init(Y2, n, n);
-    acb_mat_init(D, n, n);
-    acb_mat_init(XY, n, n);
-    acb_mat_init(YX, n, n);
-    arb_t cert_tol, cn;
-    arb_init(cert_tol);
-    arb_init(cn);
-    /* certificate tol 2^-(prec/2-8): looser than the step tol (the certified ball
-     * carries the accumulated iteration radius), still failing loud on a non-
-     * converged / wrong-inertia involution. */
-    arb_set_si(cert_tol, 1);
-    arb_mul_2exp_si(cert_tol, cert_tol, -(prec / 2 - 8));
-    acb_mat_sqr(Y2, Y, prec);
-    acb_mat_one(D);
-    acb_mat_sub(D, Y2, D, prec);             /* Y^2 - I */
-    aic_mat_frobenius_norm(cn, D, prec);  /* certified balls: honest radius */
-    if (!arb_lt(cn, cert_tol)) {
-        fprintf(stderr, "aic_sgn_newton_global: a-posteriori ||Y^2-I|| not < tol "
-                "(result is not a certified involution; raise prec)\n");
-        abort();
-    }
-    acb_mat_mul(XY, X, Y, prec);
-    acb_mat_mul(YX, Y, X, prec);
-    acb_mat_sub(D, XY, YX, prec);            /* XY - YX */
-    aic_mat_frobenius_norm(cn, D, prec);  /* certified balls: honest radius */
-    if (!arb_lt(cn, cert_tol)) {
-        fprintf(stderr, "aic_sgn_newton_global: a-posteriori ||XY-YX|| not < tol "
-                "(result does not commute with X; raise prec)\n");
-        abort();
-    }
+    /* A-posteriori certificate (shared, bead aic-1vp): ||Y^2-I|| AND ||XY-YX|| < tol
+     * against the ORIGINAL X, the prec-floor sanity-backstop tol. With the certified Gelfand
+     * precondition and Y_0=mid(X), Higham Thm 5.6 pins Y=sgn(X). */
+    aic_funcalc_int_certify_sign(Y, X, in_rad, "aic_sgn_newton_global", prec);
     acb_mat_set(out, Y);
 
-    arb_clear(cn);
-    arb_clear(cert_tol);
-    acb_mat_clear(YX);
-    acb_mat_clear(XY);
-    acb_mat_clear(D);
-    acb_mat_clear(Y2);
+    mag_clear(in_rad);
     acb_mat_clear(Ynext);
     acb_mat_clear(Yinv);
     acb_mat_clear(Y);
