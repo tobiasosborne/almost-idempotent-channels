@@ -443,6 +443,34 @@ with the concrete evidence from where they bit.
   would restore the involution invariant's meaning at this caller and let §F-I4-2's
   norm-equivalence claim hold by construction.
 
+- **CORRECTION (2026-05-31): the T2b "per-family c-ratio ≤ 2.5" metric above was FLAWED
+  — measures fixture-GEOMETRY SPREAD, not dim-GROWTH; replaced by a robust bounded +
+  no-trend canary.** The claim five paragraphs up ("per-family c-ratios 1.76 (m=2)/2.05
+  (m=3), abs-max c=1.79 < 5") was computed from a TWO-POINT within-family ratio
+  `c_hi/c_lo` over a tiny fixture set (m=2: n=4,5; m=3: n=6,7). That metric measures the
+  SPREAD of `c=iso_def/η` across different ambient `n`, NOT whether `c` GROWS with `n`
+  (the genuine `.tex:484` / §D2 failure mode). On the committed HEAD it read RED
+  DETERMINISTICALLY: the m=3 ratio is 6.9035 > 2.5 (a hard-geometry outlier, n=7 c=1.87,
+  sitting over a favorable n=6 c=0.47 — pure placement, no dim content). An extended,
+  PRECISION-STABLE sweep (orchestrator diagnostic; prec 256 == prec 512 byte-for-byte)
+  established the truth: `c` is BOUNDED in `[0.25, 3.27]` and does **NOT** grow with `n`.
+  m=2 (B=M₂, t=0.03) over n=4..10: `c = 1.01, 1.79, 2.56, 3.27, 0.39, 0.49, 0.61`. m=3
+  (B=M₃, t=0.02) over n=6..10: `c = 0.47, 1.87, 0.25, 0.74, 0.79`. BOTH families PEAK at
+  the n=7 Heisenberg-Weyl/compression geometry (a hard corner) then CRASH at n=8 — the
+  LARGEST-`n` points have the SMALLEST `c`. All isos are HEALTHY (bijective,
+  σ_min ∈ [0.963, 0.999]; the low-`c` points have the HIGHEST σ_min — low `c` = a GOOD
+  iso with small defect, never a degenerate collapse). th_main is SOUND (bounded,
+  dimension-independent constant); the variation is fixture-geometry noise.
+  **T2b now uses a ROBUST canary** (`tests/test_cstar_build.c`, FINDINGS §D2): the
+  EXPANDED sweep (m=2 n=4..10, m=3 n=6..10) fed to (i) absolute boundedness abs-max
+  `c < 5.0` (measured 3.27, 1.53× margin) AND (ii) a no-upward-trend halves-ratio
+  `mean(c|hi-half n)/mean(c|lo-half n) ≤ 1.25` (measured m=2 = 0.28, m=3 = 0.65; the
+  least-squares slope β is reported too: -0.21 / -0.05, NEGATIVE). The halves aggregate
+  dilutes the n=7 spike; a genuine c=O(n) law survives the aggregation (halves-ratio
+  → 1.80 for m=2, mutation-proven: a `c_flat·(n/n_min)` injection trips the trend arm,
+  and the literal `c·(n/n_min)` trips the absolute arm at abs-max 5.73 > 5.0). The old
+  geometry-fragile within-family ratio is GONE.
+
 - **MULTI-CLASS Stage-3 merge at η>0 is now COVERED (2026-05-31, was an OPEN gap above).**
   The old "OPEN coverage gaps" item noted every in-basin η>0 fixture was a SINGLE class.
   `make_mixconj_blocks` (a `make_block_cond_exp(d,m)` base → `M_m ⊕ M_{d−m}`, conjugate-
@@ -520,11 +548,48 @@ with the concrete evidence from where they bit.
   generous fail-loud guard for "is `ṽ` an O(ε)-inclusion", NOT the analytic `c_0`
   (the worst achieved max-defect over the corpus is `≈ 2.71`×ε at T4(A) M₂, a ~3.7×
   margin under 10×ε; the machine-floor cases T1/T2 clear it with ≥30× margin).
+- **The universality canary's ROBUST form (2026-05-31, `test_cstar_build` T2b):** the
+  dimension-independence check on the th_main constant `c=iso_def/η` is **bounded
+  abs-max + no-upward-trend**, NOT the geometry-fragile within-family `c_hi/c_lo` ratio
+  (which measures fixture-geometry SPREAD across ambient `n`, not dim-GROWTH — it read
+  RED 6.90 on a hard-geometry n=7 outlier with no `.tex:484` content; see §C11's
+  2026-05-31 correction). The robust canary: over an EXPANDED ambient-n sweep (m=2 B=M₂
+  n=4..10, m=3 B=M₃ n=6..10), assert (i) abs-max `c < 5.0` AND (ii) the halves-ratio
+  `mean(c|hi-half n)/mean(c|lo-half n) ≤ 1.25` (the halves aggregate dilutes a single
+  hard-geometry spike; a genuine c=O(n) law survives it). Measured: abs-max 3.27,
+  halves-ratio 0.28 (m=2) / 0.65 (m=3), slope -0.21 / -0.05 (NEGATIVE). Mutation-proven:
+  a `c_flat·(n/n_min)` (genuine c=O(n)) injection drives the halves-ratio to 1.80 > 1.25
+  (trend arm RED), and the literal `c·(n/n_min)` injection drives abs-max to 5.73 > 5.0
+  (absolute arm RED). The errreduce-layer canary (T4(A) above) keeps the dim-sweep ratio
+  form because its `c_0` is a smooth, monotone-in-dim quantity there (no geometry spike).
 
 ### D3. cb-norm truncation `N` (shard F, `tex:1447-1561`)
-- **Status:** OPEN (bead **aic-2jd**). "for all n" in the cb-norm must be truncated;
-  conjecture `n≤dim A` suffices. Needs proof or a certified-N procedure before
-  `opspace`/`th_main_ext`. (Out of scope for plain th_main.)
+- **Status:** RESOLVED (2026-05-31, bead **aic-2jd** / **aic-zwo**). The conjecture
+  `n≤dim A` is superseded by a THEOREM. Two independent research legs
+  (`docs/research/opspace_paper_leg.md`, `opspace_web_leg.md`) converged on **Smith's
+  lemma** (R.R. Smith, "Completely bounded maps between C*-algebras," *J. London Math.
+  Soc.* (2) **27** (1983) 157–166; textbook: Pisier, *Introduction to Operator Space
+  Theory* (2003) **Proposition 1.12**, p. 26; Watrous, *TQI* (2018) **Thm 3.46 + Cor
+  3.47** via adjoint duality): for ANY linear map `u: E → M_N` from an operator space
+  `E` into the matrix algebra `M_N` (no CP / C*-algebra hypothesis),
+  `‖u‖_cb = ‖1_{M_N}⊗u‖_op` — the cb-norm is ATTAINED at ampliation level `N` (the
+  codomain ambient dimension), and is not increased by any larger ampliation.
+- **Application to our `v: B → A`.** `A ⊆ M_N` (ambient `N = v.n`), so
+  `‖v‖_cb = ‖1_{M_N}⊗v‖_op` — finite truncation `N_max = N`. The inverse
+  `v⁻¹: A → B ⊆ M_{n_B}` (`n_B = Σ_l d_l`) has `‖v⁻¹‖_cb = ‖1_{M_{n_B}}⊗v⁻¹‖_op`,
+  truncation `N_max = n_B`. The cb-inclusion lower bound `a_n = inf ‖v_n(X)‖_op/‖X‖_op`
+  satisfies `a_n = 1/‖v_n⁻¹‖_op` (v bijective), so its all-`n` value `= 1/‖v⁻¹‖_cb`
+  is attained at `n = n_B`. **No "for all n" verification problem remains** — and this
+  is INDEPENDENT of the prop_inc_ext induction (`.tex:1486-1505`), which already proves
+  the uniform bound analytically; Smith gives the exact finite certification level.
+- **Caveat (carry into implementation).** The norms above are the OPERATOR norm
+  (§C12), NOT the Frobenius coordinate σ_min — the design-doc `σ_min(I_{n²}⊗M_1)`
+  route is vacuous. `‖v_N‖_op` is a genuine operator-norm worst-case (max-stretch of a
+  linear map), computed either by the Watrous cb-norm SDP (certified UPPER bound,
+  reusing `src/sdp.jl` + `aic_cbnorm_certify` via `‖v‖_cb = ‖v*‖_⋄`; the O2 increment)
+  or a HOPM operator-norm worst-case (LOWER bound; the O1 structural core). The
+  CERTIFIED cb-bound needs the SDP upper bound; HOPM is the cross-check lower bound
+  (HOPM ≤ SDP, the aic-0at agreement check). See `opspace_web_leg.md` §1–§2.
 
 ### D4. `th_factorization` is an outline (`tex:2742`, shard H)
 - **Status:** OPEN (bead **aic-1sk**). The labelled proof block ends without executing

@@ -60,6 +60,22 @@ The η=0 oracle is EXACT vs `idemp_decompose`; the `.tex:484` universality canar
 flat (η=0) and bounded across m≥3 (η>0); the η>0 MULTI-CLASS merge is exercised
 (`test_cstar_build` n=101). All 27 binaries green.
 
+> **CORRECTION (2026-05-31).** The "27 test binaries green / `make test` all-green"
+> and "the `.tex:484` universality canary is bounded across m≥3 (η>0)" claims above
+> were over-stated: on the committed HEAD, `test_cstar_build` T2b was actually **RED**
+> deterministically (`m=3 c-ratio 6.9035 > 2.5`). The culprit was the FLAWED two-point
+> WITHIN-FAMILY ratio `c_hi/c_lo` metric, which measures fixture-GEOMETRY SPREAD across
+> ambient `n`, NOT dimension-GROWTH (a hard n=7 Heisenberg-Weyl geometry outlier over a
+> favorable n=6 inflated the ratio, with no `.tex:484` content). **th_main remains SOUND:**
+> an extended, precision-stable sweep (prec 256 == 512) proved `c=iso_def/η` is BOUNDED
+> in `[0.25, 3.27]` and does NOT grow with `n` (both m=2 and m=3 families peak at the n=7
+> geometry then crash at n=8; all isos bijective, σ_min ∈ [0.96, 0.999]). T2b is now FIXED
+> to a robust bounded(abs-max c < 5) + no-upward-trend(halves-ratio ≤ 1.25) canary over an
+> expanded sweep (m=2 n=4..10, m=3 n=6..10), mutation-proven against a genuine c=O(n)
+> injection (`test_cstar_build` n=110, exit 0). See `paper/FINDINGS.md` §C11 / §D2
+> (2026-05-31 corrections). The remaining 26 binaries' green status was not re-verified
+> in this fix (only `test_cstar_build` was rebuilt/run, per the scoped task).
+
 **▶ NEXT FRONTIER (th_main complete + robust; the remaining paper results):**
 1. **`th_main_ext` (§10 `opspace`, `aic-zwo`)** — the tensor/cb-norm extension
    (`1_{M_n}⊗v` is a δ-iso for the SAME δ, all n, `tex:1447-1561`). THE next module.
