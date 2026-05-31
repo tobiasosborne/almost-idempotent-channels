@@ -89,6 +89,13 @@ file(GLOB AIC_SRCS CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/src/*.c)
 add_library(aic_objs OBJECT ${AIC_SRCS})
 set_target_properties(aic_objs PROPERTIES POSITION_INDEPENDENT_CODE ON)
 target_compile_options(aic_objs PRIVATE ${AIC_WARN_FLAGS})
+# Version single-sourcing (bead aic-95g.1, Inc4): inject project(AIC VERSION)
+# into the one source that reports it (src/aic.c -> aic_version()). CMake is the
+# single source of truth; src/aic.c only carries a loud "0.0.0-dev" #ifndef
+# fallback for a non-CMake build. PRIVATE: the macro is an implementation
+# detail, not part of any consumer's interface.
+target_compile_definitions(aic_objs PRIVATE
+    AIC_VERSION_STRING="aic ${PROJECT_VERSION}")
 # The sources need the dep include dirs (flint/, lapacke) AND the public+
 # generated include dirs to compile. PUBLIC here so they propagate to anything
 # that reuses aic_objs' interface, but aic_objs is NOT itself put in an export
@@ -200,4 +207,17 @@ option(AIC_BUILD_TESTS "Build the AIC test suite" ON)
 if(BUILD_TESTING AND AIC_BUILD_TESTS)
   enable_testing()
   add_subdirectory(tests)
+endif()
+
+# --- Benchmarks (OFF by default) --------------------------------------------
+# The performance-audition benches (bench/bench_*.c, CLAUDE.md Law 4) are OFF by
+# default so the normal `make`/`ctest` path stays bench-free on the laptop —
+# they only build when explicitly requested (`-DAIC_BUILD_BENCH=ON`, what the
+# `make bench` wrapper passes). Each bench is registered with CTest under the
+# `bench` LABEL, so `ctest -L bench` runs the audition; a bench that exits
+# non-zero fails (fail-loud, CLAUDE.md Rule 4 — a measurement that crashed is
+# not a result).
+option(AIC_BUILD_BENCH "Build the benchmarks" OFF)
+if(AIC_BUILD_BENCH)
+  add_subdirectory(bench)
 endif()

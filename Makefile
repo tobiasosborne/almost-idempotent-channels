@@ -1,108 +1,62 @@
-# Makefile — almost-idempotent-channels C cores (beads aic-aox, "T-build").
+# Makefile — thin convenience wrapper over the CMake build (bead aic-95g.1).
 #
-# Layer-0 scaffolding: compile the src cores, auto-discover and run every
-# tests/test_*.c, and reserve a bench target. Strict flags per CLAUDE.md
-# §"Build & test" (mirrors ../su2-fft); -Wshadow is kept deliberately.
+# CMake (CMakeLists.txt) is the CANONICAL build; this Makefile only forwards to
+# cmake/ctest so the documented `make` / `make test` muscle-memory still works.
+# It is NOT the build recipe any more — see CMakeLists.txt and BUILDING.md.
 #
-# Link policy (beads aic-5ty, updated aic-w4o.5): -lflint for the CERTIFIED
-# arb/acb path (FLINT 3.0.1 bundles arb/acb, so <flint/acb_mat.h> + -lflint is
-# the foundation) PLUS -llapacke -llapack -lblas for the FAST, UNCERTIFIED
-# double path (module latd: include/aic_latd.h, src/aic_latd*.c). LAPACKE is now
-# present and links/runs on this box (verified). The LAPACK libs are linked into
-# EVERY target — harmless for targets that do not call them — so the
-# auto-discovered tests/benches need no per-target link tweaks. -lm is added for
-# the C99 complex/real math (cabs/fabs/conj) the double-path tests use.
+# Old -> new command mapping:
+#   old `make` / `make all`     -> configure + build the libraries (libaic.so + .a)
+#   old `make test`             -> ctest, full suite, parallel, fail-loud TIMEOUT
+#   new `make test-fast`        -> ctest -L fast (sub-second laptop gate)
+#   old `make build/test_X`     -> `ctest --test-dir build -R test_X`
+#                                  or `cmake --build build --target test_X`
+#   old `make bench`            -> build+run benches (behind -DAIC_BUILD_BENCH=ON)
+#   old `make lib`              -> `make` (CMake always builds libaic.so AND .a)
+#   old `make fixtures`         -> unchanged (Julia + MOSEK golden-master generator)
+#   old `make clean`            -> remove the build dir
 #
-# Harness include paths (beads aic-73v): tests use tests/aic_test.h, benchmarks
-# use bench/aic_bench.h; both are header-only. -Itests/-Ibench are added per
-# target so a test cannot accidentally see the bench header and vice versa.
-# Benchmarks need clock_gettime: under -std=c11 that requires _POSIX_C_SOURCE,
-# added only on bench compiles.
+# Generator: the cmake DEFAULT (Unix Makefiles) — we deliberately do NOT force
+# Ninja. This box has shown a clock-skew "manifest dirty" Ninja failure; the
+# Make generator is robust against it (BUILDING.md "Gotchas").
 
-CC ?= cc
-CFLAGS = -Wall -Wextra -Wpedantic -Wshadow -Wstrict-prototypes -O2 -g -std=c11 -Iinclude
-LIBS = -lflint -llapacke -llapack -lblas -lm
+BUILD ?= build
+JOBS  ?= $(shell nproc 2>/dev/null || echo 2)
 
-BUILD := build
-SRC := $(wildcard src/*.c)
-TEST_SRC := $(wildcard tests/test_*.c)
-TEST_BIN := $(patsubst tests/%.c,$(BUILD)/%,$(TEST_SRC))
-# Shared NON-driver test helpers under tests/ (NOT test_*.c, so not their own
-# binaries): the adversarial-instance corpus aic_adversarial*.c (bead aic-dbo.2).
-# Compiled/linked into EVERY test binary alongside $(SRC) — harmless to tests that
-# do not call them (same policy as the LAPACK libs), and reusable by any test/bench
-# that wants an evil instance. Header-only helpers (aic_test.h) need no entry here.
-TEST_HELPER_SRC := $(wildcard tests/aic_*.c)
-BENCH_SRC := $(wildcard bench/bench_*.c)
-BENCH_BIN := $(patsubst bench/%.c,$(BUILD)/%,$(BENCH_SRC))
-# Generated/committed fixture includes (e.g. tests/fixtures_d24.inc.h, the
-# aic-d24 golden master from tools/gen_fixtures_d24.jl). Made a prerequisite of
-# every test binary so regenerating a fixture forces the dependent test to
-# rebuild — otherwise a stale binary would test against old golden values.
-TEST_INC := $(wildcard tests/*.inc.h)
+.PHONY: all configure test test-fast bench fixtures install clean
 
-.PHONY: all test bench clean fixtures lib
+configure:
+	cmake -S . -B $(BUILD)
 
-all: $(TEST_BIN)
+all: configure
+	cmake --build $(BUILD) -j $(JOBS)
 
-$(BUILD):
-	mkdir -p $(BUILD)
+# Full suite: every test, parallel, print the log of any failure. Each test has
+# a CTest TIMEOUT (fail-loud, no hangs).
+test: all
+	ctest --test-dir $(BUILD) --output-on-failure -j $(JOBS)
 
-# Each test binary links the test driver, all src cores, and FLINT. -Itests
-# exposes the header-only aic_test.h and the generated tests/*.inc.h fixtures
-# (which are prerequisites so a regenerated fixture rebuilds its test).
-$(BUILD)/%: tests/%.c $(SRC) $(TEST_HELPER_SRC) $(TEST_INC) | $(BUILD)
-	$(CC) $(CFLAGS) -Itests $< $(SRC) $(TEST_HELPER_SRC) $(LIBS) -o $@
+# Sub-second laptop gate: only the `fast`-labelled tests.
+test-fast: all
+	ctest --test-dir $(BUILD) -L fast --output-on-failure -j $(JOBS)
 
-# Each bench binary links the bench driver, all src cores, and FLINT. -Ibench
-# exposes aic_bench.h; _POSIX_C_SOURCE enables clock_gettime under -std=c11.
-$(BUILD)/%: bench/%.c $(SRC) | $(BUILD)
-	$(CC) $(CFLAGS) -Ibench -D_POSIX_C_SOURCE=200809L $< $(SRC) $(LIBS) -o $@
+# Benches are OFF in the default configure; reconfigure with the option ON,
+# build, then run the `bench`-labelled CTest entries.
+bench:
+	cmake -S . -B $(BUILD) -DAIC_BUILD_BENCH=ON
+	cmake --build $(BUILD) -j $(JOBS)
+	ctest --test-dir $(BUILD) -L bench --output-on-failure
 
-# Build then run every test; report per-test pass/fail and fail the target if
-# any binary exits non-zero (fail-loud, CLAUDE.md Rule 4).
-test: $(TEST_BIN)
-	@fail=0; \
-	for t in $(TEST_BIN); do \
-		echo "=== running $$t ==="; \
-		if ./$$t; then \
-			echo "PASS: $$t"; \
-		else \
-			echo "FAIL: $$t (exit $$?)"; \
-			fail=1; \
-		fi; \
-	done; \
-	if [ $$fail -ne 0 ]; then echo "make test: FAILED"; exit 1; fi; \
-	echo "make test: all tests passed"
+# Install to PREFIX (or the configure-time CMAKE_INSTALL_PREFIX if unset). NOTE:
+# for aic.pc / AICConfig to bake the right prefix, set it at CONFIGURE time:
+#   cmake -S . -B build -DCMAKE_INSTALL_PREFIX=<prefix>   (see BUILDING.md).
+install: all
+	cmake --install $(BUILD) $(if $(PREFIX),--prefix $(PREFIX),)
 
-# Build then run every bench/bench_*.c; each prints its own greppable BENCH
-# line(s) (beads aic-73v). A benchmark that exits non-zero fails the target
-# (fail-loud, CLAUDE.md Rule 4) — a measurement that crashed is not a result.
-bench: $(BENCH_BIN)
-	@if [ -z "$(BENCH_BIN)" ]; then echo "no benchmarks found"; exit 0; fi; \
-	fail=0; \
-	for b in $(BENCH_BIN); do \
-		echo "=== running $$b ==="; \
-		if ! ./$$b; then echo "FAIL: $$b (exit $$?)"; fail=1; fi; \
-	done; \
-	if [ $$fail -ne 0 ]; then echo "make bench: FAILED"; exit 1; fi; \
-	echo "make bench: all benchmarks ran"
-
-# Regenerate the committed golden-master fixtures (bead aic-d24) via the serial
-# Julia + MOSEK generator. OPTIONAL and NOT a prerequisite of `make test` (the
-# generated .inc.h is committed); run it by hand when the corpus changes. Needs
-# the julia/env environment instantiated and a MOSEK license.
+# Regenerate the committed golden-master fixtures (bead aic-d24). Unchanged from
+# the old Makefile: serial Julia + MOSEK generator, run by hand when the corpus
+# changes. Needs julia/env instantiated and a MOSEK license.
 fixtures:
 	julia --project=julia/env tools/gen_fixtures_d24.jl
-
-# Shared library for the Julia ccall surface (bead aic-m24, increment 2a). The
-# flat-double shim (src/aic_ucp_shim.c) is the ccall entry point; $(SRC) already
-# globs all src/*.c so it is auto-included. -fPIC is kept LOCAL to this recipe
-# (NOT added to the global CFLAGS) to minimize blast radius on the test/bench
-# builds. The Julia package (increment 2b) dlopen's build/libaic.so.
-lib: $(BUILD)/libaic.so
-$(BUILD)/libaic.so: $(SRC) | $(BUILD)
-	$(CC) $(CFLAGS) -fPIC -shared $(SRC) $(LIBS) -o $@
 
 clean:
 	rm -rf $(BUILD)

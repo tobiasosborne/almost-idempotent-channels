@@ -375,21 +375,33 @@ tests/                         # C cross-checks (double vs arb, bound certificat
 julia/AlmostIdempotentChannels.jl/   # Julia package, ccall wrappers, runtests.jl
 ```
 
-## Build & test (aspirational until code exists)
+## Build & test
+
+The C core builds with **CMake** (bead aic-95g.1); the hand-written `Makefile`
+is now a thin convenience wrapper that forwards to it. See `BUILDING.md` for the
+full recipe (dependencies, install, the `find_package(AIC)`/pkg-config consumer
+paths, and the Debian flint.pc / LAPACKE gotchas).
 
 ```bash
-# C cores
-make test            # all cross-checks; target ~seconds
-make build/test_X && build/test_X   # single binary
+# C cores (CMake is canonical; `make` forwards to it)
+cmake -S . -B build && cmake --build build   # or: make
+ctest --test-dir build -L fast               # sub-second laptop gate (or: make test-fast)
+ctest --test-dir build                        # full suite, parallel (or: make test)
+ctest --test-dir build -R test_X              # one test
+cmake --install build --prefix <prefix>       # set the prefix at CONFIGURE time too
 
 # Julia package
 julia --project=julia/AlmostIdempotentChannels.jl -e 'using Pkg; Pkg.test()'
 ```
 
-Dependencies (expected): C11 compiler, `libflint-dev` (FLINT ≥ 3.0, brings arb),
-LAPACK/BLAS. Compiler flags following the sibling: `-Wall -Wextra -Wpedantic
--Wshadow -Wstrict-prototypes -O2 -g -std=c11` (keep `-Wshadow`; it has caught
-real bugs in the sibling).
+A single-compile OBJECT library yields `libaic.so` + `libaic.a` from ONE compile
+of each `src/*.c`. Every test carries a CTest `TIMEOUT` (fail-loud, no hangs);
+the `fast`/`slow` labels split a sub-second iteration gate from the arb/MOSEK-
+heavy drivers (`-L fast` is the laptop default; full `ctest` is the gate).
+Dependencies: C11 compiler, CMake ≥ 3.24, `libflint-dev` (FLINT ≥ 3.0, brings
+arb), `liblapacke-dev`/LAPACK/BLAS. Strict per-target flags following the
+sibling: `-Wall -Wextra -Wpedantic -Wshadow -Wstrict-prototypes -O2 -g -std=c11`
+(keep `-Wshadow`; it has caught real bugs in the sibling). NO `-Werror`.
 
 ## Probe/sweep hygiene — don't hang the session (2026-05-31 incident)
 
@@ -397,10 +409,13 @@ A throwaway hostile-review probe hung an entire session and the in-flight
 review's state was lost on exit. The avoidable mistakes, recorded so no future
 agent repeats them:
 
-- **Scratch/probe `.c` files MUST NOT match `tests/test_*.c`.** The Makefile
-  auto-discovers that glob (`TEST_SRC := $(wildcard tests/test_*.c)`) into
-  `make all`/`make test` and the parallel run loop *executes* it — a hanging
-  probe hangs the whole gate. Put throwaway code outside `tests/` (a `/tmp`
+- **Scratch/probe `.c` files SHOULD NOT match `tests/test_*.c`.** Both the CMake
+  `tests/CMakeLists.txt` (`file(GLOB ... test_*.c)`) and the old Makefile glob
+  auto-discover that pattern into a registered test, so a stray
+  `tests/test_zprobe.c` still gets built and run by `ctest`/`make test`. Since
+  the CMake migration every test carries a `TIMEOUT 300`, so a non-converging
+  probe now fails LOUD after 5 min instead of hanging the gate forever (the
+  aic-xo0 mitigation) — but still put throwaway code outside `tests/` (a `/tmp`
   build, or a name that does not start with `test_` that you delete
   immediately), never as `tests/test_zprobe.c`.
 - **Stay inside the `η < 1/4` regime.** `Φ̃ = θ(2Φ−1)` needs `ρ(Φ²−Φ) < 1/4`
