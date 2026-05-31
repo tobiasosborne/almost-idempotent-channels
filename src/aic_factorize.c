@@ -39,9 +39,10 @@
 #include "aic_opspace.h"
 
 void aic_factorize_build(aic_factorize *out, const aic_dhom_v *v,
-                         const aic_assoc_ecstar *Aec, slong prec)
+                         const aic_assoc_ecstar *Aec, const aic_ucp_kraus *phi,
+                         slong prec)
 {
-    assert(out != NULL && v != NULL && Aec != NULL);
+    assert(out != NULL && v != NULL && Aec != NULL && phi != NULL);
     /* The iso's codomain IS Aec's A (same object), and v must be bijective so the
      * coordinate matrix M_1 is square + invertible (Rule 4, fail loud). */
     assert(v->A == &Aec->A &&
@@ -50,11 +51,17 @@ void aic_factorize_build(aic_factorize *out, const aic_dhom_v *v,
            "aic_factorize_build: v->n != Aec->A.n");
     assert(v->A->dim_A == v->B->dim_B &&
            "aic_factorize_build: v not bijective (dim_A != dim_B)");
+    /* The original Phi is a self-map B(H) -> B(H) acting on the SAME N (F2 Delta'
+     * Phi(Delta~(.)Delta~(.)) sends N x N -> N x N). */
+    assert(phi->dim_K == v->n && phi->dim_H == v->n &&
+           "aic_factorize_build: phi must be a self-map on C^N (dim_K==dim_H==N)");
 
     out->N = v->n;
     out->n_B = v->B->n_B;
     out->v = v;
     out->Aec = Aec;
+    out->phi = phi;
+    out->delta_ready = 0;
 
     slong dimA = 0, nB = 0;
     aic_opspace_build_vinv(&out->vinvB, &dimA, &nB, v, prec);
@@ -68,8 +75,11 @@ void aic_factorize_clear(aic_factorize *out)
     if (out == NULL) return;
     aic_opspace_vinv_clear(out->vinvB, out->dim_A);
     out->vinvB = NULL;
+    if (out->delta_ready) acb_mat_clear(out->deltaI_invsqrt);
+    out->delta_ready = 0;
     out->v = NULL;
     out->Aec = NULL;
+    out->phi = NULL;
     out->N = out->n_B = out->dim_A = 0;
 }
 
