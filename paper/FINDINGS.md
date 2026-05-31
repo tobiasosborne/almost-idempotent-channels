@@ -841,6 +841,38 @@ with the concrete evidence from where they bit.
   certification to aic-w4o.1 (Rump cluster enclosures / eig-free Cholesky). The
   *defects* that avoid full eig are already arb-certified.
 
+### D6. `factorize` F4.2 — the diamond-norm DUAL SDP stalls (SLOW_PROGRESS) at n≥6 in Convex.jl
+- **Status:** OPEN, DEFERRED to v0.2 (bead `aic-bag`). Surfaced 2026-05-31 building the
+  F4.2 dimension-independence canary; the headline (`th_factorization`, `aic-tff`) is
+  CLOSED on F4.1 (the constructive content; see below).
+- The F4.2 canary measures `C = ‖ΔΥ−Φ‖_cb / η` over a dim sweep via the SQUARE self-map
+  Watrous diamond-norm SDP on `J_DelUps`/`J_UpsDel` (`tools/gen_fixtures_factorize_f4.jl`,
+  `src/aic_factorize_shim.c`). The **PRIMAL** (`diamond_norm_watrous_primal`,
+  `maximize Re tr(J†X)`) converges **OPTIMAL** and its optimum **IS** the diamond/cb-norm
+  (Watrous) — e.g. `mixconj_blocks(6,2,0.03)`: primal `‖ΔΥ−Φ‖_cb = 0.012955` OPTIMAL,
+  reproduced across runs. The **DUAL** (`diamond_norm_dual`, `min` over
+  `opnorm(partialtrace(·))` epigraphs) **STALLS at SLOW_PROGRESS** for n≥6, returning a
+  loose `0.0237` it cannot drive down to the primal optimum — independent of MOSEK
+  tolerance: tight `1e-12`/`1e-14` → SLOW_PROGRESS + ~100s + ~20 GB at n=6 and **OOM at
+  47 GB for n=7**; relaxed `1e-9` (no iter cap) → still SLOW_PROGRESS `0.0237`. The
+  strong-duality poison guard CORRECTLY refuses to emit (no fake fixture).
+- **Root cause:** the QETLAB `opnorm(partialtrace(·))` dual epigraph is ill-conditioned
+  for Convex.jl's DCP→MOI translation at these dims; the `1e-14` MU_RED target is below
+  MOSEK's numerical floor (the stall). NOT a math error — the primal value is the
+  faithful cb-norm; only the redundant tight-upper *certificate* won't converge.
+- **Decision (user, 2026-05-31):** land the headline on **F4.1** (committed, green:
+  certified `Δ,Υ,B`; η=0-exact oracle; per-instance rigorous `O(η)` eig-free bound; the
+  four dual channels). Defer the **rigorous two-sided diamond-norm certification** + the
+  faithful canary to **v0.2** (`aic-bag`). The headline's constructive content is closed;
+  the canary is the universality-certification refinement (the project already certifies
+  dimension-independence at th_main `cstar_build` T2b and th_main_ext `opspace`).
+- **v0.2 routes (in `aic-bag`):** (a) reformulate the dual without the `opnorm` epigraph;
+  (b) move the self-map diamond SDP from Convex.jl to **direct JuMP + MOSEK** (lower memory,
+  controllable conic form) — recommended; (c) primal-only canary (primal optimum IS the
+  cb-norm) + eig-free T8 as the rigorous per-instance upper. Scaffolding committed:
+  `src/aic_factorize_shim.{c,h}` (green), `tools/gen_fixtures_factorize_f4.jl` (eager-flush,
+  `F4_ONLY` filter, relaxed-tol override, GC).
+
 ---
 
 ## How to use / extend this file
