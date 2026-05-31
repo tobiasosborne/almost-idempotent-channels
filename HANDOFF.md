@@ -1,6 +1,68 @@
 # HANDOFF.md — almost-idempotent-channels
 
-Orientation for a fresh agent. Last updated **2026-05-30**, after an orchestrated
+## ▶ LATEST CHECKPOINT (2026-05-31, session: canary fix + th_main_ext O1) — READ FIRST
+
+Orchestrated session. **Net: a RED headline canary on committed `master` was found
+and fixed, D3 was resolved, the endgame was assessed, PR #1 merged, and `opspace`
+O1 (th_main_ext) landed.** Current state: `master` clean and pushed (HEAD
+**`e9319cb`**), **28 test binaries green** (`make test: all tests passed`, ~5 min;
+the two `test_corner` T9(iv) + the `idemp_decompose` "FAIL" stderr lines are
+EXPECTED fail-loud teeth). New module `opspace`, +1 binary (`test_opspace`, 89 checks).
+
+**What this session did (commits `f9d2229`→`e9319cb`):**
+1. **Fixed a RED headline canary (`f9d2229`, bead `aic-gf2`).** Committed HEAD's
+   `test_cstar_build` T2b (the `.tex:484` dimension-independence canary) was
+   DETERMINISTICALLY FAILING (m=3 within-family c-ratio 6.90 > 2.5) — contradicting
+   the prior session's "th_main COMPLETE / 27 green / m=3 ratio 2.05" claim (an
+   over-claim: that committed state was never green). Deep investigation (prec
+   256≡512 byte-for-byte) proved **th_main is SOUND**: the constant c=iso/η is
+   BOUNDED [0.25, 3.27] over n=4..10 and does NOT grow with dim (both families peak
+   at the n=7 Heisenberg-Weyl geometry then crash at n=8 — fixture-geometry noise,
+   all isos healthy). The flawed within-family ratio metric (it measured geometry
+   SPREAD, not dim-GROWTH) was replaced with a robust **bounded abs-max + no-upward-
+   trend** canary, mutation-proven (FINDINGS §C11/§D2).
+2. **Resolved D3 (`f9d2229`, bead `aic-2jd` CLOSED).** Smith's lemma (Pisier Prop
+   1.12 / Watrous TQI Thm 3.46) makes the cb-truncation a THEOREM: `‖v‖_cb=‖1_{M_N}⊗v‖_op`,
+   N_max=N forward / n_B inverse. Two research legs in `docs/research/opspace_{paper,web}_leg.md`.
+3. **Merged PR #1 (`b646211`).** A SessionStart hook auto-provisioning FLINT+LAPACK
+   on ephemeral web containers (`$CLAUDE_CODE_REMOTE`-guarded, no-op locally).
+4. **Assessed `factorize`/D4 (`0db6194`, `docs/research/factorize_d4_research.md`).**
+   th_factorization is **BUILDABLE-MODULO, NOT a hard wall** (FINDINGS §D4): Steps 4-5
+   are prose but every object is explicit finite-dim (the 1-design CP-ization reuses
+   `aic_dhom_pauli`; `lem_RC` is a constructive partial-trace+SVD). Only open item =
+   the composite O(η) CONSTANT (certification gap, handled per-instance + canary like c₀).
+5. **Built `opspace` O1 (`e9319cb`, bead `aic-zwo` in_progress).** The FAITHFUL
+   operator-norm cb-inclusion `a_n = inf ‖(1_{M_n}⊗v)(X)‖_op/‖X‖_op` (NOT the vacuous
+   Frobenius σ_min, §C12) via an operator-norm HOPM over the existing `v` from
+   `aic_cstar_build` (v reused unchanged — opspace is CERTIFICATION). η=0 oracle
+   (complete isometry, a_n=1 exact), prop_inc_ext doubling, operator-norm universality
+   canary, a STRUCTURAL ampliation tooth (catches the (0,0)-block-only MUTATION-D the
+   hostile review found passing all prior checks — orchestrator independently
+   re-verified RED). Research→implement→hostile-review→fix→commit (the review caught a
+   §C12-class "test that cannot fail"; closed). O1 is a HOPM **lower** bound.
+
+**▶ NEXT AGENT PICKS UP HERE — O2 (bead `aic-pjr`), the certified cb UPPER bound.**
+O1 gives only the operator-norm HOPM *lower* bound on `‖v_n‖`; the certified
+`‖v‖_cb ≤ 1+O(η)` (and `‖v⁻¹‖_cb`) needs the Watrous cb-norm SDP. **Design is written:
+`docs/research/opspace_o2_design.md`** (READ IT). Key points: `‖v‖_cb=‖v*‖_⋄`, feed
+`J(v*)=J(v)^T` (Choi Convention A) into the EXISTING `src/sdp.jl` + `aic_cbnorm_certify`
+pipeline GENERALIZED to a RECTANGULAR `(d_in,d_out)` map; **Smith is MOOT for O2** (the
+SDP captures all ampliations intrinsically — one Choi, one solve, no level sweep);
+**THE RISK = the partial-trace DIRECTION** (the exact bug that bit the original cbnorm
+work — for `J(v*)` the input dim sits MAJOR/left, likely needs `partial_trace_left`;
+pin with an asymmetric η>0 fixture + the η=0 oracle `‖v‖_cb=1`). Needs Julia+MOSEK
+(SERIAL — no parallel Julia) + the committed-fixture pattern (so `make test` stays
+Julia-free). The HOPM(O1) ≤ SDP(O2) bracket is the key cross-check (the `aic-0at` rung).
+The §12/factorize INTERFACE adds are ALREADY in O1: public `aic_opspace_build_vinv`
+(v⁻¹ builder) + `n_B` on `aic_opspace_result`. After O2, `factorize` (`aic-tff`,
+buildable-modulo) is the final headline.
+
+**New docs this session:** `docs/research/{opspace_paper_leg,opspace_web_leg,opspace_o2_design,factorize_d4_research}.md`.
+
+---
+
+Orientation for a fresh agent. Last updated **2026-05-30** (below; see the checkpoint
+above for the 2026-05-31 session), after an orchestrated
 session that built **almost the entire `th_main` pipeline** — the constructive
 proof of the main theorem (`tex:460`: any finite-dim ε-C* algebra is
 `O(ε)`-isomorphic to a genuine C* algebra, with a *dimension-independent*
