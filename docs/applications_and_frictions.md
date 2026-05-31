@@ -93,12 +93,17 @@ self-dual class, #5 MPS) is therefore not turnkey — one must reach around the
 project to LAPACKE directly.
 
 ### F5 — Experiment build ergonomics (MEDIUM)
-There is no static/shared library exposing the *full* internal API. `make lib`
-builds `libaic.so` with only the Julia-ccall **shim** subset — it does not export
-`aic_ucp_compose` / `aic_cbnorm_eigfree_ball` / etc. So an experiment must
-recompile all ~70 `src/*.c` every iteration (~30-40 s). A prebuilt object
-archive (`libaic_full.a`) or a documented one-line link recipe would cut the
-edit-run loop to seconds.
+`make lib` builds `libaic.so` from **all** of `src/*.c` (`SRC := $(wildcard
+src/*.c)`; Makefile:27,104-105), so it **does** export the full internal API —
+every non-static symbol, including `aic_ucp_compose` and
+`aic_cbnorm_eigfree_ball`, is in the `.so`. The real friction is that an
+experiment built like the test targets (Makefile:55 compiles `$< $(SRC)` from
+scratch) recompiles all ~70 `src/*.c` every iteration (~30-40 s) instead of
+linking the prebuilt `.so`. What is missing is (a) a documented one-line recipe
+to link an experiment against `build/libaic.so`, and (b) an umbrella header
+aggregating the ~20 public `include/aic_*.h` (today each must be `#include`d
+individually). Both would cut the edit-run loop to seconds — no new library
+needed.
 
 ### F6 — arb<->double bridge has no helper (LOW)
 To feed an `acb_mat` superoperator into the double-path Hermitian eig I hand-rolled
@@ -128,7 +133,7 @@ Worth stating up front so applications are scoped accordingly.
 | **W2** | `aic_cbnorm_distance(lo, hi, phi, psi, prec)` — general certified cb/diamond bracket | F2 | S | C rung is glue over the already-exposed `aic_ucp_choi_diff` + `aic_cbnorm_eigfree_ball_choi`. Directly unlocks application #10. |
 | **W3** | Physical-channel constructors: `dephasing`, `depolarizing`, `pauli`, unital `mix_unitaries`, `group_twirl(rep)`, `cond_expectation(subalgebra)` | F7 | M | Mirror `make_*` test-fixture style but exported. Feeds #1,#3,#6,#7,#8. |
 | **W4** | `aic_latd_eig_general` (LAPACKE `zgeev`): full complex spectrum + spectral-gap helper for a superoperator/transfer op | F4 | S | Double path only (non-normal -> arb cert is `aic-w4o.1`-class). Feeds #2 (general channels), #5 (MPS). |
-| **W5** | `libaic_full.a` (or `.so`) exporting the internal API + a documented one-line experiment link recipe | F5 | S | Pure build plumbing; cuts the experiment loop from ~40 s to ~1 s. |
+| **W5** | Documented one-line recipe to link experiments against the existing `build/libaic.so` (already exports the full API) + an umbrella `aic_all.h` header | F5 | S | NOT a new library — `make lib` already links all `src/*.c`. Pure docs/header plumbing; cuts the experiment loop from ~40 s to ~1 s. |
 | **W6** | `acb_mat`<->`double _Complex*` (midpoint) bridge converters | F6 | S | Removes the manual per-entry extraction at the arb/double seam. |
 | **W7** | MOSEK-free certified *tight* cb bracket (pure-arb SDP feasibility), or a documented fallback | F3 | L (research) | Adjacent to beads `aic-m24`/`aic-0at`. Lower priority — rates work without it; only *absolute* values need it. |
 | **W8** | Committed `examples/` (not gitignored) with the cb-mixing study as a worked, regression-guarded example | F5/F7 | S | Turns throwaway scratch into a runnable reference + a smoke test of the public API. |
