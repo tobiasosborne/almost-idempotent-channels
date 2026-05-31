@@ -457,6 +457,31 @@ with the concrete evidence from where they bit.
   this fixture (nearly block-diagonal → PLAIN-product c ≈ 0.28, does NOT fire the >20
   magnitude tooth; that discriminant stays on the single-block mixconj fixtures, T3).
 
+### C12. `th_main_ext` (§10 opspace) cb-defect MUST be the OPERATOR-norm inclusion inf — the Frobenius coordinate σ_min ampliation is a "test that cannot fail"
+- **Status:** CONFIRMED (opspace design review, bead aic-zwo; pre-implementation —
+  flagged so the next session does NOT build a vacuous module). Cross-ref §C6, D3.
+- **The trap.** th_main_ext's content is that the OPERATOR-norm cb-inclusion
+  `a_n = inf ‖(1_{M_n}⊗v)(X)‖_op/‖X‖_op` stays `≥ 1−δ'` uniformly in n (the non-trivial
+  prop_inc_ext induction `a_{2n}≥a_n/2`, `.tex:1493-1503`). The opspace design draft
+  (`docs/research/opspace_design.md` §3.2) proposed to COMPUTE `a_n` as `σ_min` of the
+  COORDINATE matrix `I_{n²}⊗M_1` (the Frobenius inclusion inf, the same quantity
+  `aic_dhom_v_sigma_min` uses, §C6). But `σ_min(I_{n²}⊗M_1)=σ_min(M_1)` TRIVIALLY for
+  ANY linear v (the singular values of `I_{n²}⊗M_1` are those of `M_1` repeated n²×),
+  INDEPENDENT of v's quality. So "the cb-check reduces to the n=1 check" is vacuous: it
+  is dimension-independent by pure linear algebra and tests NOTHING about the
+  operator-norm ampliation. A Frobenius-σ_min "universality canary" for th_main_ext
+  cannot fail (CLAUDE.md Rule 5).
+- **The route.** Measure the OPERATOR-norm `a_n` (the genuine cb-inclusion): either the
+  operator-norm worst-case (HOPM) over the ampliated unit ball `M_n⊗B` (the faithful
+  worst-case deferred to **aic-0at** — th_main_ext is the first place it is LOAD-BEARING,
+  since the Frobenius version is vacuous here), OR directly verify the prop_inc_ext
+  doubling step `a_{2n}≥a_n/2` + uniformity in the operator norm for n=1..N. The η=0
+  oracle (a_n=1 exact) + the universality canary (a_n dimension-independent in dim A AND
+  the level n) must be on the OPERATOR-norm `a_n`. Recorded as the binding ORCHESTRATOR
+  CORRECTION at the end of `opspace_design.md`. D3 stays BUILDABLE (the induction is
+  rigorous, no hard stop) but the implementation is NON-trivial (operator-norm, depends
+  on aic-0at or the induction-step verification — NOT the trivial `sigma_min` reuse).
+
 ---
 
 ## D. Open questions / escalations (unresolved)
