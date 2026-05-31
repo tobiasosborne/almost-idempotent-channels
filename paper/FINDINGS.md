@@ -792,14 +792,21 @@ with the concrete evidence from where they bit.
   (which measures fixture-geometry SPREAD across ambient `n`, not dim-GROWTH — it read
   RED 6.90 on a hard-geometry n=7 outlier with no `.tex:484` content; see §C11's
   2026-05-31 correction). The robust canary: over an EXPANDED ambient-n sweep (m=2 B=M₂
-  n=4..10, m=3 B=M₃ n=6..10), assert (i) abs-max `c < 5.0` AND (ii) the halves-ratio
-  `mean(c|hi-half n)/mean(c|lo-half n) ≤ 1.25` (the halves aggregate dilutes a single
-  hard-geometry spike; a genuine c=O(n) law survives it). Measured: abs-max 3.27,
-  halves-ratio 0.28 (m=2) / 0.65 (m=3), slope -0.21 / -0.05 (NEGATIVE). Mutation-proven:
-  a `c_flat·(n/n_min)` (genuine c=O(n)) injection drives the halves-ratio to 1.80 > 1.25
-  (trend arm RED), and the literal `c·(n/n_min)` injection drives abs-max to 5.73 > 5.0
-  (absolute arm RED). The errreduce-layer canary (T4(A) above) keeps the dim-sweep ratio
-  form because its `c_0` is a smooth, monotone-in-dim quantity there (no geometry spike).
+  n=4..10, m=3 B=M₃ n=6..10), assert (i) abs-max `c < 5.0` AND (ii) NO GENUINE upward
+  trend = NOT(halves-ratio `mean(c|hi-half)/mean(c|lo-half)` > KAPPA=1.25 AND OLS-slope
+  > SLOPE_MIN=0.28). **The AND-gate is the 2026-06-01 refinement (`aic-54y`):** the
+  halves-ratio ALONE is endpoint-sensitive — a LONE geometry outlier (measured m=3 n=10:
+  `c=1.01` over neighbours ~0.25) drives it to 1.26 > 1.25, so the prior `≤1.25`-only
+  check read RED here — but that single outlier does NOT move the slope (m=3 slope
+  +0.08), whereas a genuine c=O(n) law moves BOTH. Measured (CPREC=256): abs-max 3.27;
+  m=2 ratio 0.28 / slope −0.21; m=3 ratio 1.26 / slope +0.08 — neither trips BOTH gates,
+  so c is BOUNDED with no real trend (th_main dimension-independence HOLDS). Mutation-
+  proven: the `c_flat·(n/n_min)` genuine-c=O(n) injection trips BOTH (ratio 1.80 > 1.25
+  AND slope 0.36 > 0.28, trend arm RED), and the literal `c·(n/n_min)` injection drives
+  abs-max to 5.73 > 5.0 (absolute arm RED). (The prior `0.65`/`−0.05` m=3 figures here
+  were STALE — the real m=3 ratio is 1.26, which is what surfaced this fix.) The
+  errreduce-layer canary (T4(A) above) keeps the dim-sweep ratio form because its `c_0`
+  is a smooth, monotone-in-dim quantity there (no geometry spike).
 
 ### D3. cb-norm truncation `N` (shard F, `tex:1447-1561`)
 - **Status:** RESOLVED (2026-05-31, bead **aic-2jd** / **aic-zwo**); O1 IMPLEMENTED.

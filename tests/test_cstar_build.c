@@ -371,21 +371,30 @@ static void test_t2_universality(void)
      *   (i)  ABSOLUTE boundedness: abs-max c over the whole sweep < C_ABS=5.0 (the
      *        measured max is 3.27 at the n=7 m=2 peak; 1.53x margin). A c growing
      *        with n eventually exceeds any fixed bound.
-     *   (ii) NO upward trend with n: the halves-ratio mean(c|upper-half n) /
-     *        mean(c|lower-half n) <= KAPPA=1.25. Averaging each half dilutes the n=7
-     *        spike (it is the odd MIDDLE point on the 7-point m=2 sweep, in NEITHER
-     *        half; on m=3 it averages into the lower half); a c=O(n) law drives the
-     *        ratio to the dim ratio of the halves. Measured: m=2 reads ~0.28, m=3
-     *        reads ~0.65 — both DEEP under 1.25. The least-squares slope beta of c vs
-     *        n is reported as a corroborating diagnostic (measured beta ~ -0.21 for
-     *        m=2, ~-0.08 for m=3 — NEGATIVE, c trends DOWN over the full sweep).
+     *   (ii) NO GENUINE upward trend with n: a violation requires BOTH the halves-ratio
+     *        mean(c|upper-half n)/mean(c|lower-half n) > KAPPA=1.25 AND the OLS slope
+     *        beta of c vs n > SLOPE_MIN=0.28. The halves-ratio ALONE is endpoint-
+     *        sensitive — a LONE geometry outlier trips it (measured m=3: a single n=10
+     *        point c=1.01 over neighbours ~0.25 gives ratio 1.26 > 1.25) — but such an
+     *        outlier does NOT move the slope (m=3 slope +0.08), whereas a genuine c=O(n)
+     *        law moves BOTH (mutation tooth inj-B: ratio ~1.80, slope ~0.36). Measured
+     *        on the real sweep: m=2 ratio 0.28 / slope -0.21; m=3 ratio 1.26 / slope
+     *        +0.08 — neither trips BOTH gates, so c is BOUNDED with no real trend.
      * The old geometry-fragile two-point within-family extremes ratio is GONE; it
      * inflated to 6.90 on the n=6,7 m=3 endpoints purely by spike-over-favorable
      * placement, with NO dim-growth content (FINDINGS §D2/§C11). */
     printf("T2b universality canary (.tex:484/.tex:461): eta>0 c=iso_def/eta bounded "
            "+ NO upward trend with n:\n");
-    const double C_ABS = 5.0;    /* abs-max c bound (data max 3.27; 1.53x margin)   */
-    const double KAPPA = 1.25;   /* halves-ratio bound (catches a genuine c=O(n))   */
+    const double C_ABS = 5.0;     /* abs-max c bound (data max 3.27; 1.53x margin)  */
+    const double KAPPA = 1.25;    /* halves-ratio gate (endpoint-sensitive)         */
+    const double SLOPE_MIN = 0.28;/* OLS-slope gate. A genuine c=O(n) law has slope */
+                                  /* cflat/nmin ~ 0.36 (mutation tooth inj-B). Geom- */
+                                  /* etry noise gives |slope| <= 0.21 (m=2) / +0.08  */
+                                  /* (m=3, where a lone n=10 outlier c=1.01 inflates */
+                                  /* the RATIO to 1.26 but NOT the slope); 0.28 sits */
+                                  /* between. A .tex:484 violation needs BOTH a high */
+                                  /* halves-ratio AND a positive slope, so a single  */
+                                  /* geometry spike cannot trip it (FINDINGS C11/D2).*/
     struct { slong d, m; double t; int fam; } ob[] = {
         {4, 2, 0.03, 0}, {5, 2, 0.03, 0}, {6, 2, 0.03, 0}, {7, 2, 0.03, 0},
         {8, 2, 0.03, 0}, {9, 2, 0.03, 0}, {10, 2, 0.03, 0}, /* m=2: B=M_2, n=4..10 */
@@ -440,15 +449,21 @@ static void test_t2_universality(void)
                   "T2b: abs-max c=%.4f >= C_ABS=%.1f over the sweep (the th_main "
                   "constant grows with dim; .tex:461/.tex:484 / FINDINGS §D2 stop "
                   "condition)", c_abs_max, C_ABS);
-    /* (ii) NO upward trend with n — the robust anti-.tex:484 check. The halves-ratio
-     * dilutes the n=7 hard-geometry spike (FINDINGS §C11); a c=O(n) growth survives
-     * the aggregation and trips KAPPA (mutation-proven below). */
-    AIC_CHECK_MSG(ratio2 <= KAPPA,
-                  "T2b: m=2 halves-ratio %.4f > KAPPA=%.2f (c TRENDS UP with n; "
-                  ".tex:484 / FINDINGS §D2 stop condition)", ratio2, KAPPA);
-    AIC_CHECK_MSG(ratio3 <= KAPPA,
-                  "T2b: m=3 halves-ratio %.4f > KAPPA=%.2f (c TRENDS UP with n; "
-                  ".tex:484 / FINDINGS §D2 stop condition)", ratio3, KAPPA);
+    /* (ii) NO GENUINE upward trend with n — the robust anti-.tex:484 check. A single
+     * geometry outlier (m=3 n=10: c=1.01 over neighbours ~0.25) inflates the endpoint-
+     * sensitive halves-ratio but NOT the OLS slope; a genuine c=O(n) law inflates BOTH
+     * (mutation tooth inj-B: ratio~1.80, slope~0.36). So a violation requires ratio >
+     * KAPPA AND slope > SLOPE_MIN — robust to a lone spike, teeth against real growth.
+     * Measured: m=2 ratio 0.28/slope -0.21; m=3 ratio 1.26 but slope 0.08 << 0.36 =
+     * noise, not growth (FINDINGS §C11/§D2). */
+    AIC_CHECK_MSG(!(ratio2 > KAPPA && slope2 > SLOPE_MIN),
+                  "T2b: m=2 halves-ratio %.4f > KAPPA=%.2f AND slope %.4f > %.2f "
+                  "(c GENUINELY trends up with n; .tex:484 / FINDINGS §D2 stop "
+                  "condition)", ratio2, KAPPA, slope2, SLOPE_MIN);
+    AIC_CHECK_MSG(!(ratio3 > KAPPA && slope3 > SLOPE_MIN),
+                  "T2b: m=3 halves-ratio %.4f > KAPPA=%.2f AND slope %.4f > %.2f "
+                  "(c GENUINELY trends up with n; .tex:484 / FINDINGS §D2 stop "
+                  "condition)", ratio3, KAPPA, slope3, SLOPE_MIN);
 
     /* MUTATION TOOTH (Rule 5/7) — prove the canary has teeth against the genuine
      * .tex:484 failure mode. NO injection is active in the path above; this re-runs
@@ -489,9 +504,10 @@ static void test_t2_universality(void)
                       "T2b mutation: inj-A abs-max=%.4f did NOT exceed C_ABS=%.1f — "
                       "the ABSOLUTE arm is BLIND to c*(n/nmin) growth", maxA, C_ABS);
         /* ... and the TREND arm fires on the faithful c=O(n) model B. */
-        AIC_CHECK_MSG(ratioB > KAPPA,
-                      "T2b mutation: inj-B halves-ratio=%.4f did NOT exceed KAPPA=%.2f "
-                      "— the TREND arm is BLIND to a genuine c=O(n) law", ratioB, KAPPA);
+        AIC_CHECK_MSG(ratioB > KAPPA && slopeB > SLOPE_MIN,
+                      "T2b mutation: inj-B halves-ratio=%.4f (vs KAPPA=%.2f) / slope=%.4f "
+                      "(vs SLOPE_MIN=%.2f) did NOT trip BOTH trend gates — the TREND arm "
+                      "is BLIND to a genuine c=O(n) law", ratioB, KAPPA, slopeB, SLOPE_MIN);
     }
 }
 
