@@ -1917,3 +1917,82 @@ canary to `n≤5` and leaves the η>0 multi-class merge + the `errreduce_unit`
 running-unit branch η=0-only — bead **aic-1vp** (diagnose basin-coverage vs the §D1
 gap-degeneracy stop condition). FINDINGS §C11. `th_main_ext` (§10) and `factorize`
 (`th_factorization`, the D4 outline stop condition) come after.
+
+## Module opspace — `th_main_ext` (§10, `.tex:1447-1561`, bead aic-zwo/aic-pjr)
+
+`th_main_ext` (`.tex:1538-1540`) upgrades the §9 iso `v: B → A` to a **cb**-isomorphism:
+every ampliation `1_{M_n} ⊗ v` is a `δ`-iso with the SAME `δ=O(ε)`, all `n`. `v` is
+REUSED UNCHANGED from `aic_cstar_build` — §10 is a post-hoc CERTIFICATION over it. The
+**Smith truncation** (FINDINGS §D3, R.R. Smith 1983 / Pisier Prop 1.12 / Watrous TQI
+Thm 3.46) makes "for all `n`" a THEOREM: `‖u‖_cb = ‖1_{M_N}⊗u‖_op` for any `u: E→M_N`,
+so the cb-norm is ATTAINED at one finite level — forward `N=v->n`, inverse `n_B=Σ_l d_l`.
+
+**§C12 — operator norm, NOT Frobenius σ_min.** The cb-inclusion `a_n = inf ‖(1⊗v)(X)‖_op
+/‖X‖_op` is the OPERATOR norm. The Frobenius coordinate σ_min route is VACUOUS:
+`σ_min(I_{n²}⊗M_1)=σ_min(M_1)` for ANY linear `v`, dimension-independent by pure linear
+algebra — a "test that cannot fail" this module exists to avoid (FINDINGS §C12).
+
+### O1 (aic-zwo) — operator-norm ampliation HOPM (LOWER bound)
+`aic_opspace_certify` runs a scale-invariant HOPM over the op-norm unit ball of `M_n⊗B`
+(forward `‖v_n‖_op`) / `M_n⊗A` (inverse, polar-then-PROJECT accept guard, the ecstar
+pattern), giving a rigorous LOWER bound on the op-norm max-stretch. Delivers the η=0
+complete-isometry oracle (`a_n=1` exact), the `prop_inc_ext` doubling `a_{2n}≥a_n/2`
+(`.tex:1493-1503`), and the op-norm universality canary. HOPM is a LOWER bound — it
+CANNOT certify `‖v‖_cb ≤ 1+O(ε)` (needs an UPPER bound → O2). Files
+`src/aic_opspace_{ampliate,apply,map,entry,cert}.c`, `tests/test_opspace.c` (89 checks).
+
+### O2 (aic-pjr) — certified Watrous-SDP cb-norm UPPER bound
+`‖v‖_cb = ‖v*‖_⋄` (cb-spectral = diamond norm of the adjoint, Watrous 2009). Feed the
+adjoint's Choi into the diamond-norm SDP (the `src/sdp.jl` Watrous program), restore the
+MOSEK dual feasible point to exact feasibility in arb, read the rigorous upper ball.
+
+**THE PINNED CONVENTION (GOLDEN RULE, design §0.5; pinned EMPIRICALLY, NOT derived —
+`tools/probe_o2_pin2.jl` against the independent CP-oracle truth `‖Ψ‖_⋄=σ_max(A)²` + a
+complete-isometry oracle).** To compute `‖f‖_⋄` for `f: M_in→M_out`: build
+`J = choi_convA(f, in, out)` (INPUT-major, `J[s·out+i,t·out+j]=f(E_st)[i,j]`), feed the
+SDP with `(d_maj=in, d_min=out)`. Then **raw optval = `‖f‖_⋄` EXACTLY — normalization
+FACTOR 1** (this CORRECTED the design hypothesis `2/N` AND the research-leg `2/n_B`; only
+the empirical pin was trustworthy). Dual traces the **MINOR/OUTPUT** factor (`tr_sys=2`
+→ `partial_trace_right(.,d_maj,d_min)`); primal density on `:major` (= input). Build the
+adjoint's Choi DIRECTLY (`v*(E_ab)=Σ_i conj(vE[i][a,b])E_i`), NOT `transpose(J(v))` (the
+transpose keeps the wrong block layout). `‖v‖_cb`: `J(v*)` dims `(N,n_B)`; `‖v⁻¹‖_cb`:
+`J((v⁻¹)*)` dims `(n_B,N)`.
+
+**The certifier** `aic_cbnorm_certify_rect_upper` (`src/aic_cbnorm_certify_rect.c`)
+generalizes the self-map dual restorer to rectangular `(d_maj,d_min)`:
+`eps=max(0,-λmin([[Y0,-J],[-J†,Y1]]))`, then `hi=½(λmax(Tr_min Y0)+λmax(Tr_min Y1))+
+eps·d_min` (factor 1; rigorous since `block_D+εI⪰0 ⟹ Y_i+εI⪰0` and `Tr_min(εI)=ε·d_min·I`).
+The arb-assembled `J(v*)` carries an accumulated radius (~1e-71) that trips `herm_max_eig`'s
+Hermiticity assert (the §C5/aic-2yo class); fixed by collapsing the block to its midpoint
++ symmetrizing before the defect eig (rigorous for the double-defined `v`; FINDINGS §C12.O2).
+NO η=0 short-circuit (the trivial value is 1, not 0). The pipeline `aic_opspace_certify_cb_upper`
+(`src/aic_opspace_o2.c`) assembles `J(v*)`/`J((v⁻¹)*)` and asserts the **HOPM(O1) ≤ SDP(O2)
+bracket** (aic-0at).
+
+**Cross-checks (`test_opspace_o2`, 20 checks; fixtures `tests/fixtures_opspace_o2.inc.h`,
+MOSEK-solved + committed, `make test` Julia-free).** η=0 oracles (block_cond_exp 4×4,
+noiseless_subsystem 6×3 RECTANGULAR) → `‖v‖_cb=‖v⁻¹‖_cb=[1,1]` EXACT (complete isometry).
+mixconj(6,2,0.03): `‖v‖_cb=1.0019683734` (HOPM 1.001431 ≤ this), `‖v⁻¹‖_cb=1.5353598357`
+(HOPM 1.018942 ≤ this) — both bracket. **§C12 non-vacuity (sharp):** the cb `‖v⁻¹‖_cb=1.535`
+vs the vacuous Frobenius `1/σ_min(M_1)=1.027` (gap 0.51) — O2 measures the genuine
+operator/cb norm; the obliqueness of `A=ImgΦ̃` is what inflates it. **Direction tooth:** the
+wrong (MAJOR-trace) direction gives hi=2.0 on the η=0 rectangular oracle (teeth 1.0) and
+4.97 on mixconj fwd (teeth 3.97) — `tr_sys=2` genuinely pinned (the HANDOFF:340 bug class).
+**Midpoint-fix tooth (T5):** a radius-inflated `J` (1e-50) certifies cleanly (removing the
+midpoint collapse → SIGABRT, mutation-proven). Restoration `eps`: 0 / ≤9.9e-13 / ≤8.9e-11 —
+no precision wall.
+
+### Files
+`include/aic_opspace.h` (O1+O2 contract, `cb_upper`/`cbinv_upper`), `src/aic_opspace_choi.c`
+(adjoint Choi assemblers), `src/aic_cbnorm_certify_rect.c` (rect UPPER), `src/aic_opspace_o2.c`
+(pipeline + bracket), `src/aic_opspace_shim.c` (fixture ccall), `julia/.../src/sdp.jl`
+(`diamond_*_rect`), `tools/gen_fixtures_opspace_o2.jl`, `tools/probe_o2_{pin2,diag2}.jl`
+(the convention-pin evidence), `tests/test_opspace_{choi,o2}.c`. Design:
+`docs/research/opspace_o2_design.md` §0.5.
+
+### Open frontier (post-th_main_ext)
+The certified `‖v‖_cb ≤ 1+O(ε)` UNIVERSALITY (the constant is dimension-independent) is
+checked per-instance + the canary, not yet swept over dim at O2 (O1's `a_cb_flat` is the
+lower-bound analogue). `factorize` (`th_factorization`, bead aic-tff) is the final headline,
+now unblocked: O2 provides the certified `‖Δ̃‖_cb,‖Υ̃‖_cb ≤ 1+O(η)` upper bounds it needs
+(D4 BUILDABLE-MODULO, the composite `O(η)` constant per-instance + canary, FINDINGS §D4).

@@ -72,6 +72,54 @@ and the partial-trace direction under it.
 
 ---
 
+## 0.5 PINNED CONVENTION (2026-05-31 — SUPERSEDES the §2.4/§2.5 hypotheses below)
+
+The normalization factor and the partial-trace direction were PINNED EMPIRICALLY
+(as §2.4/§2.5/§6.5 insisted) by `tools/probe_o2_pin2.jl` (+ `probe_o2_diag2.jl`),
+against an INDEPENDENT closed-form truth (an asymmetric CP map `Psi(Y)=A^dag Y A:
+M_3->M_2`, `||Psi||_⋄ = sigma_max(A)^2`) and a complete-isometry oracle
+(`||v||_cb = ||v^{-1}||_cb = 1` exactly). The RESULT corrects BOTH the design
+hypothesis (`2/N`) and the research leg (`2/n_B`):
+
+> **GOLDEN RULE.** To compute `||f||_⋄` for `f: M_in -> M_out`, build the
+> Convention-A Choi `J = choi_convA(f, in, out)` with `J[s*out+i, t*out+j] =
+> f(E_st)[i,j]` (INPUT s,t MAJOR/stride-out; OUTPUT i,j MINOR), and feed
+> `diamond_*_rect(J, d_maj=in, d_min=out, ...)`. Then **raw optval = `||f||_⋄`
+> EXACTLY — normalization factor = 1, NO `2/n`.**
+>
+> - **`||v||_cb = ||v*||_⋄`:** build `choi_convA(v*, in=N, out=n_B)` DIRECTLY
+>   (NOT `transpose(J(v))` — the full transpose keeps the `[n_B,N]` block layout,
+>   so it is `v*` in the OUTPUT-major convention and would need dims `(n_B,N)`;
+>   building `v*`'s Choi directly in INPUT-major form is the clean object). Feed
+>   `diamond_*_rect(J(v*), N, n_B)`. `v*(E_ab^{(N)}) = sum_i conj(vE[i][a,b]) E_i`
+>   (HS-adjoint; `E_i` the `n_B`-rep matrix unit). Oracle: `= 1.0` exact.
+> - **`||v^{-1}||_cb = ||(v^{-1})*||_⋄:`** build `choi_convA((v^{-1})*, in=n_B,
+>   out=N)`, dims `(n_B, N)`. `(v^{-1})*(E_ab^{(n_B)}) = sum_k conj(vinvB[k][a,b])
+>   B_k` (`vinvB[k]=v^{-1}(B_k)` from `aic_opspace_build_vinv`; `{B_k}` A's ON
+>   basis). Oracle: `= 1.0` exact.
+> - **dual partial-trace: `tr_sys = 2`** (the MINOR/OUTPUT factor, size `d_min`):
+>   `partialtrace(Y, 2, [d_maj=in, d_min=out])` -> `in x in`; in C
+>   `aic_mat_partial_trace_right(T, Y, in, out)`. Pinned by strong duality on the
+>   asymmetric NON-CP fixture (gap 4.8e-10 correct vs 6.5e-1 wrong; teeth 0.65).
+> - **primal density placement: `rho_on = :major`** (density on the INPUT factor,
+>   size `d_maj=in`; identity on the minor). `:major != :minor` on the asymmetric
+>   fixture (3.316 vs 3.971), so placement is load-bearing — `:major` matches the
+>   dual truth.
+> - **UPPER restoration (the deliverable):** generalize `aic_cbnorm_int_upper` to
+>   `Tr_2 = partial_trace_right(Y, d_maj=in, d_min=out)` (marginal `in x in`),
+>   shift term `eps * d_min = eps*out` (since `Tr_2(eps I_{in*out}) = eps*out*I_in`),
+>   and `hi = (1/2)(lambda_max(Tr_2 Y0)+lambda_max(Tr_2 Y1)) + eps*out`. NO `2/n`
+>   factor on the value. The eta=0 short-circuit MUST NOT fire (`J(v*)` is nonzero;
+>   trivial value is 1, not 0).
+> - **LOWER bracket:** comes from O1's HOPM (`cb_forward`, a rigorous lower bound on
+>   `||v||_cb`); the SDP primal is a tightness cross-check. The certified UPPER (dual)
+>   is the headline O2 bound; `O1.cb_forward <= O2.hi` is the bracket assertion.
+
+Everything below this line that conflicts with the box above is a SUPERSEDED
+hypothesis (kept for the audit trail). In particular §2.4's `2/N`, §2.5's
+"maybe `partial_trace_left`", and §1.4's "`J(v*) = J(v)^T` then dims `(N,n_B)`"
+are WRONG as stated; use the box.
+
 ## 1. The Choi matrices `J(v)`, `J(v^{-1})`, `J(v*)`
 
 ### 1.1 The maps and their ambient dims

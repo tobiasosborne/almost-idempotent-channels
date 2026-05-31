@@ -24,4 +24,10 @@ void aic_opspace_opmap_inverse(opmap *m, const aic_dhom_v *v, slong prec);
  * The single inversion point shared by opmap_inverse and aic_opspace_build_vinv. */
 void aic_opspace_build_M1inv(cx *out, const aic_dhom_v *v, slong d, slong prec);
 
+/* Matrix-unit linear index i -> global (row,col) in the n_B x n_B block-diagonal
+ * representative of B (block offsets are the n_B-representative offsets, NOT the
+ * dim_B matrix-unit offsets). Shared with the Choi assembler (aic_opspace_choi.c,
+ * bead aic-pjr) so the (i -> (r,c)) map is single-sourced (assert on out-of-range). */
+void aic_opspace_b_unit_pos(const aic_dhom_B *B, slong i, slong *row, slong *col);
+
 #endif /* AIC_OPSPACE_MAP_INTERNAL_H */

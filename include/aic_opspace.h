@@ -125,6 +125,16 @@ typedef struct {
     double a_cb_flat;
     slong  N_max;
     slong  n_B;
+    /* O2 (bead aic-pjr): the CERTIFIED cb-norm UPPER bounds from the rect Watrous
+     * SDP-restoration certifier (aic_opspace_certify_cb_upper). Together with the
+     * O1 HOPM lower bounds (cb_forward, 1/a_cb) they BRACKET the true cb-norms:
+     *   cb_forward (HOPM lower)  <= ||v||_cb     <= cb_upper    (SDP, certified),
+     *   1/a_cb     (HOPM lower)  <= ||v^{-1}||_cb <= cbinv_upper (SDP, certified).
+     * aic_opspace_certify (O1) initialises these to +inf (the sentinel that flags a
+     * struct on which the O2 step has NOT been run); aic_opspace_certify_cb_upper
+     * fills them with the rigorous bound. */
+    arb_t  cb_upper;
+    arb_t  cbinv_upper;
 } aic_opspace_result;
 
 /* ---- O1 core: ampliated operator-norm max-stretch (src/aic_opspace_ampliate.c) -
@@ -187,6 +197,44 @@ void aic_opspace_build_vinv(acb_mat_t **vinvB, slong *dim_A, slong *n_B,
 /* Free the dim_A operators returned by aic_opspace_build_vinv. */
 void aic_opspace_vinv_clear(acb_mat_t *vinvB, slong dim_A);
 
+/* ---- O2.1: ADJOINT Choi assemblers for the cb-norm SDP (src/aic_opspace_choi.c) -
+ *
+ * Build the Convention-A Choi matrices of the ADJOINT maps v* and (v^{-1})* for the
+ * Watrous diamond-norm certifier (O2, bead aic-pjr). We certify the cb-SPECTRAL norm
+ * of the th_main_ext isomorphism v: B -> A (.tex:1538-1540) via the adjoint duality
+ *   ||v||_cb = ||v*||_⋄,    ||v^{-1}||_cb = ||(v^{-1})*||_⋄
+ * (docs/research/opspace_o2_design.md §0.5 PINNED CONVENTION — the empirically-pinned
+ * recipe that SUPERSEDES §1.4/§2.4/§2.5).
+ *
+ * THE GOLDEN RULE (design §0.5). For f: M_in -> M_out, the Convention-A Choi is
+ *   J(f)[s*out + i, t*out + j] = f(E_st)[i,j]   (INPUT s,t MAJOR/stride out;
+ *                                                OUTPUT i,j MINOR),
+ * fed to the rect diamond-norm SDP as (d_maj = in, d_min = out). Then raw optval =
+ * ||f||_⋄ EXACTLY — normalization factor 1, NO 2/n. The SDP duals trace the MINOR
+ * factor (tr_sys = 2, size d_min); the primal places the density on the MAJOR factor
+ * (rho_on = :major, size d_maj). The two assemblers below build v* / (v^{-1})*
+ * DIRECTLY in this INPUT-MAJOR convention (NOT by transposing J(v): the full
+ * transpose keeps the wrong [out,in] block layout — §0.5).
+ *
+ * BOTH maps are HERMITICITY-PRESERVING (v, v^{-1} are HP), so their adjoint Choi are
+ * HERMITIAN (but indefinite — the maps are not CP). */
+
+/* J(v*) for v*: M_N -> M_{n_B}  (d_maj = in = N, d_min = out = n_B).
+ *   v*(E_ab^{(N)}) = sum_i conj(vE[i][a,b]) * E_i  (HS-adjoint of v; E_i the n_B-rep
+ *   matrix unit, a single 1 at aic_opspace_b_unit_pos(B,i) = (r,c)).
+ * So Jvs[a*n_B + r, b*n_B + c] = conj(vE[i][a,b]) for each i (a,b INPUT/major, (r,c)
+ * OUTPUT/minor). `Jvs` is caller-init'd (N*n_B) x (N*n_B) (shape ASSERTED). */
+void aic_opspace_choi_vstar(acb_mat_t Jvs, const aic_dhom_v *v, slong prec);
+
+/* J((v^{-1})*) for (v^{-1})*: M_{n_B} -> M_N  (d_maj = in = n_B, d_min = out = N).
+ *   (v^{-1})*(E_ab^{(n_B)}) = sum_k conj(vinvB[k][a,b]) * B_k, where
+ *   vinvB[k] = v^{-1}(B_k) (aic_opspace_build_vinv) and B_k = v->A->B[k] (A's
+ *   Frobenius-ON basis, each N x N).
+ * So Jvis[a*N + r, b*N + s] += conj(vinvB[k][a,b]) * B_k[r,s] summed over k (a,b
+ * INPUT/major in [0,n_B), (r,s) OUTPUT/minor in [0,N)). `Jvis` is caller-init'd
+ * (n_B*N) x (n_B*N) (shape ASSERTED). ASSERTS v bijective (dim_A == dim_B). */
+void aic_opspace_choi_vinvstar(acb_mat_t Jvis, const aic_dhom_v *v, slong prec);
+
 /* ---- O1 certification pipeline (src/aic_opspace_cert.c) ------------------ *
  *
  * Run the ampliation levels and fill r. Computes:
@@ -206,6 +254,27 @@ void aic_opspace_vinv_clear(acb_mat_t *vinvB, slong dim_A);
  * scale). `prec` is the arb working precision. Free with aic_opspace_result_clear. */
 void aic_opspace_certify(aic_opspace_result *r, const aic_dhom_v *v,
                          double delta, slong prec);
+
+/* ---- O2 payoff: certified cb-norm UPPER bounds (src/aic_opspace_o2.c) ---- *
+ *
+ * Fill r->cb_upper and r->cbinv_upper with the RIGOROUS Watrous-SDP upper bounds
+ * on ||v||_cb and ||v^{-1}||_cb (the certified half of th_main_ext, .tex:1538-1540).
+ * `r` must already have been filled by aic_opspace_certify (the O1 HOPM lower
+ * bounds cb_forward / a_cb are read for the bracket guard). The committed MIN-dual
+ * feasible points are passed in:
+ *   (Y0_fwd, Y1_fwd) for J(v*)        (d_maj = N,   d_min = n_B),
+ *   (Y0_inv, Y1_inv) for J((v^{-1})*) (d_maj = n_B, d_min = N).
+ * The Choi matrices J(v*), J((v^{-1})*) are assembled internally
+ * (aic_opspace_choi_vstar / _vinvstar), then aic_cbnorm_certify_rect_upper restores
+ * each dual point and reads off the bound (design §0.5: factor 1, tr_sys=2 minor,
+ * eps*d_min shift). GUARD (fail loud, Rule 4): the bracket O1.HOPM_lower <= O2.SDP_
+ * upper must hold for both directions (a HOPM > SDP would be a soundness bug);
+ * abort with the values if violated (a small slack covers the arb radius + the
+ * double-HOPM gate). ASSERTS v bijective. */
+void aic_opspace_certify_cb_upper(aic_opspace_result *r, const aic_dhom_v *v,
+                                  const acb_mat_t Y0_fwd, const acb_mat_t Y1_fwd,
+                                  const acb_mat_t Y0_inv, const acb_mat_t Y1_inv,
+                                  slong prec);
 
 void aic_opspace_result_clear(aic_opspace_result *r);
 

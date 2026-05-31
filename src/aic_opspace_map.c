@@ -29,8 +29,10 @@
 
 /* Matrix-unit linear index i -> global (row,col) in the n_B x n_B block-diagonal
  * representative of B (block offsets are the n_B-representative offsets, NOT the
- * dim_B matrix-unit offsets). */
-static void b_unit_pos(const aic_dhom_B *B, slong i, slong *row, slong *col)
+ * dim_B matrix-unit offsets). Non-static + namespaced (declared in the internal
+ * header) so the Choi assembler (src/aic_opspace_choi.c, bead aic-pjr) reuses the
+ * SAME matrix-unit -> ambient-position map rather than reimplementing it. */
+void aic_opspace_b_unit_pos(const aic_dhom_B *B, slong i, slong *row, slong *col)
 {
     slong boff = 0;
     for (slong l = 0; l < B->num_blocks; l++) {
@@ -84,7 +86,7 @@ void aic_opspace_opmap_forward(opmap *m, const aic_dhom_v *v, slong prec)
         m->U[i] = aic_opmap_cxalloc(nB * nB);
         for (slong p = 0; p < nB * nB; p++) m->U[i][p] = 0.0;
         slong row, col;
-        b_unit_pos(v->B, i, &row, &col);
+        aic_opspace_b_unit_pos(v->B, i, &row, &col);
         m->U[i][row * nB + col] = 1.0;
     }
     for (slong k = 0; k < dimA; k++) {
@@ -136,7 +138,7 @@ void aic_opspace_opmap_inverse(opmap *m, const aic_dhom_v *v, slong prec)
         m->W[i] = aic_opmap_cxalloc(nB * nB);
         for (slong p = 0; p < nB * nB; p++) m->W[i][p] = 0.0;
         slong row, col;
-        b_unit_pos(v->B, i, &row, &col);
+        aic_opspace_b_unit_pos(v->B, i, &row, &col);
         m->W[i][row * nB + col] = 1.0;
     }
     m->F = aic_opmap_cxalloc(d * d);

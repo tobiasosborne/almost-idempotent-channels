@@ -1,6 +1,64 @@
 # HANDOFF.md — almost-idempotent-channels
 
-## ▶ LATEST CHECKPOINT (2026-05-31, session: canary fix + th_main_ext O1) — READ FIRST
+## ▶ LATEST CHECKPOINT (2026-05-31, session: th_main_ext O2 — certified cb UPPER bound) — READ FIRST
+
+Orchestrated session. **Net: opspace O2 (`aic-pjr`) is DONE — the certified Watrous-SDP
+cb-norm UPPER bound `‖v‖_cb, ‖v⁻¹‖_cb ≤ 1+O(ε)` for the th_main_ext iso `v: B→A` is
+realized and verified.** With O1 (HOPM lower) + O2 (SDP upper), `th_main_ext` is now
+fully bracketed. `master` HEAD was `c57ef15`; this session adds the O2 stack (commit
+pending at write time). **30 test binaries green** (`make test` all-green; +2 binaries
+`test_opspace_choi`, `test_opspace_o2`; the two `test_corner` T9(iv) stderr "FAILED"
+lines remain EXPECTED fail-loud teeth).
+
+**What this session did (full research→pin→implement→hostile-review→fix pipeline):**
+1. **Research (Sonnet web leg)** on the rectangular Watrous diamond-norm SDP (QETLAB
+   `DiamondNorm` + Watrous 1207.5726). Web FACTS trusted; its DERIVATIONS (it claimed
+   normalization `2/n_B`) were NOT — pinned empirically instead (per the standing rule).
+2. **Pinned the convention EMPIRICALLY (the GO/NO-GO gate)** — `tools/probe_o2_pin2.jl`
+   + `probe_o2_diag2.jl` against an INDEPENDENT closed-form truth (asymmetric CP map
+   `‖Ψ‖_⋄=σ_max(A)²`) + a complete-isometry oracle. **GOLDEN RULE (FINDINGS §C12.O2-PIN,
+   design §0.5):** build `J = choi_convA(adjoint, in, out)` (input-major) DIRECTLY, feed
+   `(d_maj=in, d_min=out)` → raw optval = `‖f‖_⋄` EXACTLY, **normalization FACTOR 1**
+   (corrected BOTH the design's `2/N` and the research leg's `2/n_B`); dual `tr_sys=2`
+   (MINOR/output factor); primal density `:major`. `‖v‖_cb=‖v*‖_⋄` (Choi dims `(N,n_B)`),
+   `‖v⁻¹‖_cb=‖(v⁻¹)*‖_⋄` (dims `(n_B,N)`).
+3. **O2.1 C Choi assemblers** (`src/aic_opspace_choi.c`): `aic_opspace_choi_vstar`/
+   `_vinvstar` build the adjoint Choi directly from `vE[i]`/`vinvB[k]`. 41 checks,
+   mutation-proven (T1 Herm, T2 entrywise, T3 trace=carrier-rank, T4 vs J(v)).
+4. **O2.3 rectangular SDP** in `src/sdp.jl` (`diamond_dual_rect`/`diamond_primal_rect`).
+5. **O2.5 shim + fixtures** (`src/aic_opspace_shim.c`, `tools/gen_fixtures_opspace_o2.jl`
+   → committed `tests/fixtures_opspace_o2.inc.h`, MOSEK-solved; `make test` Julia-free).
+6. **O2.4 rect certifier** (`src/aic_cbnorm_certify_rect.c`): `hi=½(λmax Tr_min Y0+λmax
+   Tr_min Y1)+eps·d_min`, factor 1, no η=0 short-circuit. Midpoint-radius fix (§C5/aic-2yo
+   class) for the arb-assembled-J Hermiticity false-fail. Self-map `test_certify` UNTOUCHED.
+7. **O2.6/.7 pipeline + tests** (`src/aic_opspace_o2.c`, `tests/test_opspace_o2.c`):
+   `aic_opspace_certify_cb_upper` + the HOPM(O1)≤SDP(O2) bracket guard. 20 checks.
+8. **Hostile review (Opus): NO BLOCKER** (4 mutations independently re-verified RED,
+   convention chain SOUND, midpoint-rigor SOUND). 3 MINOR findings FIXED (rigorous bracket
+   arb-endpoints; T5 midpoint-radius tooth; inverse-direction T3 tooth on the η=0 oracle).
+
+**MEASURED (the headline):** η=0 oracles (block_cond_exp 4×4, noiseless_subsystem 6×3
+RECTANGULAR) → `‖v‖_cb=‖v⁻¹‖_cb=[1,1]` EXACT (complete isometry). mixconj(6,2,0.03):
+`‖v‖_cb=1.0019683734` (HOPM 1.001431 ≤), `‖v⁻¹‖_cb=1.5353598357` (HOPM 1.018942 ≤) —
+bracket holds. **§C12 non-vacuity SHARP:** cb `‖v⁻¹‖_cb=1.535` vs vacuous Frobenius
+`1/σ_min=1.027` (gap 0.51) — O2 measures the genuine operator/cb norm (the obliqueness of
+`A=ImgΦ̃` inflates it; this is WHY O2≠the Frobenius σ_min proxy). Direction tooth: wrong
+trace → 2.0 (η=0 rect oracle) / 4.97 (mixconj) — `tr_sys=2` pinned. Smith MOOT for O2.
+
+**▶ NEXT AGENT PICKS UP HERE — `factorize` (`th_factorization`, bead `aic-tff`), the
+paper's FINAL headline.** Now UNBLOCKED: O2 provides the certified `‖Δ̃‖_cb,‖Υ̃‖_cb ≤
+1+O(η)` upper bounds it needs. D4 is **BUILDABLE-MODULO** (FINDINGS §D4,
+`docs/research/factorize_d4_research.md`): Steps 4–5 (1-design CP-ization reusing
+`aic_dhom_pauli`; `lem_RC` partial-trace+SVD) are explicit finite-dim; the only open item
+is the composite `O(η)` CONSTANT (per-instance + canary, like `c_0`). Public interface
+adds already landed in O1 (`aic_opspace_build_vinv` + `n_B` field). Increment skeleton
+F1–F4 in the research doc §6. Also OPEN: the O2 cb-norm UNIVERSALITY canary (dim sweep of
+`‖v‖_cb`,`‖v⁻¹‖_cb` — currently per-instance + bracket only; O1's `a_cb_flat` is the
+lower-bound analogue) — file/extend a canary bead if `factorize` needs it.
+
+---
+
+## ▶ PRIOR CHECKPOINT (2026-05-31, session: canary fix + th_main_ext O1)
 
 Orchestrated session. **Net: a RED headline canary on committed `master` was found
 and fixed, D3 was resolved, the endgame was assessed, PR #1 merged, and `opspace`

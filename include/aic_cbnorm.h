@@ -73,6 +73,28 @@ void aic_cbnorm_certify(arb_t lo, arb_t hi, const acb_mat_t J,
                         const acb_mat_t Y0, const acb_mat_t Y1,
                         slong n, slong prec);
 
+/* RECTANGULAR certified UPPER bound on a diamond norm, for the opspace O2 cb-norm
+ * payoff (bead aic-pjr; src/aic_cbnorm_certify_rect.c). Given the GOLDEN-RULE
+ * Convention-A Choi J of a map f: M_{d_maj} -> M_{d_min}
+ *   J[s*d_min+i, t*d_min+j] = f(E_st)[i,j]   (INPUT s,t MAJOR; OUTPUT i,j MINOR),
+ * each of J, Y0, Y1 (d_maj*d_min) square, and a Watrous MIN-dual feasible point
+ * (Y0,Y1), this restores (Y0,Y1) to exact feasibility by a shift and reads off a
+ * RIGOROUS upper bound on ||f||_⋄ (= the SDP optval, design §0.5: normalization
+ * FACTOR 1, NO 2/n). The dual traces the MINOR/OUTPUT factor (tr_sys = 2, size
+ * d_min): Tr_min = aic_mat_partial_trace_right(., d_maj, d_min); the shift term is
+ * eps*d_min; hi = (1/2)(lambda_max(Tr_min Y0)+lambda_max(Tr_min Y1)) + eps*d_min.
+ * NO eta=0 short-circuit (the trivial value here is 1, not 0 — the complete-
+ * isometry oracle goes through the full restoration). On return
+ * eta = ||f||_⋄ <= arb_upper(hi), rigorously. The diamond-of-adjoint duality
+ *   ||v||_cb = ||v*||_⋄,  ||v^{-1}||_cb = ||(v^{-1})*||_⋄  (Watrous 2009)
+ * turns this into the certified cb-norm UPPER bound of th_main_ext (.tex:1538-1540)
+ * when J = J(v*) (d_maj=N, d_min=n_B) resp. J = J((v^{-1})*) (d_maj=n_B, d_min=N).
+ * All ONE-SIDED herm_max_eig(-M) PSD tests (degeneracy-robust, no full eig).
+ * `hi` is a caller-initialised arb_t. ASSERTS the shapes (Rule 4). */
+void aic_cbnorm_certify_rect_upper(arb_t hi, const acb_mat_t J,
+                                   const acb_mat_t Y0, const acb_mat_t Y1,
+                                   slong d_maj, slong d_min, slong prec);
+
 #ifdef __cplusplus
 }
 #endif

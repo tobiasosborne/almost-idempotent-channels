@@ -54,6 +54,14 @@ void aic_opspace_certify(aic_opspace_result *r, const aic_dhom_v *v,
     r->v = v;
     arb_init(r->a_cb);
     arb_init(r->cb_forward);
+    /* O2 sentinel: +inf flags "the cb-norm UPPER certifier has NOT run on this
+     * struct" (aic_opspace_certify_cb_upper overwrites these). A bracket check
+     * against +inf trivially holds, so a forgotten O2 step is detectable but not a
+     * silent zero. */
+    arb_init(r->cb_upper);
+    arb_init(r->cbinv_upper);
+    arb_pos_inf(r->cb_upper);
+    arb_pos_inf(r->cbinv_upper);
 
     /* the doubling levels 1, 2, 4, ..., up to the inverse Smith truncation n_B. */
     assert(nB >= 1);
@@ -122,5 +130,7 @@ void aic_opspace_result_clear(aic_opspace_result *r)
     if (r == NULL) return;
     arb_clear(r->a_cb);
     arb_clear(r->cb_forward);
+    arb_clear(r->cb_upper);
+    arb_clear(r->cbinv_upper);
     r->v = NULL;
 }

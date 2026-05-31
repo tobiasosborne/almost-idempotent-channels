@@ -566,6 +566,59 @@ with the concrete evidence from where they bit.
   CORRECTION at the end of `opspace_design.md`. D3 stays BUILDABLE (the induction is
   rigorous, no hard stop) but the implementation is NON-trivial (operator-norm, depends
   on aic-0at or the induction-step verification — NOT the trivial `sigma_min` reuse).
+- **§C12.O2-PIN — the O2 SDP convention was pinned EMPIRICALLY, correcting BOTH the
+  design doc and the research leg (bead aic-pjr, 2026-05-31).** `‖v‖_cb = ‖v*‖_⋄` is
+  computed by feeding the adjoint's Convention-A Choi into the Watrous diamond-norm SDP.
+  TWO conventions were uncertain and the prior analyses DISAGREED: the design doc
+  (`opspace_o2_design.md` §2.4) said normalization `2/N`; the Sonnet research leg derived
+  `2/n_B`. **Both were WRONG.** A convention-sweep probe (`tools/probe_o2_pin2.jl` +
+  `probe_o2_diag2.jl`) pinned it against an INDEPENDENT closed-form truth — an asymmetric
+  CP map `Ψ(Y)=A†YA: M_3→M_2` with `‖Ψ‖_⋄ = σ_max(A)²` — plus a complete-isometry oracle
+  (`‖v‖_cb=1` exactly). **PINNED GOLDEN RULE (design §0.5):** to get `‖f‖_⋄` for
+  `f: M_in→M_out`, build `J = choi_convA(f, in, out)` (INPUT-major,
+  `J[s·out+i,t·out+j]=f(E_st)[i,j]`), feed the SDP with `(d_maj=in, d_min=out)` →
+  **raw optval = `‖f‖_⋄` EXACTLY, normalization FACTOR = 1** (no `2/n` at all — the `2/n`
+  was an artifact of the self-map's `P+Q=I` primal form; the rectangular density-form
+  primal needs no factor). Dual traces the **MINOR/OUTPUT** factor (`tr_sys=2`); primal
+  density on `:major` (= input; `:major`≠`:minor` on an asymmetric map, so placement is
+  load-bearing). Build the adjoint's Choi DIRECTLY (`v*(E_ab)=Σ_i conj(vE[i][a,b])E_i`),
+  NOT `transpose(J(v))` (the full transpose keeps the wrong `[n_B,N]` block layout — it is
+  `v*` in the OUTPUT-major convention, needing dims `(n_B,N)`, which mis-grouped the
+  factors and gave the W-dependent garbage 1.76/2.0 that first surfaced the bug). The
+  lesson restates the project ethos (design §6.5): normalization/direction are PINNED not
+  derived — neither the design's nor the LLM-research-leg's derivation was trustworthy;
+  only the independent-oracle measurement was. (Standing rule: Sonnet for survey,
+  Opus/empirics for derivation.)
+- **§C12.O2 — the certified cb-norm UPPER bound is now built (bead aic-pjr, O2.4/6/7,
+  2026-05-31).** `aic_cbnorm_certify_rect_upper` (`src/aic_cbnorm_certify_rect.c`) is the
+  RECTANGULAR generalization of the self-map dual restorer: it certifies `‖f‖_⋄` for
+  `f: M_in→M_out` from a committed Watrous MIN-dual point, via the PINNED convention
+  (design §0.5: normalization FACTOR 1, dual `tr_sys=2` = the MINOR/output factor
+  `partial_trace_right(.,d_maj,d_min)`, shift `eps·d_min`). `aic_opspace_certify_cb_upper`
+  (`src/aic_opspace_o2.c`) assembles `J(v*)`/`J((v⁻¹)*)`, certifies, and asserts the
+  HOPM(O1)≤SDP(O2) bracket. MEASURED (`tests/test_opspace_o2.c`): η=0 oracles
+  (block_cond_exp 4×4, noiseless_subsystem 6×3) give `hi=[1,1]` fwd+inv; mixconj(6,2,0.03)
+  fwd `‖v‖_cb=1.0019683734` (HOPM 1.001431 ≤ this), inv `‖v⁻¹‖_cb=1.5353598357`
+  (HOPM 1/a_cb=1.018942 ≤ this). The §C12 non-vacuity is SHARP at O2: the cb
+  `‖v⁻¹‖_cb=1.535` vs the vacuous Frobenius `1/σ_min(M_1)=1.027` (gap 0.51). Restoration
+  PSD-defect `eps`: 0 (block_cond_exp), ≤9.9e-13 (noiseless), ≤8.9e-11 (mixconj) — NO
+  precision wall (design §6.4 cleared).
+- **§C12.O2 SUBTLETY (load-bearing, the arb-radius vs Hermiticity-tol wall).** The rect
+  certifier's `J(v*)`/`J((v⁻¹)*)` are ASSEMBLED in arb over a `cstar_build` `v`, so their
+  entries carry an ACCUMULATED radius (~1e-71 at prec=256, ≫ a single-rounding ulp). The
+  dual block `[[Y0,−J],[−J†,Y1]]` is then fed to `aic_mat_herm_max_eig`, which asserts
+  Hermiticity RIGOROUSLY at the prec-tight tol `2^-(prec-8)` (~1e-75 at prec=256, §C5/
+  aic-2yo). The off-diagonal `−J`/`−J†` are INDEPENDENT balls whose asymmetry ball ~ J's
+  radius EXCEEDS that tol → the genuinely-Hermitian block is REJECTED (the self-map
+  `int_upper` never hit this: its committed Choi is a zero-radius double). FIX (in
+  `aic_cbnorm_certify_rect_upper`): collapse the block to its MIDPOINT then symmetrize
+  `(blk+blk†)/2` before the defect eig — the midpoint differs from the true block by ≤ the
+  radius (1e-71) in op-norm, far below the 1e-4 tightness tol, so `eps` stays a rigorous
+  defect bound for the (midpoint) feasible point — exactly the self-map's zero-radius-
+  committed-J posture. The committed self-map path is UNAFFECTED (`test_certify` 34 checks
+  stay green). Note: this is why a feasible-point seed assembled in arb is NOT directly
+  interchangeable with a committed double seed for the rigorous eig — the radius must be
+  collapsed first.
 
 ---
 
