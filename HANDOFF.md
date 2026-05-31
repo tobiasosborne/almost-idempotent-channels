@@ -1,6 +1,46 @@
 # HANDOFF.md — almost-idempotent-channels
 
-## ▶ LATEST CHECKPOINT (2026-05-31, session: HEADLINE CLOSED on F4.1; F4.2 → v0.2; packaging planned) — READ FIRST
+## ▶ LATEST CHECKPOINT (2026-06-01, LAPTOP session: CMake migration CLOSED; autonomous backlog orchestration) — READ FIRST
+
+**New working mode (user directive):** drive ALL beads autonomously, serial, delegating
+each step to subagents (Opus for code/design, Sonnet/Explore for survey), commit+push every
+green increment, laptop-compute-aware (bound heavy/MOSEK work, don't blanket-defer), raise
+beads for issues. Memory: `feedback_autonomous_orchestration`.
+
+**`aic-95g.1` (Makefile→CMake migration) is CLOSED** (HEAD `dcfe828`). The C core now builds
+with **CMake** (canonical); the `Makefile` is a thin wrapper. **New commands (see `BUILDING.md`):**
+`cmake -S . -B build && cmake --build build` (or `make`); `ctest --test-dir build -L fast`
+(sub-second laptop gate, or `make test-fast`); `ctest --test-dir build` (full, or `make test`);
+`cmake --install build --prefix <p>` (set the prefix at CONFIGURE time). Delivered over 5
+increments (each committed): headers→`include/aic/`; single-compile OBJECT lib→`libaic.so.0.1.0`
++`libaic.a`; install/export/pkg-config (`find_package(AIC CONFIG)`→`AIC::aic`/`AIC::aic_static`,
+`aic.pc`); version single-sourced (`aic 0.1.0`); CTest TIMEOUT+fast/slow labels. Two real
+portability traps handled: Debian `flint.pc` OMITS `-lflint` (find_library + Libs.private);
+`find_package(LAPACK)` does NOT give LAPACKE (linked explicitly). **Hostile review (Rule 9)
+caught a BLOCKER:** `RelWithDebInfo` injects `-DNDEBUG` which stripped all 342 `assert()`
+guards (test_smoke passed with `assert(1==2)`); fixed by stripping `-DNDEBUG` from every config,
+mutation-proven. Full-suite sign-off: **29/31** (final config, 465s).
+
+**⚠ Two PRE-EXISTING REDS on master's slow suite** (proven by the review to fail IDENTICALLY
+under the old Makefile — NOT migration regressions, both filed P2): `test_cstar_build` T2b
+`.tex:484` universality canary `m=3 halves-ratio 1.2622 > KAPPA=1.25`; `test_opspace_o2` T2
+`committed dual not feasible` (rebuilt J(v*) off by 1.728). These mean the slow suite was
+already not green. Other beads filed this session: `aic-w9f` (deferred -fvisibility=hidden +
+curated AIC_EXPORT ABI — kept DEFAULT visibility so the ccall surface stays exported for the
+JLL; coordinate with umbrella `aic-7xx`), the `test_errreduce` 115s cost, and the laptop
+clock-skew (`make` "Clock skew detected" warnings; Ninja "manifest dirty" → use default Make
+generator).
+
+**▶ NEXT (autonomous wave plan, laptop-tractable first):** `aic-xo0` (fail-loud-not-hang —
+researched + scoped: root cause = no precondition check at `aic_assoc_regularize` entry; add a
+Gelfand `rho(Phi^2-Phi)<1/4` certify there + a SUBPROCESS-based fail-loud test; ~40 LOC; see the
+bead notes) → Wave B capability modules (`aic-7hg` channel constructors, `aic-xxk` ucp_power/
+compress, `aic-pvs` non-Herm eig, `aic-w4o.2` acb SVD) → Wave C consume the package (`aic-obc`
+Julia ccall, then `aic-95g.2` JLL / `.3` Python) → Wave D robustness/test-teeth → Wave E
+heavy-but-smart (`aic-bag` F4.2 on SMALL dims n=2-5 + dual reformulation) → Wave F research
+escalations. The 2 pre-existing reds (`test_cstar_build`/`test_opspace_o2`) are also fair game.
+
+## ▶ PRIOR CHECKPOINT (2026-05-31, session: HEADLINE CLOSED on F4.1; F4.2 → v0.2; packaging planned) — READ FIRST
 
 **The paper's FINAL headline `th_factorization` (`aic-tff`) is CLOSED.** Delivered on
 F4.1: certified `Δ,Υ,B` (genuine C*), η=0 oracle exact (`ΔΥ=Φ`, `ΥΔ=1_B` to ~1e-75),
