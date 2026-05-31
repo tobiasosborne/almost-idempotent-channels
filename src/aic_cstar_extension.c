@@ -16,13 +16,40 @@
  * CONSTRUCTIVE ROUTE (CLAUDE.md Law 3). The proof asserts mu_{11} exists and is
  * inner (U_1 A U_1^dag) by representation theory; in finite dim lem_approx IS the
  * Newton iteration (aic_dhom_approx on the codomain M_n = aic_cstar_matrix_algebra,
- * a GENUINE C* algebra so eps_target=0), and U_1 is recovered constructively from
+ * a GENUINE C* algebra), and U_1 is recovered constructively from
  * mu_{11}: since mu_{11}(E_l0) = (U_1 e_l)(U_1 e_0)^dag = u_l u_0^dag (E_00 a rank-1
  * projector), u_0 is the top LEFT singular vector of mu_{11}(E_00) = u_0 u_0^dag, and
  * u_l = mu_{11}(E_l0) u_0 / ||u_0||^2. The U_1 columns are S_{P,Q}-COORDINATE vectors
- * (the {C_l} corner basis is Frobenius-orthonormal, so the coordinate norm ~= the
- * lem_PQ_Hilb Hilbert norm up to O(delta+eps), FINDINGS §F-I4-2/§F-I4-4); the physical
- * operator is U1_op[l] = sum_m U1[m,l] C_m.
+ * in the {C_l} corner basis; the physical operator is U1_op[l] = sum_m U1[m,l] C_m.
+ *
+ * THE lem_approx CALL: eps_target=O(eta), unit_tol GENEROUS (FINDINGS §C11, the
+ * m>=3 frontier fix, .tex:1157 + .tex:1146). h11v = Ha^Q_{P,P} v maps M_n into the
+ * codomain B(S_{P,Q}) ~= M_n. Two properties of this codomain make the eta=0-style
+ * (eps_target=0, tight unit_tol) call WRONG once dim S_{P,Q} >= 2:
+ *   (1) eps_target = O(eta), NOT 0. h11v is only an O(delta+eps)-HOMOMORPHISM
+ *       (.tex:1157: Ha^Q_{P,P} is an O(delta+eps)-hom), so its multiplicativity
+ *       defect floors at O(delta+eps) ~ O(eta), NEVER machine-zero. With
+ *       eps_target=0 the Newton iteration would churn to max_steps and the
+ *       cap-not-reached assert would fire. We set eps_target to a small multiple of
+ *       the PARENT's associativity defect aic_ecstar_defect_assoc(A_parent) (= the
+ *       parent's eps = O(eta)), so lem_approx terminates cleanly at the O(eta) floor.
+ *   (2) unit_tol GENEROUS (= 2.0), NOT tight. The {C_l} corner basis from
+ *       aic_corner_extract is FROBENIUS-orthonormal, NOT operator-norm-1; the
+ *       lem_PQ_Hilb Euclidean inner product (.tex:1146) has Gram G != I by O(1) for
+ *       dim S_{P,Q} >= 2 (measured ||G-I|| ~ 0.14, ||C_0||_op ~ 0.925). The Ha map's
+ *       TRUE Hilbert-adjoint is the G-twisted G^{-1}(.)^H G (exact to 1e-16), but
+ *       aic_dhom_approx's involution-symmetry assert measures the PLAIN matrix-
+ *       conjugate-transpose defect ||v(E_ba)^H - v(E_ab)||, which for this G-twisted
+ *       codomain is an O(1) STRUCTURAL ARTIFACT (~0.15) that does NOT shrink with
+ *       delta_0 (so an 8*delta_0-style ceiling would also trip). The symmetrized
+ *       Newton update cannot change it (it is frozen, harmless). We relax unit_tol
+ *       to 2.0 ONLY at this caller (the errreduce/errreduce_unit callers pass the
+ *       same for the same Ha-codomain reason, FINDINGS §C11). The downstream
+ *       bijectivity certificate (aic_errreduce_is_bijective) + the Newton-contraction
+ *       guard still catch real divergence; the involution invariant is genuinely
+ *       meaningless for this G-twisted codomain. (NOTE: the old §F-I4-2 claim that
+ *       ||C_l||_op ~ ||C_l||_F / the coordinate norm ~= the Hilbert norm is WRONG for
+ *       dim S_{P,Q} >= 2 — see paper/FINDINGS.md §C11.)
  *
  * THE Ha-MAP ARGUMENT ORDER (the highest-risk convention, spec §2). aic_corner_ha
  * (Ha, A, Z, P, R, Q) computes Ha^Q_{P,R}(Z) : S_{R,Q} -> S_{P,Q} (d_PQ x d_RQ). For
@@ -172,7 +199,19 @@ void aic_cstar_lem_extension(aic_dhom_B *B_out, aic_dhom_v *v_out,
     assert(dPQ == n && "lem_extension: dim S_{P,Q} != n (lem_add_dim conclusion; "
                        "either S_{P,Q}=0 hypothesis violated or P not rank-n)");
 
-    /* Steps 2-3: A_cod = genuine M_n; h11v = Ha^Q_{P,P} v; mu_{11} = lem_approx. */
+    /* Steps 2-3: A_cod = genuine M_n; h11v = Ha^Q_{P,P} v; mu_{11} = lem_approx.
+     * eps_target = O(parent eps): h11v is an O(delta+eps)-hom (.tex:1157), so its
+     * multiplicativity defect floors at O(eta), not 0; eps_target=0 would churn to
+     * max_steps. unit_tol = 2.0: the involution-symmetry defect is an O(1) artifact
+     * of the G-twisted Ha codomain (lem_PQ_Hilb Gram G != I for dim S_{P,Q} >= 2),
+     * not a real *-linearity break. See the file docstring + FINDINGS §C11. */
+    arb_t eps_assoc;
+    arb_init(eps_assoc);
+    aic_ecstar_defect_assoc(eps_assoc, A_parent, prec);
+    double eps_target =
+        2.0 * arf_get_d(arb_midref(eps_assoc), ARF_RND_NEAR);
+    arb_clear(eps_assoc);
+
     aic_ecstar A_cod;
     aic_cstar_matrix_algebra(&A_cod, n, prec);
     aic_dhom_B B_dom;
@@ -181,8 +220,8 @@ void aic_cstar_lem_extension(aic_dhom_B *B_out, aic_dhom_v *v_out,
     aic_dhom_v h11v;
     aic_dhom_v_init(&h11v, &B_dom, &A_cod);
     build_h11v(&h11v, v, P, Q, A_parent, n, prec);
-    aic_dhom_approx(&h11v, /*eps_target=*/0.0, /*tol_abs=*/1e-12,
-                    /*unit_tol=*/1e-10, /*max_steps=*/30, prec, NULL);
+    aic_dhom_approx(&h11v, eps_target, /*tol_abs=*/1e-12,
+                    /*unit_tol=*/2.0, /*max_steps=*/30, prec, NULL);
 
     /* Step 4: corner basis {C_PQ} of S_{P,Q}; U1_ops from mu_{11}. */
     acb_mat_t CoPQ;

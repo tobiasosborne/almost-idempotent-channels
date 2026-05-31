@@ -633,6 +633,21 @@ the code ~20 LOC shorter than a literal reading of the design's Step 6.
 
 ### F-I4-2: lem_PQ_Hilb inner product vs operator norm: the `{C_l}` basis coordinate representation gives FROBENIUS, not EUCLIDEAN, norms
 
+> **CORRECTION (2026-05-31, the m≥3 frontier, FINDINGS §C11).** The claim below
+> that `<C_l,C_m>_Euc ~ delta_{lm} + O(delta+eps)` (the coordinate norm ≈ the
+> lem_PQ_Hilb Hilbert norm) is WRONG for `dim S_{P,Q} ≥ 2`. The {C_l} are
+> Frobenius-orthonormal, NOT operator-ON: MEASURED on make_mixconj(6,3),
+> `||C_0||_op = 0.925` (not ≈ 1) and the lem_PQ_Hilb Euclidean Gram `G` has
+> `||G−I|| ≈ 0.14` — an **O(1)** difference, not O(delta+eps). The O(delta+eps)
+> equivalence holds only for `dim S_{P,Q} = 1` (`S_{Q,Q} = ℂ Q̃`); for `dim ≥ 2`
+> the off-diagonal corner products make `G ≠ I` by O(1). Consequence: the Ha map's
+> involution is G-twisted (`G^{-1}(·)^H G`), so `aic_dhom_approx`'s plain
+> conjugate-transpose involution-symmetry defect is an O(1) artifact at the
+> lem_extension lem_approx call — hence that caller passes `unit_tol = 2.0` and
+> `eps_target = O(η)` (see `src/aic_cstar_extension.c`, FINDINGS §C11). The `U_1`
+> SVD extraction is still sound (the `||u_0||² > 0.5` guard tolerates the twist);
+> only the per-coordinate norm-equivalence claim is false.
+
 The paper (`.tex:1146`) equips S_{P,Q} with the Hilbert-space norm from lem_PQ_Hilb:
 ||X||_Euc = sqrt(<X,X>) where <Y,X> Qtilde = Y^dag . X. The header notes
 "||X||_Euc = ||X|| up to 1 +/- O(delta+eps)". The `aic_corner_ha` output is in

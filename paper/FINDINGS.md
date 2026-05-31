@@ -388,12 +388,74 @@ with the concrete evidence from where they bit.
   (num_blocks=1, d=[2], dim_B=4, iso_def=5.35e-2, iso_def/eta=2.57 — O(eta), v bijective,
   σ_min=0.974); the n=6,m=2 wall is GONE (also n=4,5 m=2 all complete). Regression +
   mutation-proof in `tests/test_funcalc.c` (`test_wide_radius`, `test_out_of_basin_failloud`).
-  **STILL OPEN (separate, downstream of sgn):** `make_mixconj(6,3,0.02)` (`m≥3`) now gets
-  PAST the sgn wall but hits a DIFFERENT abort in `aic_dhom_approx`
-  (`involution-symmetry 1.5e-1 > tol 1e-10 at step 1`) — the error-reduction Newton step,
-  not sgn. The multi-block / higher-`m` oblique canary needs that resolved next (new bead);
-  the sgn basin-coverage concern (aic-68c scaled-Newton / eig fallback) is NOT needed for
-  the radius-floor case the corner path actually produces.
+  **WAS OPEN, now RESOLVED (the `m≥3` frontier, 2026-05-31, this entry's next item):**
+  `make_mixconj(6,3,0.02)` got past the sgn wall but hit a DIFFERENT abort in
+  `aic_dhom_approx` — the `lem_extension` `lem_approx` call. Resolved below.
+
+- **The `m≥3` `lem_extension` frontier — RESOLVED (2026-05-31, bead aic-097 I4).** Once
+  `m≥3` (a single equivalence class `M_m`) or any `dim S_{P,Q} ≥ 2` corner is reached,
+  the Stage-2 `aic_cstar_lem_extension` `aic_dhom_approx(&h11v, eps_target=0, unit_tol=
+  1e-10, …)` call aborted with `involution-symmetry 1.51e-1 > tol 1e-10 at step 1` (on
+  `make_mixconj(6,3,0.02)`). Diagnosis (classification C, proven sound end-to-end): TWO
+  independent caller-parameter bugs in the SAME call, neither in `aic_dhom_approx` itself.
+  - **(i) The `{C_l}` corner basis is FROBENIUS-orthonormal, NOT operator-ON — the old
+    spec §F-I4-2 claim is WRONG for `dim S_{P,Q} ≥ 2`.** `docs/research/lem_extension_spec.md
+    §F-I4-2` claimed `‖C_l‖_op ≈ ‖C_l‖_F` and `<C_l,C_m>_Euc ≈ δ_lm + O(δ+ε)` (the
+    coordinate norm ≈ the lem_PQ_Hilb Hilbert norm, `.tex:1146`). MEASURED on
+    `make_mixconj(6,3)`: `‖C_0‖_op = 0.925` (NOT ≈ `‖C_0‖_F = 1`), and the lem_PQ_Hilb
+    Euclidean Gram `G` differs from `I` by `‖G−I‖ ≈ 0.14` — an `O(1)` difference, not
+    `O(δ+ε)`. The `O(δ+ε)`-equivalence the spec invoked holds only for `dim S_{P,Q} = 1`
+    (where `S_{Q,Q} = ℂ Q̃`); for `dim S_{P,Q} ≥ 2` the off-diagonal corner products make
+    `G ≠ I` by `O(1)`. (The `U_1` SVD extraction is still sound — the `‖u_0‖² > 0.5`
+    guard tolerates the `O(1)` twist — but the per-coordinate-norm claim is false.)
+  - **(ii) The Ha involution is G-TWISTED for `dim S_{P,Q} ≥ 2`.** `h11v = Ha^Q_{P,P}∘v`
+    maps into `B(S_{P,Q}) ≅ M_n` whose lem_PQ_Hilb inner product has Gram `G ≠ I`. The
+    map's TRUE Hilbert-space adjoint is `G^{-1}(·)^H G` (exact to 1e-16). But
+    `aic_dhom_approx`'s involution-symmetry assert measures the PLAIN matrix-conjugate-
+    transpose defect `‖v(E_ba)^H − v(E_ab)‖ ≈ 0.15` — an `O(1)` STRUCTURAL ARTIFACT of
+    the G-twist, NOT a `*`-linearity break. It does NOT shrink with `δ₀` (it is `O(1)`,
+    not `O(δ+ε)`), so an `8·δ₀`-style ceiling would also trip; the symmetrized Newton
+    update cannot change it (frozen, harmless). FIX: pass `unit_tol = 2.0` ONLY at this
+    caller (the `errreduce`/`errreduce_unit` callers already pass `1.0`/`2.0` for the
+    SAME Ha-codomain reason). The downstream `aic_errreduce_is_bijective` certificate +
+    the Newton-contraction guard still catch real divergence. Do NOT relax the assert in
+    `aic_dhom_approx` (it is meaningful for the `eta=0` / genuine-codomain callers).
+  - **(iii) `eps_target=0` mis-target (a separate real bug).** The call passed
+    `eps_target=0.0`, treating the codomain `M_n` as exact-C*. But `h11v = Ha∘v` is only
+    an `O(δ+ε)`-HOMOMORPHISM (`.tex:1157`: `Ha^Q_{P,P}` is an `O(δ+ε)`-hom), so its
+    multiplicativity defect floors at `O(δ+ε) ≈ O(η)`, NEVER 0 → with `eps_target=0` the
+    Newton iteration churns to `max_steps` and the cap-not-reached assert fires. FIX:
+    `eps_target = 2·aic_ecstar_defect_assoc(A_parent)` (the parent's `ε = O(η)`), so
+    `lem_approx` terminates cleanly at the `O(η)` floor. (`aic_ecstar_defect_assoc` is a
+    `d³` star sweep, cheap for the small per-class `n`; works on the wrapper parent.)
+  **CONFIRMED end-to-end:** with both fixed, `aic_cstar_build` on `make_mixconj(6,3,0.02)`
+  COMPLETES (num_blocks=1, d=[3], dim_B=9, iso_def=5.58e-3, iso_def/η=0.43 — O(η), v
+  bijective, σ_min=0.997); the `id≈0.15` involution defect stays frozen (harmless), the
+  multiplicativity defect drops to its O(η²+ε) floor. T2b/T3 (`tests/test_cstar_build.c`)
+  now sweep `m=3` (n=6,7); per-family c-ratios 1.76 (m=2)/2.05 (m=3), abs-max c=1.79 < 5
+  (the `.tex:484` dimension-independence canary, extended to m≥3). Fix is in
+  `src/aic_cstar_extension.c` (the `aic_dhom_approx` call ~line 195; no signature change
+  — the `eps` is read from the parent in-place).
+  **DEFERRED DEEPER FIX (bead aic-5aq):** make `aic_corner_extract` return an
+  OPERATOR-orthonormal basis (so `G = I` and the plain conjugate-transpose IS the true
+  involution, removing the G-twist entirely and letting this caller use a tight
+  `unit_tol`). Not needed for correctness (the bijectivity certificate guards), but it
+  would restore the involution invariant's meaning at this caller and let §F-I4-2's
+  norm-equivalence claim hold by construction.
+
+- **MULTI-CLASS Stage-3 merge at η>0 is now COVERED (2026-05-31, was an OPEN gap above).**
+  The old "OPEN coverage gaps" item noted every in-basin η>0 fixture was a SINGLE class.
+  `make_mixconj_blocks` (a `make_block_cond_exp(d,m)` base → `M_m ⊕ M_{d−m}`, conjugate-
+  mixed; local to `tests/test_cstar_build.c`, T4) is a genuinely oblique η>0 channel with
+  **2 equivalence classes** (confirmed: 4 one-dim projections → 2 classes at η>0), so the
+  Stage-3 `cor_merge_sum` + the `errreduce_unit` running-`P_total≠1_n` branch RUN at η>0.
+  T4 asserts: build completes, num_blocks=2 (sizes [2,2]/[2,3]/[2,2]), iso_def/η bounded
+  (~0.004, O(η)), v bijective. CAVEAT (measured): this near-block-diagonal fixture has
+  associativity defect `eps_assoc ≈ 2.2e-5 ≪ η ≈ 1.6e-2` (~700×), so T4 passes `η` as the
+  build's `eps` (a faithful O(η) scale); the assoc defect would make the Stage-1
+  `errreduce` C0 gate fire (`10·eps < the true O(η) inclusion defect`). No star tooth on
+  this fixture (nearly block-diagonal → PLAIN-product c ≈ 0.28, does NOT fire the >20
+  magnitude tooth; that discriminant stays on the single-block mixconj fixtures, T3).
 
 ---
 

@@ -107,6 +107,40 @@ static int dbl_cmp(const void *p, const void *q)
     return (a > b) - (a < b);
 }
 
+/* MULTI-CLASS oblique fixture (T4): mix make_block_cond_exp(d,m) [M_m (+) M_{d-m},
+ * TWO genuine matrix blocks] with its FIXED-unitary conjugate, the same Kraus-union
+ * recipe as make_mixconj (test_idemp.h) but with a TWO-BLOCK base. Unlike
+ * make_mixconj (whose make_compress_idemp base is a SINGLE M_m block, so every
+ * eta>0 mixconj is one equivalence class), this yields >=2 equivalence classes at
+ * eta>0 — the ONLY fixture in the suite that exercises the Stage-3 MULTI-CLASS merge
+ * + the errreduce_unit Stage-3 running-P_total branch at eta>0 (the I5 coverage gap,
+ * FINDINGS §C11). CAVEAT (measured): its associativity defect eps_assoc ~ 2e-5 is
+ * ~700x BELOW eta ~ 1.6e-2 (the two blocks stay well-separated under the global
+ * conjugation), so the build's eps argument must be a faithful O(eta) scale (we pass
+ * eta), NOT the assoc defect (which would make the Stage-1 errreduce C0 gate fire,
+ * 10*eps < the true O(eta) inclusion defect). Local to this TU (not test_idemp.h:
+ * no other TU needs it, and adding it there would warn -Wunused in 13 files). */
+static void make_mixconj_blocks(aic_ucp_kraus *out, slong d, slong m, double t,
+                                slong prec)
+{
+    aic_ucp_kraus base, conj;
+    make_block_cond_exp(&base, d, m);
+    make_conjugated(&conj, &base, prec);
+    slong n = base.dim_H;
+    aic_ucp_kraus_init(out, n, n, base.r + conj.r);
+    arb_t s;
+    arb_init(s);
+    arb_set_d(s, sqrt(1.0 - t));
+    for (slong a = 0; a < base.r; a++)
+        acb_mat_scalar_mul_arb(out->K[a], base.K[a], s, prec);
+    arb_set_d(s, sqrt(t));
+    for (slong b = 0; b < conj.r; b++)
+        acb_mat_scalar_mul_arb(out->K[base.r + b], conj.K[b], s, prec);
+    arb_clear(s);
+    aic_ucp_kraus_clear(&conj);
+    aic_ucp_kraus_clear(&base);
+}
+
 /* ===================== T1: eta=0 oracle ===================================== *
  * On an EXACT idempotent channel, run aic_cstar_build and assert B's block
  * structure (num_blocks + sorted d[]) matches the EXPECTED th_idemp_structure
@@ -269,12 +303,27 @@ static void test_t2_universality(void)
            "the constant does NOT grow with dim (.tex:461)\n", iso_max,
            (long) dimA_min, (long) dimA_max, (double) dimA_max / (double) dimA_min);
 
-    /* T2b — the eta>0 measured constant stays bounded on the stable oblique points
-     * (the ambient n in {4,5} the funcalc basin admits). */
-    printf("T2b universality: eta>0 oblique measured c=iso_def/eta bounded over n:\n");
-    struct { slong d, m; double t; } ob[] = {{4, 2, 0.03}, {5, 2, 0.03}};
-    double c_lo = 1e30, c_hi = 0.0;
-    for (int i = 0; i < 2; i++) {
+    /* T2b — the eta>0 measured constant c=iso_def/eta stays bounded over BOTH the
+     * ambient n AND the block size m. The m>=3 frontier (n in {6,7}, single M_m
+     * class) is now in-basin after the I4 lem_extension fix (eps_target=O(eta),
+     * unit_tol generous for the G-twisted Ha codomain; FINDINGS §C11). Two
+     * dimension-independence checks (.tex:484, the .tex:461 universal constant):
+     *   (i)  PER-FAMILY: within m=2 (n=4,5) and within m=3 (n=6,7) the c-ratio
+     *        c_hi/c_lo stays <= 2.5 (a c growing like sqrt(dim)/dim across the
+     *        n-step would blow past it — the FINDINGS §D2 stop condition);
+     *   (ii) ABSOLUTE: the max c over the WHOLE extended sweep stays a bounded small
+     *        constant (< 5). c does NOT grow as n: 4->7; the m=3 family (c~0.3-0.6)
+     *        is SMALLER than the m=2 family (c~1.0-1.8), the strongest possible
+     *        dimension-independence evidence on the eta>0 path. */
+    printf("T2b universality: eta>0 oblique c=iso_def/eta bounded over n AND m:\n");
+    struct { slong d, m; double t; int fam; } ob[] = {
+        {4, 2, 0.03, 0}, {5, 2, 0.03, 0},                 /* m=2 family (fam 0) */
+        {6, 3, 0.02, 1}, {6, 3, 0.03, 1}, {7, 3, 0.02, 1} /* m=3 family (fam 1) */
+    };
+    const int n_ob = (int) (sizeof(ob) / sizeof(ob[0]));
+    double fam_lo[2] = {1e30, 1e30}, fam_hi[2] = {0.0, 0.0};
+    double c_abs_max = 0.0;
+    for (int i = 0; i < n_ob; i++) {
         aic_ucp_kraus phi;
         make_mixconj(&phi, ob[i].d, ob[i].m, ob[i].t, CPREC);
         double eta = eta_proxy(&phi, CPREC);
@@ -291,24 +340,39 @@ static void test_t2_universality(void)
         arb_init(iso);
         aic_cstar_build(&B, &v, iso, &ae.A, eps, CPREC);
         double c = eta > 1e-12 ? dd(iso) / eta : 0.0;
-        if (c < c_lo) c_lo = c;
-        if (c > c_hi) c_hi = c;
-        printf("  mixconj(%ld,2,%.2f): n=%ld eta=%.3e iso_def=%.3e c=iso/eta=%.4f\n",
-               (long) ob[i].d, ob[i].t, (long) ae.A.n, eta, dd(iso), c);
+        int f = ob[i].fam;
+        if (c < fam_lo[f]) fam_lo[f] = c;
+        if (c > fam_hi[f]) fam_hi[f] = c;
+        if (c > c_abs_max) c_abs_max = c;
+        printf("  mixconj(%ld,%ld,%.2f): n=%ld dim_B=%ld eta=%.3e iso_def=%.3e "
+               "c=iso/eta=%.4f\n", (long) ob[i].d, (long) ob[i].m, ob[i].t,
+               (long) ae.A.n, (long) B.dim_B, eta, dd(iso), c);
         arb_clear(iso);
         aic_dhom_v_clear(&v);
         aic_dhom_B_clear(&B);
         aic_assoc_ecstar_clear(&ae);
         aic_ucp_kraus_clear(&phi);
     }
-    double ratio = c_hi / (c_lo + 1e-10);
-    printf("  -> c ratio over n=4..5: %.4f / %.4f = %.4f (bound 2.5)\n", c_hi, c_lo,
-           ratio);
-    /* generous 2.5 bound: the ambient-n 4->5 step gives ~1.76; a c growing like
-     * sqrt(dim) or dim would blow past it (the .tex:484 stop condition). */
-    AIC_CHECK_MSG(ratio <= 2.5,
-                  "T2b: c ratio %.4f > 2.5 (c grows with dim; .tex:484 failure "
-                  "mode / FINDINGS §D2 stop condition)", ratio);
+    double ratio2 = fam_hi[0] / (fam_lo[0] + 1e-10);
+    double ratio3 = fam_hi[1] / (fam_lo[1] + 1e-10);
+    printf("  -> m=2 family c-ratio (n=4,5): %.4f/%.4f = %.4f; m=3 family c-ratio "
+           "(n=6,7): %.4f/%.4f = %.4f; abs-max c = %.4f\n", fam_hi[0], fam_lo[0],
+           ratio2, fam_hi[1], fam_lo[1], ratio3, c_abs_max);
+    /* (i) per-family generous 2.5 bound: each n-step gives a ratio ~1.8/~2.0; a c
+     * growing like sqrt(dim)/dim would blow past it (.tex:484 stop condition). */
+    AIC_CHECK_MSG(ratio2 <= 2.5,
+                  "T2b: m=2 c-ratio %.4f > 2.5 (c grows with dim; .tex:484 / "
+                  "FINDINGS §D2 stop condition)", ratio2);
+    AIC_CHECK_MSG(ratio3 <= 2.5,
+                  "T2b: m=3 c-ratio %.4f > 2.5 (c grows with dim; .tex:484 / "
+                  "FINDINGS §D2 stop condition)", ratio3);
+    /* (ii) absolute dimension-independence: max c over n=4..7 / m=2..3 stays a
+     * bounded small constant. A c growing with n would eventually exceed any fixed
+     * bound; < 5 is generous (measured ~1.8, and the larger-n m=3 points are
+     * SMALLER, not larger). */
+    AIC_CHECK_MSG(c_abs_max < 5.0,
+                  "T2b: abs-max c=%.4f >= 5 over n=4..7/m=2..3 (the th_main constant "
+                  "grows with dim; .tex:461/.tex:484 failure mode)", c_abs_max);
 }
 
 /* plain-product star thunk (the §C8 mutation): out = XY (no Phi_tilde). */
@@ -325,17 +389,27 @@ static void plain_star(acb_mat_t out, const acb_mat_t XY, void *ctx, slong prec)
  * c=iso_def/eta MAGNITUDE bound. The star tooth: re-sweep the final v with A's star
  * mutated to the PLAIN product; c_plain must blow past the bound (a ~weak DIRECTION
  * tooth on in-A projections, but the MAGNITUDE gap is sharp, FINDINGS §C8). The
- * automated suite keeps the star path; the plain mutation is recorded RED by hand. */
+ * automated suite keeps the star path; the plain mutation is recorded RED by hand.
+ *
+ * The m=3 points (mixconj(6,3), mixconj(7,3)) exercise the DEEPER Stage-2
+ * induction (M_1 -> M_2 -> M_3, two lem_extension steps on a dim S_{P,Q}=2 corner)
+ * that the I4 fix (eps_target=O(eta), generous unit_tol for the G-twisted Ha
+ * codomain; FINDINGS §C11) unblocked. Each make_mixconj is a SINGLE equivalence
+ * class M_m (make_compress_idemp's image is one matrix block), so num_blocks==1 and
+ * B.d[0]==m. (The Stage-3 MULTI-CLASS merge at eta>0 is covered by T4.) */
 static void test_t3_oblique(void)
 {
-    printf("T3 oblique eta>0 master loop (mixconj(d,2)); §C8 c=iso_def/eta O(eta) "
+    printf("T3 oblique eta>0 master loop (mixconj(d,m)); §C8 c=iso_def/eta O(eta) "
            "bound + star tooth:\n");
-    const double ts[3] = {0.03, 0.02, 0.03};
-    const slong ds[3] = {4, 4, 5};
-    double cstar_rec[3], cplain_rec[3];
-    for (int i = 0; i < 3; i++) {
+    struct { slong d, m; double t; } fx[] = {
+        {4, 2, 0.03}, {4, 2, 0.02}, {5, 2, 0.03}, /* m=2 (single M_2)       */
+        {6, 3, 0.02}, {6, 3, 0.03}                /* m=3 (single M_3, I4)   */
+    };
+    const int n_fx = (int) (sizeof(fx) / sizeof(fx[0]));
+    double cstar_rec[8], cplain_rec[8];
+    for (int i = 0; i < n_fx; i++) {
         aic_ucp_kraus phi;
-        make_mixconj(&phi, ds[i], 2, ts[i], CPREC);
+        make_mixconj(&phi, fx[i].d, fx[i].m, fx[i].t, CPREC);
         double eta = eta_proxy(&phi, CPREC);
         aic_assoc_ecstar ae;
         aic_assoc_ecstar_from_phi(&ae, &phi, CPREC);
@@ -368,24 +442,31 @@ static void test_t3_oblique(void)
 
         cstar_rec[i] = c_star;
         cplain_rec[i] = c_plain;
-        printf("  mixconj(%ld,2,%.2f): n=%ld dim_A=%ld eta=%.3e | iso_def=%.3e "
-               "c_star=%.4f | PLAIN c=%.4f | num_blocks=%ld\n", (long) ds[i], ts[i],
-               (long) ae.A.n, (long) ae.A.dim_A, eta, dd(iso), c_star, c_plain,
-               (long) B.num_blocks);
+        printf("  mixconj(%ld,%ld,%.2f): n=%ld dim_A=%ld eta=%.3e | iso_def=%.3e "
+               "c_star=%.4f | PLAIN c=%.4f | num_blocks=%ld d[0]=%ld\n",
+               (long) fx[i].d, (long) fx[i].m, fx[i].t, (long) ae.A.n,
+               (long) ae.A.dim_A, eta, dd(iso), c_star, c_plain,
+               (long) B.num_blocks, (long) B.d[0]);
 
-        /* (a) iso_def is O(eta): a generous magnitude bound (true c ~ 1-3). */
+        /* (a) iso_def is O(eta): a generous magnitude bound (true c ~ 0.3-1.8). */
         AIC_CHECK_MSG(c_star < 20.0,
                       "T3: iso_def/eta=%.4f exceeds 20 (master loop not O(eta)?)",
                       c_star);
         /* the §C8 star tooth: the PLAIN-product mutation must blow past the bound
-         * (here c_plain ~ 40-65, a ~30x gap from c_star ~ 1-1.8); this is the LIVE
-         * star-vs-plain MAGNITUDE discriminant, FINDINGS §C8. */
+         * (here c_plain ~ 40-72 for both m=2 and m=3, a large gap from c_star ~
+         * 0.3-1.8); the LIVE star-vs-plain MAGNITUDE discriminant, FINDINGS §C8. */
         AIC_CHECK_MSG(c_plain > 20.0,
                       "T3: PLAIN-product c=%.4f not > 20 — the §C8 star tooth is "
-                      "BLIND (mixconj(%ld,2,%.2f))", c_plain, (long) ds[i], ts[i]);
+                      "BLIND (mixconj(%ld,%ld,%.2f))", c_plain, (long) fx[i].d,
+                      (long) fx[i].m, fx[i].t);
+        /* (c) single class M_m: num_blocks==1, block size == m. */
         AIC_CHECK_MSG(B.num_blocks == 1,
-                      "T3: mixconj(%ld,2) should give a single M_2 block, got %ld",
-                      (long) ds[i], (long) B.num_blocks);
+                      "T3: mixconj(%ld,%ld) should give a single M_%ld block, got "
+                      "num_blocks=%ld", (long) fx[i].d, (long) fx[i].m,
+                      (long) fx[i].m, (long) B.num_blocks);
+        AIC_CHECK_MSG(B.d[0] == fx[i].m,
+                      "T3: mixconj(%ld,%ld) block size %ld != m=%ld",
+                      (long) fx[i].d, (long) fx[i].m, (long) B.d[0], (long) fx[i].m);
         /* (b) bijective */
         arb_t a;
         arb_init(a);
@@ -398,9 +479,94 @@ static void test_t3_oblique(void)
         aic_assoc_ecstar_clear(&ae);
         aic_ucp_kraus_clear(&phi);
     }
-    printf("  -> STAR c: %.4f %.4f %.4f (all < 20, O(eta)); PLAIN-mutation c "
-           "(by-hand tooth): %.4f %.4f %.4f\n", cstar_rec[0], cstar_rec[1],
-           cstar_rec[2], cplain_rec[0], cplain_rec[1], cplain_rec[2]);
+    printf("  -> STAR c:");
+    for (int i = 0; i < n_fx; i++) printf(" %.4f", cstar_rec[i]);
+    printf(" (all < 20, O(eta)); PLAIN-mutation c (live tooth):");
+    for (int i = 0; i < n_fx; i++) printf(" %.4f", cplain_rec[i]);
+    printf("\n");
+}
+
+/* ===================== T4: MULTI-CLASS oblique merge at eta>0 ============== *
+ * The I5 hostile-review coverage gap (FINDINGS §C11): every prior eta>0 fixture was
+ * a SINGLE equivalence class, so the Stage-3 MULTI-CLASS merge (cor_merge_sum across
+ * classes + the errreduce_unit Stage-3 running-P_total!=1_n branch) ran only at
+ * eta=0 (machine-zero defects). make_mixconj_blocks (block_cond_exp(d,m) base ->
+ * M_m (+) M_{d-m}, conjugate-mixed) is a genuinely oblique eta>0 channel with >=2
+ * equivalence classes, so it DRIVES Stage-3 at eta>0. ASSERT: build COMPLETES,
+ * num_blocks==2 with the expected sizes, iso_def/eta bounded (O(eta)), v bijective.
+ *
+ * NOTE on the eps argument (measured): this fixture's associativity defect is ~700x
+ * BELOW eta (the two blocks stay well-separated under the global conjugation), so we
+ * pass eta as the build's eps (a faithful O(eta) scale); the assoc defect would make
+ * the Stage-1 errreduce C0 gate fire. NO star tooth here: this fixture is nearly
+ * block-diagonal so its PLAIN-product defect is also small (c_plain ~ 0.3, does NOT
+ * fire the >20 tooth) — the star magnitude discriminant lives on the single-block
+ * mixconj fixtures (T3), and is preserved there. */
+static void test_t4_multiclass(void)
+{
+    printf("T4 multi-class oblique merge at eta>0 (mixconj_blocks; Stage-3 + "
+           "errreduce_unit running-unit branch at eta>0):\n");
+    struct { slong d, m; double t; slong exp_b0, exp_b1; } fx[] = {
+        {4, 2, 0.02, 2, 2}, /* M_2 (+) M_2 */
+        {5, 2, 0.02, 2, 3}, /* M_2 (+) M_3 */
+        {4, 2, 0.03, 2, 2}  /* M_2 (+) M_2, larger t */
+    };
+    const int n_fx = (int) (sizeof(fx) / sizeof(fx[0]));
+    for (int i = 0; i < n_fx; i++) {
+        aic_ucp_kraus phi;
+        make_mixconj_blocks(&phi, fx[i].d, fx[i].m, fx[i].t, CPREC);
+        double eta = eta_proxy(&phi, CPREC);
+        aic_assoc_ecstar ae;
+        aic_assoc_ecstar_from_phi(&ae, &phi, CPREC);
+        /* eps = faithful O(eta) scale (see the test docstring; the assoc defect
+         * badly underestimates eta for this near-block-diagonal fixture). */
+        double eps = eta;
+        aic_dhom_B B;
+        aic_dhom_v v;
+        arb_t iso;
+        arb_init(iso);
+        aic_cstar_build(&B, &v, iso, &ae.A, eps, CPREC);
+        double c = eta > 1e-12 ? dd(iso) / eta : 0.0;
+
+        /* sort block sizes for the multiset comparison */
+        long got[16];
+        for (slong l = 0; l < B.num_blocks; l++) got[l] = (long) B.d[l];
+        qsort(got, (size_t) B.num_blocks, sizeof(long), dbl_cmp);
+        long want[2] = {(long) fx[i].exp_b0, (long) fx[i].exp_b1};
+        qsort(want, 2, sizeof(long), dbl_cmp);
+
+        arb_t a;
+        arb_init(a);
+        int bij = aic_errreduce_is_bijective(a, &v, CPREC);
+        printf("  mixconj_blocks(%ld,%ld,%.2f): n=%ld eta=%.3e iso_def=%.3e "
+               "c=iso/eta=%.4f num_blocks=%ld d=[%ld,%ld] bij=%d sig=%.4f\n",
+               (long) fx[i].d, (long) fx[i].m, fx[i].t, (long) ae.A.n, eta, dd(iso),
+               c, (long) B.num_blocks, got[0],
+               B.num_blocks > 1 ? got[1] : 0, bij, dd(a));
+
+        /* (a) the Stage-3 multi-class merge ran: >=2 classes. */
+        AIC_CHECK_MSG(B.num_blocks == 2,
+                      "T4: mixconj_blocks(%ld,%ld) should give 2 classes, got %ld "
+                      "(Stage-3 multi-class merge not exercised at eta>0)",
+                      (long) fx[i].d, (long) fx[i].m, (long) B.num_blocks);
+        AIC_CHECK_MSG(got[0] == want[0] && got[1] == want[1],
+                      "T4: block sizes [%ld,%ld] != expected [%ld,%ld]", got[0],
+                      got[1], want[0], want[1]);
+        /* (b) iso_def is O(eta). */
+        AIC_CHECK_MSG(c < 20.0,
+                      "T4: iso_def/eta=%.4f exceeds 20 (multi-class merge not "
+                      "O(eta)?)", c);
+        /* (c) bijective. */
+        AIC_CHECK_MSG(bij, "T4: v not bijective");
+        AIC_CHECK_MSG(dd(a) > 0.5, "T4: sigma_min=%.4f <= 0.5", dd(a));
+
+        arb_clear(a);
+        arb_clear(iso);
+        aic_dhom_v_clear(&v);
+        aic_dhom_B_clear(&B);
+        aic_assoc_ecstar_clear(&ae);
+        aic_ucp_kraus_clear(&phi);
+    }
 }
 
 int main(void)
@@ -408,6 +574,7 @@ int main(void)
     test_t1_eta0_oracle();
     test_t2_universality();
     test_t3_oblique();
+    test_t4_multiclass();
     aic_test_report("test_cstar_build");
     return 0;
 }
