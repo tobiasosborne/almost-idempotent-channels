@@ -1,6 +1,39 @@
 # HANDOFF.md — almost-idempotent-channels
 
-## ▶ LATEST CHECKPOINT (2026-05-31, session: factorize F4.1 + F3-fix landed; hostile review INTERRUPTED) — READ FIRST
+## ▶ LATEST CHECKPOINT (2026-05-31, session: HEADLINE CLOSED on F4.1; F4.2 → v0.2; packaging planned) — READ FIRST
+
+**The paper's FINAL headline `th_factorization` (`aic-tff`) is CLOSED.** Delivered on
+F4.1: certified `Δ,Υ,B` (genuine C*), η=0 oracle exact (`ΔΥ=Φ`, `ΥΔ=1_B` to ~1e-75),
+per-instance rigorous `O(η)` eig-free bound (`hi/η ∈ [3.1,5.9]`), four dual channels
+(`Enc=Υ*`, `Dec=Δ*`). `test_factorize` n=121 green, zero warnings. With this, **ALL the
+paper's constructive headlines are done**: th_idemp_structure, th_almost_idemp, th_main,
+th_main_ext, th_factorization. `master` clean + pushed (HEAD `0f0e75d`).
+
+**F4.2 (the faithful dimension-independence canary) DEFERRED to v0.2 — bead `aic-bag`.**
+The Convex.jl diamond-norm DUAL SDP stalls (SLOW_PROGRESS) at n≥6 (n=7 OOMs at 47 GB),
+INDEPENDENT of MOSEK tolerance (tight 1e-14 → ~100s/~20GB; relaxed 1e-9 → still stalls),
+so the tight two-sided arb certificate is blocked at the sweep dims. The PRIMAL converges
+OPTIMAL and IS the faithful cb-norm (e.g. mixconj_blocks(6,2): `‖ΔΥ−Φ‖_cb=0.012955`); the
+strong-duality poison guard correctly refused to emit a loose-dual fixture (no fake).
+FINDINGS §D6. Scaffolding committed: `src/aic_factorize_shim.{c,h}` (green, smoke-tested),
+`tools/gen_fixtures_factorize_f4.jl` (eager-flush + `F4_ONLY` filter + relaxed-tol override
++ GC). v0.2 routes in `aic-bag`: reformulate the dual / move to direct JuMP+MOSEK /
+primal-only canary.
+
+**Packaging PLANNED (NEW epic `aic-95g`).** Three web-researched docs
+(`docs/research/packaging_{c_core,julia,python_and_release}.md`) + 4 children: `.1` CMake
+migration (the READY linchpin — also fixes the slow/hang-prone `make test` via CTest),
+`.2` Julia JLL (Yggdrasil; the OpenBLAS32-not-OpenBLAS gotcha), `.3` Python cffi+wheels,
+`.4` release engineering. Crux across all three: the FLINT/arb+LAPACK native dep.
+
+**▶ NEXT AGENT — two independent ready fronts:**
+1. **Packaging** (`aic-95g.1`, the CMake migration) — self-contained, low-risk, high-value
+   (unblocks Julia+Python distribution AND fixes the test-speed/hang pain). Likely first.
+2. **v0.2 F4.2 rigorous cert** (`aic-bag`) — the diamond-norm dual at n≥6.
+
+---
+
+## ▶ PRIOR CHECKPOINT (2026-05-31, session: factorize F4.1 + F3-fix landed; hostile review INTERRUPTED)
 
 Orchestrated session. **Net: factorize F4.1 (end-to-end verify + dual channels)
 and a root-cause F3 robustness fix (PSD-cone Kraus extraction) are BUILT, green,
