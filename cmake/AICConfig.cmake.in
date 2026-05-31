@@ -1,0 +1,31 @@
+# AICConfig.cmake.in — CMake package-config template (bead aic-95g.1, Inc3).
+#
+# configure_package_config_file() expands @PACKAGE_INIT@ and the @-vars into the
+# installed lib/cmake/AIC/AICConfig.cmake. A consumer's
+# `find_package(AIC CONFIG REQUIRED)` loads this file; it MUST re-find every
+# dependency that AICTargets.cmake names in an imported-target link interface,
+# because those imported targets (PkgConfig::FLINT, PkgConfig::LAPACKE,
+# LAPACK::LAPACK, BLAS::BLAS) do not exist in the consumer's scope until we
+# re-create them here. Then it pulls in AICTargets.cmake (the exported
+# AIC::aic / AIC::aic_static targets).
+#
+# NOTE on the flint.pc trap (see CMakeLists.txt GOTCHA 2): the missing `-lflint`
+# is NOT fixed here. AICTargets.cmake bakes the absolute ${FLINT_LIBRARY} path
+# (the find_library result) into the link interface, so a CMake consumer of
+# AIC::aic links libflint via that absolute system path regardless of what
+# flint.pc's Libs: line omits. pkg_check_modules(FLINT) below is only needed so
+# the PkgConfig::FLINT target referenced by AICTargets.cmake resolves (it
+# supplies FLINT's Cflags + -lgmp -lmpfr).
+
+@PACKAGE_INIT@
+
+include(CMakeFindDependencyMacro)
+find_dependency(PkgConfig)
+pkg_check_modules(FLINT   REQUIRED IMPORTED_TARGET flint>=3.0)
+pkg_check_modules(LAPACKE REQUIRED IMPORTED_TARGET lapacke)
+find_dependency(LAPACK)
+find_dependency(BLAS)
+
+include("${CMAKE_CURRENT_LIST_DIR}/AICTargets.cmake")
+
+check_required_components(AIC)

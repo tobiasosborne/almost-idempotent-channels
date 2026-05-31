@@ -67,6 +67,13 @@ set(AIC_DEP_LIBS
     BLAS::BLAS
     m)
 
+# GNUInstallDirs defines CMAKE_INSTALL_{LIBDIR,INCLUDEDIR,BINDIR} (e.g. lib,
+# include, bin). Included HERE — before the foreach() usage-requirements block —
+# because that block's $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}> needs the
+# variable set at configure time (CMake variable substitution happens when the
+# target_include_directories command runs, not lazily in the genex).
+include(GNUInstallDirs)
+
 # Strict warnings on the library compile (CLAUDE.md §"Build & test"). NO -Werror.
 set(AIC_WARN_FLAGS -Wall -Wextra -Wpedantic -Wshadow -Wstrict-prototypes)
 
@@ -101,14 +108,17 @@ set_target_properties(aic PROPERTIES
     VERSION   ${PROJECT_VERSION}
     SOVERSION ${PROJECT_VERSION_MAJOR})
 
-# PUBLIC usage requirements on BOTH real libraries: include dirs (build-interface
-# only this increment — no INSTALL_INTERFACE until the install() increment) and
-# the full dep link line. A consumer linking aic/aic_static thus inherits the
-# headers and flint+lapacke+lapack+blas+m automatically.
+# PUBLIC usage requirements on BOTH real libraries: include dirs and the full
+# dep link line. A consumer linking aic/aic_static thus inherits the headers and
+# flint+lapacke+lapack+blas+m automatically. The BUILD_INTERFACE dirs serve the
+# in-tree build (tests); the INSTALL_INTERFACE dir tells the EXPORTED targets
+# where the installed headers live (<prefix>/include — GNUInstallDirs is
+# included in the install section below, so CMAKE_INSTALL_INCLUDEDIR is set).
 foreach(_lib aic aic_static)
   target_include_directories(${_lib} PUBLIC
       $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-      $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/include>)
+      $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/include>
+      $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
   target_link_libraries(${_lib} PUBLIC ${AIC_DEP_LIBS})
 endforeach()
 
@@ -121,6 +131,68 @@ include(GenerateExportHeader)
 generate_export_header(aic
     BASE_NAME AIC
     EXPORT_FILE_NAME ${CMAKE_CURRENT_BINARY_DIR}/include/aic/aic_export.h)
+
+# --- Install / Export / pkg-config (bead aic-95g.1, Inc3) -------------------
+# Make the build consumable two ways: modern CMake `find_package(AIC CONFIG)`
+# exposing AIC::aic / AIC::aic_static, and classic `pkg-config aic`. Headers go
+# under <includedir>/aic/. GNUInstallDirs (included above) supplies the
+# destination dirs. No visibility/AIC_EXPORT work here — that is a later
+# increment; at default visibility the .so still exports every symbol.
+
+# Install the libraries into the EXPORT set AICTargets. The shared libaic.so* is
+# a LIBRARY artifact, the static libaic.a an ARCHIVE; RUNTIME is for DLLs on
+# Windows (harmless here).
+install(TARGETS aic aic_static EXPORT AICTargets
+    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+
+# Public headers: install include/aic/ but EXCLUDE the internal headers
+# (aic_cstar_internal.h, aic_factorize_internal.h) — they are an implementation
+# detail and must not appear on the installed public surface. FILES_MATCHING
+# first whitelists *.h, then the PATTERN ... EXCLUDE drops the *_internal.h ones.
+install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/include/aic
+    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+    FILES_MATCHING PATTERN "*.h" PATTERN "*_internal.h" EXCLUDE)
+
+# The generated export header lives in the build tree (not include/aic/), so it
+# is installed separately alongside the source headers.
+install(FILES ${CMAKE_CURRENT_BINARY_DIR}/include/aic/aic_export.h
+    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/aic)
+
+# Export the imported-target description (AICTargets.cmake): the AIC::aic /
+# AIC::aic_static targets with their include dirs (INSTALL_INTERFACE) and the
+# baked-in link interface (including the absolute ${FLINT_LIBRARY} path — that
+# absolute system path is what fixes the missing -lflint for CMake consumers,
+# the flint.pc trap; see GOTCHA 2 above).
+install(EXPORT AICTargets
+    FILE AICTargets.cmake
+    NAMESPACE AIC::
+    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/AIC)
+
+# Generate + install the package config so find_package(AIC CONFIG) works. The
+# .in re-finds the deps (PkgConfig::FLINT etc.) the consumer needs in scope.
+include(CMakePackageConfigHelpers)
+configure_package_config_file(
+    ${CMAKE_CURRENT_SOURCE_DIR}/cmake/AICConfig.cmake.in
+    ${CMAKE_CURRENT_BINARY_DIR}/AICConfig.cmake
+    INSTALL_DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/AIC)
+write_basic_package_version_file(
+    ${CMAKE_CURRENT_BINARY_DIR}/AICConfigVersion.cmake
+    VERSION ${PROJECT_VERSION} COMPATIBILITY SameMajorVersion)
+install(FILES
+    ${CMAKE_CURRENT_BINARY_DIR}/AICConfig.cmake
+    ${CMAKE_CURRENT_BINARY_DIR}/AICConfigVersion.cmake
+    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/AIC)
+
+# pkg-config file. The .in spells out the full private dep chain in Libs.private
+# (NOT via Requires: flint) because Debian's flint.pc omits -lflint — see the
+# trap note in cmake/aic.pc.in and GOTCHA 2.
+configure_file(
+    ${CMAKE_CURRENT_SOURCE_DIR}/cmake/aic.pc.in
+    ${CMAKE_CURRENT_BINARY_DIR}/aic.pc @ONLY)
+install(FILES ${CMAKE_CURRENT_BINARY_DIR}/aic.pc
+    DESTINATION ${CMAKE_INSTALL_LIBDIR}/pkgconfig)
 
 # --- Tests / CTest ----------------------------------------------------------
 include(CTest)                          # defines BUILD_TESTING (default ON)

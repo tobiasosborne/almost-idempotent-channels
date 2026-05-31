@@ -1,0 +1,25 @@
+# aic.pc.in — pkg-config template (bead aic-95g.1, Inc3).
+#
+# Consumed by pkg-config / Meson / scikit-build-core (the Python binding layer)
+# downstreams. configure_file(... @ONLY) expands the @CMAKE_INSTALL_*@ vars; the
+# relative ${libdir}/${includedir} under ${prefix} keep the .pc relocatable
+# (CMAKE_INSTALL_FULL_* would bake absolute paths).
+#
+# THE flint.pc TRAP (CMakeLists.txt GOTCHA 2): on Debian/Ubuntu the installed
+# flint.pc Libs: line is `-L${libdir} -lgmp -lmpfr` — it OMITS -lflint. So a
+# `Requires: flint` alone does NOT put -lflint on a static link line. We keep
+# `Requires: flint >= 3.0` for its Cflags only (our public headers #include
+# <flint/...>), and spell out the FULL private dep chain in Libs.private so
+# `pkg-config --static --libs aic` links libflint + LAPACK(E)/BLAS/m explicitly.
+prefix=@CMAKE_INSTALL_PREFIX@
+exec_prefix=${prefix}
+libdir=${prefix}/@CMAKE_INSTALL_LIBDIR@
+includedir=${prefix}/@CMAKE_INSTALL_INCLUDEDIR@
+
+Name: AIC
+Description: Almost-idempotent channels C core (FLINT/arb + LAPACK)
+Version: @PROJECT_VERSION@
+Requires: flint >= 3.0
+Libs: -L${libdir} -laic
+Libs.private: -lflint -llapacke -llapack -lblas -lm
+Cflags: -I${includedir}
