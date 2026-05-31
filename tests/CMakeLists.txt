@@ -61,9 +61,15 @@ foreach(_src ${AIC_TEST_SRCS})
   add_test(NAME ${_name} COMMAND ${_name})
 
   # TIMEOUT on EVERY test — fail-loud kill of the hang class (bead aic-xo0).
+  # slow gets 600 s, not 300: the heaviest arb drivers run ~200 s SOLO and the
+  # 300 s cap produced FALSE timeouts under -j contention (hostile review
+  # aic-95g.1, test_assoc2 timed out at 300 s under -j6 but passes in 203 s
+  # solo). The timeout exists to catch HANGS (infinite), so a generous 600 s
+  # still fails loud without flaking under load. fast stays tight at 120 s (all
+  # those drivers are sub-second).
   if(${_name} IN_LIST AIC_SLOW_TESTS)
-    set_tests_properties(${_name} PROPERTIES TIMEOUT 300 LABELS "slow")
+    set_tests_properties(${_name} PROPERTIES TIMEOUT 600 LABELS "slow")
   else()
-    set_tests_properties(${_name} PROPERTIES TIMEOUT 300 LABELS "fast")
+    set_tests_properties(${_name} PROPERTIES TIMEOUT 120 LABELS "fast")
   endif()
 endforeach()

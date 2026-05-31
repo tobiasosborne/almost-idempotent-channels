@@ -32,6 +32,20 @@ if(NOT CMAKE_BUILD_TYPE AND NOT _is_multi_config)
       "Build type (RelWithDebInfo => -O2 -g, like the Makefile)" FORCE)
 endif()
 
+# Rule 4 (fail-loud): the library relies on assert() for its invariants (342
+# sites across src/), and some tests assert directly. CMake's optimized build
+# types (Release/RelWithDebInfo/MinSizeRel) inject -DNDEBUG, which compiles
+# assert() OUT — the old Makefile never did, so this would SILENTLY disable
+# every fail-loud guard (the hostile review for aic-95g.1 caught test_smoke
+# passing with assert(1==2) under the NDEBUG default). Strip -DNDEBUG from every
+# config so asserts stay LIVE regardless of -DCMAKE_BUILD_TYPE. Done before
+# add_subdirectory(tests/bench) so the (normal-variable) override propagates
+# into those scopes. To re-enable NDEBUG deliberately, pass it per-target.
+foreach(_cfg "" _DEBUG _RELEASE _RELWITHDEBINFO _MINSIZEREL)
+  string(REGEX REPLACE "[-/]D *NDEBUG" "" CMAKE_C_FLAGS${_cfg}
+         "${CMAKE_C_FLAGS${_cfg}}")
+endforeach()
+
 # --- Dependencies -----------------------------------------------------------
 # FLINT (>=3.0) carries the certified arb/acb path; arb is INSIDE FLINT 3.x, so
 # there is no separate libarb. LAPACKE is the C interface to LAPACK that the

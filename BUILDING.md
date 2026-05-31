@@ -146,6 +146,11 @@ plain `Requires: flint` would not put `libflint` on a static link line.
 - **`find_package(LAPACK)` does NOT provide LAPACKE.** It gives Fortran LAPACK
   only; the C-interface LAPACKE is found separately via `pkg_check_modules`. The
   final link needs both. Handled.
+- **`assert()` stays live in every build type.** The library uses `assert()` for
+  its fail-loud Rule-4 invariants (342 sites) and some tests assert directly, so
+  the build strips `-DNDEBUG` from all optimized configs
+  (Release/RelWithDebInfo/MinSizeRel). Do not re-add `-DNDEBUG` globally — it
+  would silently compile out every guard.
 - **Ninja "manifest dirty" / clock-skew failures.** On a box with clock skew,
   the Ninja generator can refuse to build ("manifest dirty"). The default
   **Unix Makefiles** generator (what `cmake -S . -B build` and `make` use here)
