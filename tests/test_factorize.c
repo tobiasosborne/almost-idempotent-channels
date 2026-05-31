@@ -96,6 +96,135 @@ static double opdiff(const acb_mat_t A, const acb_mat_t B, slong prec)
     return o;
 }
 
+/* ===================== P-trace: the D1 partial-trace direction pin =========== *
+ * THE #1 F3 RISK (blueprint D1, the cbnorm/O2 partial-trace-direction bug class).
+ * lem_RC's C_j is
+ *   C_j = (1/d_{L_j}) Tr_{L_j} R_j,   R_j = 1_{L_j} (x) C_j  in B(L_j (x) E_j),
+ * with L_j the LEFT/MAJOR factor (forced by the U_{js} (x) 1_{E_j} Kroneckers).
+ * So C_j = (1/d_{L_j}) aic_mat_partial_trace_LEFT(R_j, a=d_{L_j}, b=d_{E_j})
+ * (traces factor 1 = the LEFT/C^a, leaving the b x b RIGHT = E_j). With a wrong
+ * partial_trace_RIGHT the result is the WRONG SHAPE (d_{L_j} x d_{L_j}) and the
+ * WRONG value — caught instantly by an ASYMMETRIC fixture d_{L_j} != d_{E_j}.
+ * Build R = 1_3 (x) C_true, C_true = diag(1, 0.5): correct trace_left -> 2x2
+ * = C_true; wrong trace_right -> 3x3 = Tr(C_true)*I_3 = 1.5*I_3 (shape + value
+ * both wrong). Bake as a regression BEFORE any L_j code. */
+static void test_ptrace_pin(void)
+{
+    printf("P-trace (D1, the #1 risk): asymmetric d_Lj=3 != d_Ej=2 partial trace\n");
+    slong a = 3, b = 2;             /* d_{L_j} = 3 (LEFT), d_{E_j} = 2 (RIGHT) */
+    acb_mat_t Ctrue, IL, R, outL, outR;
+    acb_mat_init(Ctrue, b, b);
+    acb_mat_init(IL, a, a);
+    acb_mat_init(R, a * b, a * b);
+    acb_mat_init(outL, b, b);       /* trace_left keeps the b x b RIGHT (E_j)  */
+    acb_mat_init(outR, a, a);       /* trace_right keeps the a x a LEFT (wrong) */
+    acb_set_d(acb_mat_entry(Ctrue, 0, 0), 1.0);
+    acb_set_d(acb_mat_entry(Ctrue, 1, 1), 0.5);
+    acb_mat_one(IL);
+    aic_mat_kronecker(R, IL, Ctrue, CPREC);          /* R = 1_3 (x) C_true */
+
+    /* CORRECT: (1/a) Tr_left(R) over the LEFT factor a -> 2x2 == C_true. */
+    aic_mat_partial_trace_left(outL, R, a, b, CPREC);
+    {
+        acb_t inv;
+        acb_init(inv);
+        acb_set_d(inv, 1.0 / (double) a);
+        acb_mat_scalar_mul_acb(outL, outL, inv, CPREC);
+        acb_clear(inv);
+    }
+    double cdiff = opdiff(outL, Ctrue, CPREC);
+
+    /* WRONG direction: Tr_right(R) over the RIGHT factor b -> 3x3 = Tr(C_true) I_3
+     * = 1.5 I_3. Shape (3x3 != 2x2) AND value are both wrong. */
+    aic_mat_partial_trace_right(outR, R, a, b, CPREC);
+
+    printf("  trace_LEFT  -> %ldx%ld, ||(1/%ld)Tr_L R - C_true||=%.3e (expect ~0)\n",
+           (long) acb_mat_nrows(outL), (long) acb_mat_ncols(outL), (long) a, cdiff);
+    printf("  trace_RIGHT -> %ldx%ld (WRONG shape: != %ldx%ld); diag ~ Tr(C_true)=%.2f\n",
+           (long) acb_mat_nrows(outR), (long) acb_mat_ncols(outR), (long) b, (long) b,
+           dd(acb_realref(acb_mat_entry(outR, 0, 0))));
+
+    AIC_CHECK_MSG(acb_mat_nrows(outL) == b && acb_mat_ncols(outL) == b,
+                  "P-trace: trace_left must return %ldx%ld (E_j)", (long) b, (long) b);
+    AIC_CHECK_MSG(cdiff < 1e-12,
+                  "P-trace: (1/d_Lj) Tr_left(1(x)C) != C_true (=%.3e) — WRONG "
+                  "partial-trace direction (D1, the #1 risk)", cdiff);
+    AIC_CHECK_MSG(acb_mat_nrows(outR) == a,
+                  "P-trace: trace_right returns the WRONG shape (sanity)");
+
+    acb_mat_clear(outR); acb_mat_clear(outL); acb_mat_clear(R);
+    acb_mat_clear(IL); acb_mat_clear(Ctrue);
+}
+
+/* ===================== P-cent: the 1-design CENTRALITY pin ================== *
+ * lem_RC(i) is the FIRST place the genuine 1-design CENTRALITY (diag_j2,
+ * .tex:2776) is load-bearing: R_j = 1_{L_j} (x) C_j requires
+ *   D_j(X) := Sum_s p_{js} X U_{js}^dag (x) U_{js}
+ *           = Sum_s p_{js} U_{js}^dag (x) U_{js} X     for all X in B(L_j).
+ * F2's tests (Delta' CP, ||Delta'-Delta~||) are BLIND to this — they hold for any
+ * unitary set with Sum p_s = 1. This pin verifies the per-block Pauli design (the
+ * d_j^2 Paulis S_{ab} = X^a Z^b, weight d_j^{-2}, aic_dhom_pauli) is central on a
+ * NON-scalar X0. Mutation (drop a Pauli / perturb a weight) -> O(1) RED. */
+static double design_centrality_defect(slong d, const acb_mat_t X0, slong prec)
+{
+    /* L = Sum_s p_s X0 U_s^dag (x) U_s ; Rt = Sum_s p_s U_s^dag (x) U_s X0. */
+    acb_mat_t L, Rt, U, Ud, X0U, X0Ud, T;
+    acb_mat_init(L, d * d, d * d);
+    acb_mat_init(Rt, d * d, d * d);
+    acb_mat_init(U, d, d);
+    acb_mat_init(Ud, d, d);
+    acb_mat_init(X0Ud, d, d);   /* X0 U^dag (LEFT factor of the L term)       */
+    acb_mat_init(X0U, d, d);    /* U X0    (RIGHT factor of the R term)       */
+    acb_mat_init(T, d * d, d * d);
+    acb_mat_zero(L);
+    acb_mat_zero(Rt);
+    arb_t ps;
+    arb_init(ps);
+    arb_set_si(ps, 1);
+    arb_div_si(ps, ps, d * d, prec);     /* p_s = 1/d^2 */
+    for (slong qa = 0; qa < d; qa++)
+        for (slong qb = 0; qb < d; qb++) {
+            aic_dhom_pauli(U, d, qa, qb, prec);          /* U_s = S_{ab} */
+            acb_mat_conjugate_transpose(Ud, U);          /* U_s^dag */
+            /* L term: (X0 U_s^dag) (x) U_s */
+            acb_mat_mul(X0Ud, X0, Ud, prec);
+            aic_mat_kronecker(T, X0Ud, U, prec);
+            acb_mat_scalar_mul_arb(T, T, ps, prec);
+            acb_mat_add(L, L, T, prec);
+            /* R term: U_s^dag (x) (U_s X0) */
+            acb_mat_mul(X0U, U, X0, prec);               /* U_s X0 */
+            aic_mat_kronecker(T, Ud, X0U, prec);
+            acb_mat_scalar_mul_arb(T, T, ps, prec);
+            acb_mat_add(Rt, Rt, T, prec);
+        }
+    double diff = opdiff(L, Rt, prec);
+    arb_clear(ps);
+    acb_mat_clear(T); acb_mat_clear(X0U); acb_mat_clear(X0Ud);
+    acb_mat_clear(Ud); acb_mat_clear(U); acb_mat_clear(Rt); acb_mat_clear(L);
+    return diff;
+}
+
+static void test_centrality_pin(void)
+{
+    printf("P-cent (lem_RC centrality diag_j2): per-block Pauli design is central\n");
+    slong d = 3;
+    acb_mat_t X0;
+    acb_mat_init(X0, d, d);
+    /* a NON-scalar Hermitian X0 = diag(1,2,3) + a real off-diagonal coupling. */
+    acb_set_si(acb_mat_entry(X0, 0, 0), 1);
+    acb_set_si(acb_mat_entry(X0, 1, 1), 2);
+    acb_set_si(acb_mat_entry(X0, 2, 2), 3);
+    acb_set_d(acb_mat_entry(X0, 0, 1), 0.5);
+    acb_set_d(acb_mat_entry(X0, 1, 0), 0.5);
+    double c = design_centrality_defect(d, X0, CPREC);
+    printf("  d=%ld non-scalar X0: ||D_j(X0)_left - D_j(X0)_right|| = %.3e\n",
+           (long) d, c);
+    AIC_CHECK_MSG(c < 1e-9,
+                  "P-cent: per-block Pauli design NOT central (=%.3e) — diag_j2 "
+                  "broken (dropped Pauli / wrong weight?)", c);
+    acb_mat_clear(X0);
+}
+
 /* Max over B's matrix units E_i of ||Upsilon~(Delta~(E_i)) - E_i||_op
  * (Upsilon~ Delta~ = 1_B, .tex:2751). */
 static double updel_defect(const aic_factorize *F, slong prec)
@@ -652,12 +781,368 @@ static void test_t4_eta_gt0(void)
     }
 }
 
+/* ===================== F3 helpers (Upsilon via lem_RC) ===================== */
+
+/* max_j ||R_j - 1_{L_j} (x) C_j||_op (lem_RC(i), .tex:2846). Certifies lem_RC(i)
+ * + the D1 partial-trace direction + centrality SIMULTANEOUSLY: it RED-fires if
+ * the per-block design is not central, the trace is the wrong direction, or W_j
+ * is mis-stacked. Rebuilds R_j/C_j from the cached W_j (gauge-invariant). Reports
+ * the worst sigma_max(C_j) deviation too. */
+static double Rj_minus_1xCj_worst(const aic_factorize *F, double *worst_smax_dev,
+                                  slong prec)
+{
+    const aic_dhom_B *B = F->v->B;
+    double worst = 0.0, wdev = 0.0;
+    for (slong j = 0; j < B->num_blocks; j++) {
+        slong dj = B->d[j], e_j = F->e[j], dim = dj * e_j;
+        acb_mat_t Rj, IL, oneCj;
+        acb_mat_init(Rj, dim, dim);
+        acb_mat_init(IL, dj, dj);
+        acb_mat_init(oneCj, dim, dim);
+        aic_factorize_upsilon_Rj(Rj, F, j, F->W[j], e_j, prec);
+        acb_mat_one(IL);
+        aic_mat_kronecker(oneCj, IL, F->C[j], prec);   /* 1_{L_j} (x) C_j */
+        double d = opdiff(Rj, oneCj, prec);
+        if (d > worst) worst = d;
+        /* sigma_max(C_j) via opnorm of C_j. */
+        arb_t s;
+        arb_init(s);
+        {
+            acb_mat_t Cmid;
+            acb_mat_init(Cmid, e_j, e_j);
+            for (slong p = 0; p < e_j; p++)
+                for (slong q = 0; q < e_j; q++)
+                    acb_get_mid(acb_mat_entry(Cmid, p, q), acb_mat_entry(F->C[j], p, q));
+            aic_mat_opnorm(s, Cmid, prec);
+            acb_mat_clear(Cmid);
+        }
+        double dev = dd(s) - 1.0;
+        if (dev < 0) dev = -dev;
+        if (dev > wdev) wdev = dev;
+        arb_clear(s);
+        acb_mat_clear(oneCj); acb_mat_clear(IL); acb_mat_clear(Rj);
+    }
+    if (worst_smax_dev) *worst_smax_dev = wdev;
+    return worst;
+}
+
+/* max over B matrix units E_i of ||Upsilon(Delta(E_i)) - E_i||_op (Upsilon Delta
+ * = 1_B, .tex:2871). Δ = the UCP F2 encode; Upsilon = the UCP F3 decode. */
+static double ups_del_defect(const aic_factorize *F, slong prec)
+{
+    slong nB = F->n_B, dimB = F->v->B->dim_B;
+    acb_mat_t Ei, DE, UDE;
+    acb_mat_init(Ei, nB, nB);
+    acb_mat_init(DE, F->N, F->N);
+    acb_mat_init(UDE, nB, nB);
+    double worst = 0.0;
+    for (slong i = 0; i < dimB; i++) {
+        aic_dhom_B_matunit(Ei, F->v->B, i);
+        aic_factorize_delta(DE, F, Ei, prec);       /* Delta(E_i) (UCP) */
+        aic_factorize_upsilon(UDE, F, DE, prec);     /* Upsilon(Delta(E_i)) */
+        double d = opdiff(UDE, Ei, prec);
+        if (d > worst) worst = d;
+    }
+    acb_mat_clear(UDE); acb_mat_clear(DE); acb_mat_clear(Ei);
+    return worst;
+}
+
+/* max over M_N matrix units E_pq of ||Delta(Upsilon(E_pq)) - target(E_pq)||_op,
+ * target = Phi (eta=0, via aic_ucp_apply) or Phi~ = S_tilde (eta>0). DelUps = Phi
+ * (.tex:2734, the headline). */
+static double del_ups_defect(const aic_factorize *F, const aic_ucp_kraus *phi,
+                             int use_phitilde, slong prec)
+{
+    slong N = F->N;
+    acb_mat_t Epq, UE, DUE, T;
+    acb_mat_init(Epq, N, N);
+    acb_mat_init(UE, F->n_B, F->n_B);
+    acb_mat_init(DUE, N, N);
+    acb_mat_init(T, N, N);
+    double worst = 0.0;
+    for (slong p = 0; p < N; p++)
+        for (slong q = 0; q < N; q++) {
+            acb_mat_zero(Epq);
+            acb_set_si(acb_mat_entry(Epq, p, q), 1);
+            aic_factorize_upsilon(UE, F, Epq, prec);    /* Upsilon(E_pq) */
+            aic_factorize_delta(DUE, F, UE, prec);       /* Delta(Upsilon(E_pq)) */
+            if (use_phitilde)
+                aic_assoc_superop_apply(T, F->Aec->S_tilde, Epq, prec);
+            else
+                aic_ucp_apply(T, phi, Epq, prec);        /* Phi(E_pq), eta=0 */
+            double d = opdiff(DUE, T, prec);
+            if (d > worst) worst = d;
+        }
+    acb_mat_clear(T); acb_mat_clear(DUE); acb_mat_clear(UE); acb_mat_clear(Epq);
+    return worst;
+}
+
+/* Upsilon(1_H) - I_B (UCP unitality of Upsilon; ~machine by construction). */
+static double upsI_minus_IB(const aic_factorize *F, slong prec)
+{
+    acb_mat_t IH, U, IB;
+    acb_mat_init(IH, F->N, F->N);
+    acb_mat_init(U, F->n_B, F->n_B);
+    acb_mat_init(IB, F->n_B, F->n_B);
+    acb_mat_one(IH);
+    aic_factorize_upsilon(U, F, IH, prec);
+    aic_dhom_B_unit(IB, F->v->B);
+    double d = opdiff(U, IB, prec);
+    acb_mat_clear(IB); acb_mat_clear(U); acb_mat_clear(IH);
+    return d;
+}
+
+/* CP-verdict of Upsilon' via its per-block Choi C^{up}_j (the §C5 midpoint+Weyl
+ * gate, reusing F2's dprime_is_cp pattern). Upsilon'_j: B(H) -> B(L_j); its
+ * Convention-A Choi is C^{up}_j[(p)*d_j + a, (q)*d_j + b] = Upsilon'_j(E_pq)[a,b]
+ * with the H source factor (dim N) MAJOR, the L_j target (dim d_j) MINOR. CP iff
+ * every C^{up}_j is PSD. */
+static int upsilon_prime_is_cp(const aic_factorize *F, double tol,
+                               double *worst_mineig, slong prec)
+{
+    const aic_dhom_B *B = F->v->B;
+    slong N = F->N;
+    int all_cp = 1;
+    double wm = 1e300;
+    for (slong j = 0; j < B->num_blocks; j++) {
+        slong dj = B->d[j], M = N * dj;
+        acb_mat_t Cj, Epq, UE, Cmid, Cmd, negCmid, resid;
+        acb_mat_init(Cj, M, M);
+        acb_mat_init(Epq, N, N);
+        acb_mat_init(UE, dj, dj);
+        acb_mat_init(Cmid, M, M);
+        acb_mat_init(Cmd, M, M);
+        acb_mat_init(negCmid, M, M);
+        acb_mat_init(resid, M, M);
+        acb_mat_zero(Cj);
+        for (slong p = 0; p < N; p++)
+            for (slong q = 0; q < N; q++) {
+                acb_mat_zero(Epq);
+                acb_set_si(acb_mat_entry(Epq, p, q), 1);
+                aic_factorize_upsilon_prime_block(UE, F, j, Epq, prec);
+                for (slong a = 0; a < dj; a++)
+                    for (slong b = 0; b < dj; b++)
+                        acb_set(acb_mat_entry(Cj, p * dj + a, q * dj + b),
+                                acb_mat_entry(UE, a, b));
+            }
+        for (slong p = 0; p < M; p++)
+            for (slong q = 0; q < M; q++)
+                acb_get_mid(acb_mat_entry(Cmid, p, q), acb_mat_entry(Cj, p, q));
+        acb_mat_conjugate_transpose(Cmd, Cmid);
+        acb_mat_add(Cmid, Cmid, Cmd, prec);
+        acb_mat_scalar_mul_2exp_si(Cmid, Cmid, -1);
+        arb_t R, mx, lb;
+        arb_init(R);
+        arb_init(mx);
+        arb_init(lb);
+        acb_mat_sub(resid, Cj, Cmid, prec);
+        aic_mat_frobenius_norm(R, resid, prec);
+        acb_mat_neg(negCmid, Cmid);
+        aic_mat_herm_max_eig(mx, negCmid, prec);
+        arb_neg(lb, mx);
+        arb_sub(lb, lb, R, prec);
+        double mineig_lb = dd(lb);
+        if (mineig_lb < wm) wm = mineig_lb;
+        if (mineig_lb < -tol) all_cp = 0;
+        arb_clear(lb); arb_clear(mx); arb_clear(R);
+        acb_mat_clear(resid); acb_mat_clear(negCmid); acb_mat_clear(Cmd);
+        acb_mat_clear(Cmid); acb_mat_clear(UE); acb_mat_clear(Epq); acb_mat_clear(Cj);
+    }
+    *worst_mineig = wm;
+    return all_cp;
+}
+
+/* ===================== T5: eta=0 oracle for Upsilon ========================= *
+ * On EXACT-idempotent channels (the cleanest ground truth, Rule 6). Tests the
+ * per-block design across >= 2 blocks (block_cond_exp(4,2): B = M_2 (+) M_2 — the
+ * F2 multi-block coverage). The lem_RC structural identity R_j = 1_{L_j} (x) C_j
+ * certifies the D1 trace direction + centrality + W_j stacking at once; the map
+ * identities Upsilon Delta = 1_B and Delta Upsilon = Phi are the gauge-invariant
+ * cross-checks against th_idemp_structure's Gamma o C_M decode. */
+static void t5_one(const char *name, aic_ucp_kraus *phi)
+{
+    aic_assoc_ecstar ae;
+    aic_assoc_ecstar_from_phi(&ae, phi, CPREC);
+    aic_dhom_B B;
+    aic_dhom_v v;
+    arb_t iso;
+    arb_init(iso);
+    aic_cstar_build(&B, &v, iso, &ae.A, 0.0, CPREC);
+
+    aic_factorize F;
+    aic_factorize_build(&F, &v, &ae, phi, CPREC);
+    aic_factorize_delta_build(&F, CPREC);
+    aic_factorize_upsilon_build(&F, 0.3, CPREC);  /* tol_sigma generous (eta=0: =1) */
+
+    double smax_dev;
+    double rc = Rj_minus_1xCj_worst(&F, &smax_dev, CPREC);
+    double ud = ups_del_defect(&F, CPREC);
+    double du = del_ups_defect(&F, phi, /*phitilde=*/0, CPREC);
+    double ui = upsI_minus_IB(&F, CPREC);
+    double cp_mineig;
+    int cp = upsilon_prime_is_cp(&F, 1e-9, &cp_mineig, CPREC);
+
+    printf("T5 %s: N=%ld n_B=%ld m=%ld | ||R_j-1(x)C_j||=%.3e |sigma_max(C_j)-1|=%.3e "
+           "| UpsDel-1_B=%.3e DelUps-Phi=%.3e | Ups(I)-I_B=%.3e Ups' CP=%d "
+           "minEig=%.3e\n", name, (long) F.N, (long) F.n_B,
+           (long) F.v->B->num_blocks, rc, smax_dev, ud, du, ui, cp, cp_mineig);
+
+    AIC_CHECK_MSG(rc < 1e-9, "T5 %s: ||R_j - 1(x)C_j|| = %.3e not ~0 (lem_RC(i) / "
+                  "D1 trace dir / centrality broken)", name, rc);
+    AIC_CHECK_MSG(smax_dev < 1e-9, "T5 %s: |sigma_max(C_j)-1| = %.3e not ~0 "
+                  "(lem_RC ||C_j||=1 at eta=0)", name, smax_dev);
+    AIC_CHECK_MSG(ud < 1e-9, "T5 %s: Upsilon Delta - 1_B = %.3e not ~0", name, ud);
+    AIC_CHECK_MSG(du < 1e-9, "T5 %s: Delta Upsilon - Phi = %.3e not ~0", name, du);
+    AIC_CHECK_MSG(ui < 1e-9, "T5 %s: Upsilon(I_H) - I_B = %.3e not ~0 (not unital)",
+                  name, ui);
+    AIC_CHECK_MSG(cp == 1, "T5 %s: Upsilon' not CP (minEig=%.3e)", name, cp_mineig);
+
+    aic_factorize_clear(&F);
+    arb_clear(iso);
+    aic_dhom_v_clear(&v);
+    aic_dhom_B_clear(&B);
+    aic_assoc_ecstar_clear(&ae);
+}
+
+static void test_t5_eta0_oracle(void)
+{
+    printf("T5 eta=0 oracle (Upsilon via lem_RC; UpsDel=1_B, DelUps=Phi):\n");
+    aic_ucp_kraus phi;
+
+    make_block_cond_exp(&phi, 4, 2);          /* M_2 (+) M_2, m=2 (multi-block) */
+    t5_one("block_cond_exp(4,2)", &phi);
+    aic_ucp_kraus_clear(&phi);
+
+    make_noiseless_subsystem(&phi, 2, 2);     /* M_2, m=1 */
+    t5_one("noiseless_subsystem(2,2)", &phi);
+    aic_ucp_kraus_clear(&phi);
+}
+
+/* max over M_N matrix units E_pq of ||Upsilon(E_pq) - Upsilon~(E_pq)||_op
+ * (.tex:2899, ||Upsilon - Upsilon~||_cb <= O(eta)). Upsilon~ = F1's tilde decode. */
+static double ups_minus_upstilde(const aic_factorize *F, slong prec)
+{
+    slong N = F->N, nB = F->n_B;
+    acb_mat_t Epq, U, Ut;
+    acb_mat_init(Epq, N, N);
+    acb_mat_init(U, nB, nB);
+    acb_mat_init(Ut, nB, nB);
+    double worst = 0.0;
+    for (slong p = 0; p < N; p++)
+        for (slong q = 0; q < N; q++) {
+            acb_mat_zero(Epq);
+            acb_set_si(acb_mat_entry(Epq, p, q), 1);
+            aic_factorize_upsilon(U, F, Epq, prec);          /* UCP Upsilon */
+            aic_factorize_upsilon_tilde(Ut, F, Epq, prec);   /* tilde Upsilon~ */
+            double d = opdiff(U, Ut, prec);
+            if (d > worst) worst = d;
+        }
+    acb_mat_clear(Ut); acb_mat_clear(U); acb_mat_clear(Epq);
+    return worst;
+}
+
+/* ===================== T6: eta>0 (the headline + the D5 pin) ================ *
+ * On make_mixconj (genuinely oblique eta>0, single-block B = M_2, r > 1 — the
+ * regime that EXERCISES the D5 F-ordering). Headlines:
+ *   - Upsilon UCP: Upsilon(I_H)=I_B (machine), Upsilon' CP (§C5 midpoint+Weyl);
+ *   - sigma_max(C_j) >= 1 - O(eta) (lem_RC(ii), report);
+ *   - ||Upsilon - Upsilon~|| = O(eta) (report c = defect/eta);
+ *   - the D5 F-ordering pin: F-LEFT reconstructs Upsilon'Delta ~ 1_B (O(eta));
+ *     F-RIGHT does NOT (O(1)) — the decisive r>1 distinguisher. */
+static void test_t6_eta_gt0(void)
+{
+    printf("T6 eta>0 (Upsilon UCP + ||Ups-Ups~||=O(eta) + the D5 F-ordering pin):\n");
+    struct { slong d, m; double t; } fx[] = {
+        {4, 2, 0.03}, {5, 2, 0.03}};
+    const int n_fx = (int) (sizeof(fx) / sizeof(fx[0]));
+    for (int i = 0; i < n_fx; i++) {
+        aic_ucp_kraus phi;
+        make_mixconj(&phi, fx[i].d, fx[i].m, fx[i].t, CPREC);
+        double eta = eta_proxy(&phi, CPREC);
+        aic_assoc_ecstar ae;
+        aic_assoc_ecstar_from_phi(&ae, &phi, CPREC);
+        arb_t ea;
+        arb_init(ea);
+        aic_ecstar_defect_assoc(ea, &ae.A, CPREC);
+        double eps = dd(ea);
+        arb_clear(ea);
+
+        aic_dhom_B B;
+        aic_dhom_v v;
+        arb_t iso;
+        arb_init(iso);
+        aic_cstar_build(&B, &v, iso, &ae.A, eps, CPREC);
+
+        aic_factorize F;
+        aic_factorize_build(&F, &v, &ae, &phi, CPREC);
+        aic_factorize_delta_build(&F, CPREC);
+        aic_factorize_upsilon_build(&F, 0.5, CPREC);  /* tol_sigma generous for O(eta) */
+
+        double smax_dev;
+        double rc = Rj_minus_1xCj_worst(&F, &smax_dev, CPREC);
+        double ui = upsI_minus_IB(&F, CPREC);
+        double cp_mineig;
+        int cp = upsilon_prime_is_cp(&F, 1e-9, &cp_mineig, CPREC);
+        double uut = ups_minus_upstilde(&F, CPREC);
+        double d5_left  = aic_factorize_upsilon_d5_pin(&F, /*f_left=*/1, CPREC);
+        double d5_right = aic_factorize_upsilon_d5_pin(&F, /*f_left=*/0, CPREC);
+
+        printf("  mixconj(%ld,%ld,%.2f): N=%ld n_B=%ld r=%ld eta=%.3e | "
+               "||R_j-1(x)C_j||=%.3e (c=%.2f) sigma_max(C_j) in [1-%.3e,..] | "
+               "Ups(I)-I_B=%.3e Ups' CP=%d minEig=%.3e | ||Ups-Ups~||=%.3e (c=%.2f) "
+               "| D5: F-LEFT Ups'Del-1_B=%.3e F-RIGHT=%.3e\n", (long) fx[i].d,
+               (long) fx[i].m, fx[i].t, (long) F.N, (long) F.n_B, (long) F.r, eta,
+               rc, rc / eta, smax_dev, ui, cp, cp_mineig, uut, uut / eta,
+               d5_left, d5_right);
+
+        AIC_CHECK_MSG(rc < 8.0 * eta,
+                      "T6 mixconj(%ld,%ld): ||R_j-1(x)C_j||=%.3e not O(eta) "
+                      "(lem_RC(i) at eta>0)", (long) fx[i].d, (long) fx[i].m, rc);
+        AIC_CHECK_MSG(ui < 1e-9, "T6 mixconj(%ld,%ld): Upsilon(I_H)-I_B=%.3e not ~0",
+                      (long) fx[i].d, (long) fx[i].m, ui);
+        AIC_CHECK_MSG(cp == 1, "T6 mixconj(%ld,%ld): Upsilon' NOT CP (minEig=%.3e)",
+                      (long) fx[i].d, (long) fx[i].m, cp_mineig);
+        AIC_CHECK_MSG(smax_dev < 5.0 * eta,
+                      "T6 mixconj(%ld,%ld): |sigma_max(C_j)-1|=%.3e not O(eta)",
+                      (long) fx[i].d, (long) fx[i].m, smax_dev);
+        AIC_CHECK_MSG(uut < 8.0 * eta,
+                      "T6 mixconj(%ld,%ld): ||Upsilon-Upsilon~||=%.3e not O(eta)",
+                      (long) fx[i].d, (long) fx[i].m, uut);
+        /* D5: r>1 here, so F-LEFT must reconstruct Ups'Del~1_B (O(eta)) and
+         * F-RIGHT must NOT (clearly larger). If F-RIGHT is NOT clearly larger,
+         * the F-ordering is not what we think — a FINDING (fail loud). */
+        AIC_CHECK_MSG(F.r > 1, "T6 mixconj(%ld,%ld): r=%ld not >1 — D5 pin VACUOUS "
+                      "(F is 1-dim, can't distinguish orderings)",
+                      (long) fx[i].d, (long) fx[i].m, (long) F.r);
+        AIC_CHECK_MSG(d5_left < 8.0 * eta,
+                      "T6 mixconj(%ld,%ld): D5 F-LEFT Ups'Del-1_B=%.3e not O(eta)",
+                      (long) fx[i].d, (long) fx[i].m, d5_left);
+        AIC_CHECK_MSG(d5_right > 10.0 * d5_left + 1e-3,
+                      "T6 mixconj(%ld,%ld): D5 F-RIGHT (%.3e) NOT clearly worse than "
+                      "F-LEFT (%.3e) — F-ordering is not as believed (FINDING)",
+                      (long) fx[i].d, (long) fx[i].m, d5_right, d5_left);
+
+        aic_factorize_clear(&F);
+        arb_clear(iso);
+        aic_dhom_v_clear(&v);
+        aic_dhom_B_clear(&B);
+        aic_assoc_ecstar_clear(&ae);
+        aic_ucp_kraus_clear(&phi);
+    }
+}
+
 int main(void)
 {
+    /* F3 standalone GO/NO-GO pins (blueprint §4) — run FIRST. */
+    test_ptrace_pin();        /* D1 partial-trace direction (#1 risk) */
+    test_centrality_pin();    /* lem_RC centrality (diag_j2)          */
+
     test_t1_eta0_oracle();
     test_t2_eta_gt0();
     test_t3_eta0_oracle();
     test_t4_eta_gt0();
+    test_t5_eta0_oracle();
+    test_t6_eta_gt0();
     aic_test_report("test_factorize");
     return 0;
 }

@@ -62,6 +62,10 @@ void aic_factorize_build(aic_factorize *out, const aic_dhom_v *v,
     out->Aec = Aec;
     out->phi = phi;
     out->delta_ready = 0;
+    out->upsilon_ready = 0;       /* F3: filled by aic_factorize_upsilon_build */
+    out->r = 0;
+    out->e = NULL;
+    out->W = out->C = out->xi = out->L = NULL;
 
     slong dimA = 0, nB = 0;
     aic_opspace_build_vinv(&out->vinvB, &dimA, &nB, v, prec);
@@ -77,10 +81,29 @@ void aic_factorize_clear(aic_factorize *out)
     out->vinvB = NULL;
     if (out->delta_ready) acb_mat_clear(out->deltaI_invsqrt);
     out->delta_ready = 0;
+    if (out->upsilon_ready) {
+        slong m = out->v->B->num_blocks;
+        for (slong j = 0; j < m; j++) {
+            acb_mat_clear(out->W[j]);
+            acb_mat_clear(out->C[j]);
+            acb_mat_clear(out->xi[j]);
+            acb_mat_clear(out->L[j]);
+        }
+        flint_free(out->W);
+        flint_free(out->C);
+        flint_free(out->xi);
+        flint_free(out->L);
+        flint_free(out->e);
+        acb_mat_clear(out->V);
+        acb_mat_clear(out->upsI_invsqrt);
+    }
+    out->upsilon_ready = 0;
+    out->W = out->C = out->xi = out->L = NULL;
+    out->e = NULL;
     out->v = NULL;
     out->Aec = NULL;
     out->phi = NULL;
-    out->N = out->n_B = out->dim_A = 0;
+    out->N = out->n_B = out->dim_A = out->r = 0;
 }
 
 /* Delta~(X) = iota(v(X)) = v(X) (.tex:2749). iota: A -> B(H) is a no-op on the

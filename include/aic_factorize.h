@@ -105,6 +105,22 @@ typedef struct {
     acb_mat_t *vinvB;              /* OWNED: dim_A operators v^{-1}(B_k), n_B x n_B */
     int        delta_ready;        /* 1 after aic_factorize_delta_build ran (F2)    */
     acb_mat_t  deltaI_invsqrt;     /* OWNED (F2): Delta'(I_B)^{-1/2}, N x N          */
+
+    /* ---- F3 (the UCP DECODE map Upsilon via lem_RC; .tex:2840-2899) ---------
+     * Filled by aic_factorize_upsilon_build (REQUIRES delta_ready). All OWNED;
+     * arrays length m = v->B->num_blocks (one per B-block j). */
+    int        upsilon_ready;      /* 1 after aic_factorize_upsilon_build ran       */
+    slong      r;                  /* Phi's Stinespring/ancilla F dim (= phi->r)    */
+    acb_mat_t  V;                  /* OWNED (F3): Phi's Stinespring V: H->H(x)F,    *
+                                    * (N*r) x N, V[a*N+i,j]=K_a[i,j] (aic_ucp.h)    */
+    slong     *e;                  /* OWNED: e[j] = E_j (per-block Stinespring rank) */
+    acb_mat_t *W;                  /* OWNED: W[j] = W_j: H -> L_j(x)E_j,            *
+                                    * (d_j*e_j) x N, L_j-major (D2)                  */
+    acb_mat_t *C;                  /* OWNED: C[j] = C_j in B(E_j), e_j x e_j (D1)    */
+    acb_mat_t *xi;                 /* OWNED: xi[j] = top RIGHT sing. vec of C_j,    *
+                                    * e_j x 1 unit vector (D4)                       */
+    acb_mat_t *L;                  /* OWNED: L[j] = L_j: L_j -> H(x)F, (N*r) x d_j  */
+    acb_mat_t  upsI_invsqrt;       /* OWNED: Upsilon'(1_H)^{-1/2}, n_B x n_B (D6)    */
 } aic_factorize;
 
 /* Build `out` from a bijective extended O(eta)-isomorphism v: B -> A, the
@@ -180,6 +196,73 @@ void aic_factorize_delta_build(aic_factorize *F, slong prec);
  * (Delta(I_B) = 1_H), CP (congruence preserves the CP of Delta'). */
 void aic_factorize_delta(acb_mat_t out, const aic_factorize *F,
                          const acb_mat_t X, slong prec);
+
+/* ---- Increment F3 — the UCP DECODE map Upsilon via lem_RC (.tex:2840-2899) -
+ * (src/aic_factorize_upsilon.c: W_j, R_j, C_j, xi_j, the lem_RC asserts;
+ *  src/aic_factorize_upsilon2.c: L_j, Upsilon'_j, the Upsilon unitalization). */
+
+/* Per-block W_j: H -> L_j (x) E_j, the Choi/Stinespring of the UCP Delta (F2),
+ * built L_j-MAJOR DIRECTLY (D2). Route: build the Convention-A Choi of the j-th
+ * CP term Delta_j: M_{d_j} -> B(H) of Delta (reuse the F2 block-Choi LAYOUT with
+ * the UCP Delta swapped for Delta'), extract Kraus {D_{j,c}: H->L_j} (each
+ * d_j x N) via aic_ucp_choi_to_kraus_latd, then stack
+ *   W_j[a*e_j + c, p] = D_{j,c}[a, p]   (a in L_j, c in E_j, p in H),  e_j = E_j.
+ * `Wj` is OUTPUT: aic_mat-init'd HERE to (d_j*e_j) x N (caller clears it);
+ * *e_j_out receives E_j (the per-block Stinespring rank). REQUIRES F->delta_ready.
+ * Do NOT use aic_ucp_kraus_to_stinespring (it is ancilla(E_j)-MAJOR, D2 warning). */
+void aic_factorize_upsilon_Wj(acb_mat_t Wj, slong *e_j_out,
+                              const aic_factorize *F, slong j, slong prec);
+
+/* R_j = sum_s p_{js} (U_{js}^dag (x) 1_{E_j}) W_j W_j^dag (U_{js} (x) 1_{E_j})
+ * (.tex:2843, R_def), with U_{js} the PER-BLOCK d_j x d_j Paulis S_ab=X^a Z^b
+ * (d_j^2 of them, weight d_j^{-2}; aic_dhom_pauli — NOT F2's whole-B join, D3).
+ * R_j in B(L_j (x) E_j), L_j the LEFT factor. `Rj` is caller-init'd
+ * (d_j*e_j) x (d_j*e_j); `Wj` is the (d_j*e_j) x N block matrix; e_j = E_j. */
+void aic_factorize_upsilon_Rj(acb_mat_t Rj, const aic_factorize *F, slong j,
+                              const acb_mat_t Wj, slong e_j, slong prec);
+
+/* C_j = (1/d_{L_j}) Tr_{L_j} R_j (D1; lem_RC(i) R_j = 1_{L_j} (x) C_j). Traces
+ * the LEFT/MAJOR factor L_j (= aic_mat_partial_trace_left, a=d_j, b=e_j), leaving
+ * the e_j x e_j operator on E_j. `Cj` caller-init'd e_j x e_j. */
+void aic_factorize_upsilon_Cj(acb_mat_t Cj, const acb_mat_t Rj, slong d_j,
+                              slong e_j, slong prec);
+
+/* Build the full F3 decode-map data (V, W_j, C_j, xi_j, L_j, Upsilon'(1_H)^{-1/2})
+ * and cache it in F; sets F->upsilon_ready = 1. REQUIRES F->delta_ready (asserts).
+ * For each block j: W_j (D2), R_j (D3), C_j (D1), then ASSERTS lem_RC(ii)
+ * sigma_max(C_j) >= 1 - tol_sigma (Rule 4; abort on a straddling ball — fail
+ * loud); xi_j = top RIGHT singular vector of C_j (D4); L_j (D5); finally
+ * Upsilon'(1_H) and ASSERTS ||Upsilon'(1_H) - 1_B||_op < 1 (the inverse-sqrt
+ * basin) before the (-1/2)-power -> upsI_invsqrt (D6). Idempotent: re-clears a
+ * stale F3 cache. tol_sigma is the O(eta) slack on the sigma_max(C_j) lower bound
+ * (e.g. 0.3 — generous; the eta=0 oracle gives exactly 1). */
+void aic_factorize_upsilon_build(aic_factorize *F, double tol_sigma, slong prec);
+
+/* Upsilon'_j(X) = L_j^dag (1_F (x) Phi(X)) L_j : B(H) -> B(L_j) (.tex:2869, the
+ * F-LEFT ordering D5). X is N x N; `out` is d_j x d_j (caller-init'd). REQUIRES
+ * F->upsilon_ready. The manifestly-CP per-block decode component. */
+void aic_factorize_upsilon_prime_block(acb_mat_t out, const aic_factorize *F,
+                                       slong j, const acb_mat_t X, slong prec);
+
+/* Upsilon'(X) = (Upsilon'_1(X), ..., Upsilon'_m(X)) : B(H) -> B, the block-
+ * diagonal join (.tex:2867). X is N x N; `out` is n_B x n_B (caller-init'd,
+ * written block-diagonal). REQUIRES F->upsilon_ready. */
+void aic_factorize_upsilon_prime(acb_mat_t out, const aic_factorize *F,
+                                 const acb_mat_t X, slong prec);
+
+/* Upsilon(X) = Upsilon'(1_H)^{-1/2} Upsilon'(X) Upsilon'(1_H)^{-1/2} (.tex:2897),
+ * the UCP decode map B(H) -> B. X is N x N; `out` is n_B x n_B (caller-init'd, the
+ * block-diagonal B-representative). REQUIRES F->upsilon_ready. Unital by
+ * construction (Upsilon(1_H) = I_B), CP (congruence preserves the CP of Upsilon'). */
+void aic_factorize_upsilon(acb_mat_t out, const aic_factorize *F,
+                           const acb_mat_t X, slong prec);
+
+/* D5 PIN (test/diagnostic): worst over B matrix units of ||Upsilon'_j(Delta(E_i))_j
+ * - (E_i)_j||_op with the (x)1_F ordering chosen by `f_left` (1=F-LEFT correct;
+ * 0=F-RIGHT wrong) for BOTH L_j and Upsilon'_j (V stays F-major). At eta>0 with
+ * r>1, f_left=1 gives O(eta), f_left=0 gives O(1) — the decisive D5 distinguisher.
+ * REQUIRES F->upsilon_ready. */
+double aic_factorize_upsilon_d5_pin(const aic_factorize *F, int f_left, slong prec);
 
 #ifdef __cplusplus
 }

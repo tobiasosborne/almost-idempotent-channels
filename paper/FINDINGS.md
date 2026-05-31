@@ -620,6 +620,48 @@ with the concrete evidence from where they bit.
   interchangeable with a committed double seed for the rigorous eig — the radius must be
   collapsed first.
 
+### C13. `factorize` F3 (lem_RC / UCP decode Υ, `tex:2840-2899`) — the F-ancilla ordering deviation, the structurally-vacuous ξ_j tooth, and the m≥2∧η>0 coverage debt
+- **Status:** CONFIRMED (factorize F3, bead aic-tff; `src/aic_factorize_upsilon{,2,3}.c`,
+  `tests/test_factorize.c` T5/T6 + the P-trace/P-cent/D5 pins). Hostile-reviewed SHIP.
+
+- **(a) THE F-ANCILLA ORDERING — code deviates from the `.tex` Kronecker side (Law-1 deviation).**
+  `.tex:2862` writes `L_j = Σ_s p_{js}(Δ(U_{js}†)⊗1_F) V W_j†(U_{js}⊗ξ_j)` and `.tex:2869`
+  writes `Υ'_j(X)=L_j†(Φ(X)⊗1_F)L_j` — the ancilla `F` factor on the RIGHT. **The code
+  writes those `⊗1_F` factors F-LEFT: `1_F⊗Δ(U_{js}†)` and `1_F⊗Φ(X)`.** This is REQUIRED,
+  not a typo-fix: `aic_ucp_kraus_to_stinespring` builds `V` ancilla-MAJOR
+  (`V[a·dim_K+i,j]=K_a[i,j]`, `aic_ucp.h:14,90`), i.e. `Φ(X)=V†(1_F⊗X)V`, so EVERY `⊗1_F`
+  must be F-LEFT to match V's layout. The paper's `(·)⊗1_F` is convention-relative to its
+  own `V: H→H⊗F` (H-left); our V is F-left, so the sides swap. **η=0 / r=1 is BLIND** (F is
+  1-dim, `1_F⊗M == M⊗1_F`); the **r>1 D5 pin** (`aic_factorize_upsilon_d5_pin`, exercised at
+  T6 r=6/8) is the discriminant: F-LEFT gives `‖Υ'Δ−1_B‖ ≈ 4.4e-2 = O(η)`, the WRONG F-RIGHT
+  gives `≈ 7.6e-1 = O(1)` (~17× separation). A production mutation to F-RIGHT aborts
+  fail-loud in the Υ' unitalization basin. The source docstrings (upsilon2.c:10-18,
+  upsilon3.c:8-24) cite THIS entry.
+
+- **(b) The ξ_j right-vs-left singular-vector tooth is VACUOUS IN PRINCIPLE (an unreachable
+  "test that cannot fail").** `.tex:2859` picks ξ_j with `‖C_jξ_j‖≈1`; the code uses the top
+  RIGHT singular vector (so `‖C_jξ_j‖=σ_max(C_j)`). But `C_j = (1/d_{L_j})Tr_{L_j}(R_j)` with
+  `R_j = Σ_s p_s(U_s†⊗1)W_jW_j†(U_s⊗1)` is a positively-weighted sum of congruences of the
+  PSD `W_jW_j†`, hence **structurally Hermitian PSD for ANY W_j** (measured `‖C_j−C_j†‖_F ~
+  1e-86`, `|⟨u₀,v₀⟩|=1` exactly on every fixture). So left ≡ right and a right→left mutation
+  changes NOTHING (verified: 70/70 stay green). The right-vector choice is paper-correct but
+  a non-normal C_j is NOT constructible from this exact R_j — the tooth is correctly dormant,
+  not a coverage debt to repay.
+
+- **(c) The `‖R_j−1_{L_j}⊗C_j‖` centrality tooth is EXACT (not O(η)) but VACUOUS at η=0;
+  the m≥2 ∧ η>0 regime is unexercised (coverage debt → F4).** lem_RC(i) `R_j=1_{L_j}⊗C_j`
+  is EXACT regardless of η (the full Heisenberg-Weyl Pauli set is an EXACT unitary 1-design,
+  so the twirl projects exactly onto the `{U⊗1}`-commutant); the O(η) of lem_RC lives entirely
+  in `‖C_j‖`=σ_max via lem_RC(ii) (`σ_max ≈ 1−5.4e-3 ~ 1−O(η)`). The check HAS teeth — a
+  drop-Pauli / U→I mutation drives `‖R_j−1⊗C_j‖` to `5.1e-1` (O(1) RED) — but ONLY at η>0:
+  at η=0 the exact-idempotent W_j already yields a central `W_jW_j†`, so the twirl is not
+  load-bearing and the residual is 0 for ANY design (verified: U→I gives residual 0 at m=2
+  η=0 vs 5.1e-1 at m=1 η>0). Since the η>0 fixtures (`make_mixconj`) are all SINGLE-block
+  (m=1), the **per-block-Pauli-vs-whole-B-join distinction (D3) at m≥2 ∧ η>0 is untested**.
+  **F4 must add a multi-block η>0 fixture** (`make_mixconj_blocks` in `tests/test_cstar_build.c`
+  is ready; honor its §C11 caveat — pass `eta`, NOT the ~700×-smaller `eps_assoc`, as the
+  build's eps scale). This is the F2→F3→F4 coverage debt (the F2 review flagged the same).
+
 ---
 
 ## D. Open questions / escalations (unresolved)
