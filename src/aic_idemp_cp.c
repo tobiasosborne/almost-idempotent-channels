@@ -41,9 +41,9 @@
 #include <flint/acb_mat.h>
 #include <flint/arb.h>
 
-#include "aic_idemp.h"
-#include "aic_mat.h"
-#include "aic_ucp.h"
+#include "aic/aic_idemp.h"
+#include "aic/aic_mat.h"
+#include "aic/aic_ucp.h"
 
 /* y (dA x 1) = Gamma(Y) coords for Y (dM x dM): Gamma[l,i*dM+j] Y[i,j]. */
 static void gamma_apply(acb_mat_t y, const acb_mat_t Gamma, const acb_mat_t Y,

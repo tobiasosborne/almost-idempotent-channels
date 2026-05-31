@@ -70,9 +70,9 @@
 #include <flint/arb.h>
 
 #include "aic_corner_internal.h" /* aic_corner_gamma_opnorm_ub (§C5 UB workaround) */
-#include "aic_cstar.h"
-#include "aic_dhom.h"
-#include "aic_ecstar.h"
+#include "aic/aic_cstar.h"
+#include "aic/aic_dhom.h"
+#include "aic/aic_ecstar.h"
 
 /* Route a global matrix unit E_{lm} of B = M_{n1+n2} to the gamma_{jk} image of
  * its block-local unit. Returns a BORROWED pointer to the input image operator

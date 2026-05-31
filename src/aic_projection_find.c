@@ -26,8 +26,8 @@
 #include <flint/acb_mat.h>
 #include <flint/arb.h>
 
-#include "aic_ecstar.h"
-#include "aic_latd.h"
+#include "aic/aic_ecstar.h"
+#include "aic/aic_latd.h"
 #include "aic_projection_internal.h"
 
 /* H_k = (B_k + B_k^dag)/2 (Hermitian, in A since A is dag-closed). `out` is

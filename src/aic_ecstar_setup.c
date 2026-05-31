@@ -11,9 +11,9 @@
 #include <flint/acb.h>
 #include <flint/acb_mat.h>
 
-#include "aic_ecstar.h"
+#include "aic/aic_ecstar.h"
 #include "aic_ecstar_setup.h"
-#include "aic_latd.h"
+#include "aic/aic_latd.h"
 
 static cx *mat_to_cx(const acb_mat_t M, slong n)
 {

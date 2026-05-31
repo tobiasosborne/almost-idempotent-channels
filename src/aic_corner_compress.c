@@ -29,11 +29,11 @@
 #include <flint/acb_mat.h>
 #include <flint/arb.h>
 
-#include "aic_corner.h"
+#include "aic/aic_corner.h"
 #include "aic_corner_internal.h"
-#include "aic_ecstar.h"
-#include "aic_funcalc.h"
-#include "aic_mat.h"
+#include "aic/aic_ecstar.h"
+#include "aic/aic_funcalc.h"
+#include "aic/aic_mat.h"
 
 /* <B_i, Y>_F = Tr(B_i^dag Y) = sum_{a,b} conj(B_i[a,b]) Y[a,b] into `out`. Shared
  * with src/aic_corner_extract.c (aic_corner_apply) via aic_corner_internal.h. */

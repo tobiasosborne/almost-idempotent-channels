@@ -58,8 +58,8 @@
 #include <flint/acb.h>
 #include <flint/acb_mat.h>
 
-#include "aic_latd.h"
-#include "aic_ucp.h"
+#include "aic/aic_latd.h"
+#include "aic/aic_ucp.h"
 
 /* Frobenius norm of a row-major n x n complex array (used for the threshold). */
 static double frob_norm(const double _Complex *A, slong n)

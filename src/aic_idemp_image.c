@@ -37,8 +37,8 @@
 #include <flint/acb_mat.h>
 
 #include "aic_idemp_internal.h"
-#include "aic_latd.h"
-#include "aic_ucp.h"
+#include "aic/aic_latd.h"
+#include "aic/aic_ucp.h"
 
 slong aic_idemp_image_basis(acb_mat_t Delta, const aic_ucp_kraus *phi,
                             slong n, slong prec)

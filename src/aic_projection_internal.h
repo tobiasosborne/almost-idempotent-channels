@@ -8,7 +8,7 @@
 
 #include <flint/acb_mat.h>
 
-#include "aic_ecstar.h"
+#include "aic/aic_ecstar.h"
 
 /* H_k = (B_k + B_k^dag)/2 into `out` (caller-init'd n x n). */
 void aic_projection_herm_part(acb_mat_t out, const acb_mat_t Bk, slong prec);

@@ -58,9 +58,9 @@
 #include <flint/acb_mat.h>
 #include <flint/arb.h>
 
-#include "aic_corner.h"
+#include "aic/aic_corner.h"
 #include "aic_corner_internal.h"  /* aic_corner_gamma_opnorm_ub (aic-2yo workaround) */
-#include "aic_ecstar.h"
+#include "aic/aic_ecstar.h"
 
 /* scalar(W in S_Q) = <Qtilde, W>_F / den, den = <Qtilde, Qtilde>_F (precomputed,
  * caller asserts den != 0). W, Qtilde n x n; `out` caller-init'd acb_t. */

@@ -42,8 +42,8 @@
 #include <flint/acb.h>
 #include <flint/acb_mat.h>
 
-#include "aic_assoc.h"
-#include "aic_latd.h"
+#include "aic/aic_assoc.h"
+#include "aic/aic_latd.h"
 
 /* round(Re Tr S_tilde) as a slong (the idempotent rank). */
 static slong trace_rank(const acb_mat_t S)

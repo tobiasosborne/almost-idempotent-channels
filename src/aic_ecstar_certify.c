@@ -13,10 +13,10 @@
 
 #include <flint/arf.h>
 
-#include "aic_ecstar.h"
+#include "aic/aic_ecstar.h"
 #include "aic_ecstar_setup.h"
-#include "aic_latd.h"
-#include "aic_mat.h"
+#include "aic/aic_latd.h"
+#include "aic/aic_mat.h"
 
 /* load a double witness block (n*n) into an acb_mat (zero-radius). */
 static void cx_to_acb(acb_mat_t M, const cx *X, slong n)

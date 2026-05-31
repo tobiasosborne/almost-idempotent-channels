@@ -65,8 +65,8 @@
 
 #include <flint/acb_mat.h>
 
-#include "aic_ecstar.h"
-#include "aic_ucp.h"
+#include "aic/aic_ecstar.h"
+#include "aic/aic_ucp.h"
 
 #ifdef __cplusplus
 extern "C" {

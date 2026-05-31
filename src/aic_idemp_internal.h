@@ -11,8 +11,8 @@
 
 #include <flint/acb_mat.h>
 
-#include "aic_idemp.h"
-#include "aic_ucp.h"
+#include "aic/aic_idemp.h"
+#include "aic/aic_ucp.h"
 
 /* Step 1 (.tex:2056, lem_carrier). Split the carrier operator Q's spectrum and
  * return dim_M. Because the rank is computed INSIDE, this routine acb_mat_INITs

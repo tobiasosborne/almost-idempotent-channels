@@ -19,7 +19,7 @@
 #include <flint/arb.h>
 
 #include "aic_bench.h"
-#include "aic_funcalc.h"
+#include "aic/aic_funcalc.h"
 
 /* X = 2P - I for P a rank-r projector perturbed by a small Hermitian term, so
  * ||X^2 - I|| is O(perturbation) < 1 (in-domain, non-degenerate intermediate).

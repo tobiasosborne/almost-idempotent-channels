@@ -51,10 +51,10 @@
 #include <flint/acb_mat.h>
 #include <flint/arb.h>
 
-#include "aic_dhom.h"
-#include "aic_factorize.h"
-#include "aic_mat.h"
-#include "aic_ucp.h"
+#include "aic/aic_dhom.h"
+#include "aic/aic_factorize.h"
+#include "aic/aic_mat.h"
+#include "aic/aic_ucp.h"
 
 /* The PSD-CONE EXTRACTION TOLERANCE for the almost-idempotent W_j Choi
  * (paper/FINDINGS.md §C14). The UCP Delta of th_factorization is CP only to

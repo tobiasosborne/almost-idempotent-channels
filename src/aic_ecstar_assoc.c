@@ -19,7 +19,7 @@
 #include <flint/acb_mat.h>
 #include <flint/arb.h>
 
-#include "aic_ecstar.h"
+#include "aic/aic_ecstar.h"
 #include "aic_ecstar_internal.h"
 
 /* max over basis triples (i,j,k) of ||(B_i*B_j)*B_k - B_i*(B_j*B_k)||_op. */

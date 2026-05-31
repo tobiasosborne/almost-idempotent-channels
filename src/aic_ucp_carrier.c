@@ -35,8 +35,8 @@
 #include <flint/acb_mat.h>
 #include <flint/arb.h>
 
-#include "aic_mat.h"
-#include "aic_ucp.h"
+#include "aic/aic_mat.h"
+#include "aic/aic_ucp.h"
 
 /* .tex:1573 — V[a*dim_K + i, j] = K_a[i, j] (column-stack), V: H -> K (x) F. */
 void aic_ucp_kraus_to_stinespring(acb_mat_t V, const aic_ucp_kraus *phi,

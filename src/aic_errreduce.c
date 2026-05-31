@@ -57,8 +57,8 @@
 #include <flint/acb_mat.h>
 #include <flint/arb.h>
 
-#include "aic_dhom.h"
-#include "aic_errreduce.h"
+#include "aic/aic_dhom.h"
+#include "aic/aic_errreduce.h"
 
 /* ------------------------------------------------------------------ defects */
 

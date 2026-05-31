@@ -27,7 +27,7 @@
 
 #include <flint/arb.h>
 
-#include "aic_opspace.h"
+#include "aic/aic_opspace.h"
 
 static double dmid(const arb_t x)
 {

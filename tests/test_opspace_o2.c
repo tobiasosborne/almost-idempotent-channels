@@ -52,15 +52,15 @@
 #include <flint/arb.h>
 #include <flint/arf.h>
 
-#include "aic_assoc.h"
-#include "aic_cbnorm.h"
-#include "aic_cstar.h"
-#include "aic_dhom.h"
-#include "aic_ecstar.h"
-#include "aic_mat.h"
-#include "aic_opspace.h"
+#include "aic/aic_assoc.h"
+#include "aic/aic_cbnorm.h"
+#include "aic/aic_cstar.h"
+#include "aic/aic_dhom.h"
+#include "aic/aic_ecstar.h"
+#include "aic/aic_mat.h"
+#include "aic/aic_opspace.h"
 #include "aic_test.h"
-#include "aic_ucp.h"
+#include "aic/aic_ucp.h"
 
 #include "fixtures_opspace_o2.inc.h"
 

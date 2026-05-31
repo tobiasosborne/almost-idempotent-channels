@@ -44,9 +44,9 @@
 
 #include <flint/acb_mat.h>
 
-#include "aic_corner.h"
-#include "aic_cstar.h"
-#include "aic_ecstar.h"
+#include "aic/aic_corner.h"
+#include "aic/aic_cstar.h"
+#include "aic/aic_ecstar.h"
 
 /* The compressed-product star thunk. ctx is the HEAP aic_cstar_sp_ctx* (the
  * parent + its Co_P), NOT the owner struct — so the wrapper survives relocation.

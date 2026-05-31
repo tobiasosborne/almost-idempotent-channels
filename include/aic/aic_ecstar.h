@@ -61,8 +61,8 @@
 #include <flint/acb_mat.h>
 #include <flint/arb.h>
 
-#include "aic_idemp.h"
-#include "aic_ucp.h"
+#include "aic/aic_idemp.h"
+#include "aic/aic_ucp.h"
 
 #ifdef __cplusplus
 extern "C" {

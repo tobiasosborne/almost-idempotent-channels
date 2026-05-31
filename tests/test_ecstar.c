@@ -30,11 +30,11 @@
 #include <flint/acb_mat.h>
 #include <flint/arb.h>
 
-#include "aic_ecstar.h"
-#include "aic_idemp.h"
-#include "aic_mat.h"
+#include "aic/aic_ecstar.h"
+#include "aic/aic_idemp.h"
+#include "aic/aic_mat.h"
 #include "aic_test.h"
-#include "aic_ucp.h"
+#include "aic/aic_ucp.h"
 #include "test_idemp.h"
 
 /* ---- helpers ------------------------------------------------------------ */

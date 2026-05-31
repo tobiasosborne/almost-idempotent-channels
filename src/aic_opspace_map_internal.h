@@ -9,7 +9,7 @@
 #ifndef AIC_OPSPACE_MAP_INTERNAL_H
 #define AIC_OPSPACE_MAP_INTERNAL_H
 
-#include "aic_dhom.h"
+#include "aic/aic_dhom.h"
 #include "aic_opspace_hopm.h"
 
 /* Forward opmap f = v: B -> A (U = B matrix units, W = {B_k}, F = M_1). */

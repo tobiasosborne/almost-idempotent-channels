@@ -48,8 +48,8 @@
 #include <flint/acb_mat.h>
 #include <flint/arb.h>
 
-#include "aic_mat.h"
-#include "aic_contraction.h"
+#include "aic/aic_mat.h"
+#include "aic/aic_contraction.h"
 #include "aic_contraction_internal.h"
 
 void aic_contraction_picard(acb_mat_t x, const aic_contraction_opts *o,

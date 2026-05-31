@@ -11,7 +11,7 @@
 #ifndef AIC_DHOM_INTERNAL_H
 #define AIC_DHOM_INTERNAL_H
 
-#include "aic_dhom.h"
+#include "aic/aic_dhom.h"
 
 /* Row-offset of block l in the n_B x n_B block-diagonal representative:
  * sum_{l'<l} d[l']. */

@@ -26,7 +26,7 @@
 #include <flint/arf.h>
 #include <flint/mag.h>
 
-#include "aic_mat.h"
+#include "aic/aic_mat.h"
 #include "aic_funcalc_internal.h"
 
 /* See the header docstring (aic_funcalc_internal.h). Computed on the ball

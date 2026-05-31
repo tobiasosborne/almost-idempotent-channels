@@ -37,9 +37,9 @@
 #include <flint/acb.h>
 #include <flint/acb_mat.h>
 
-#include "aic_corner.h"
+#include "aic/aic_corner.h"
 #include "aic_corner_internal.h"
-#include "aic_latd.h"
+#include "aic/aic_latd.h"
 
 /* Apply a d x d coordinate-space operator T to X in A (the operator->coords->
  * operator bridge; lives here, the coordinate<->operator TU, to keep

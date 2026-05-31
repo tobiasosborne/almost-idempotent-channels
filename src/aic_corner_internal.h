@@ -22,7 +22,7 @@
 #include <flint/acb_mat.h>
 #include <flint/arb.h>
 
-#include "aic_ecstar.h"
+#include "aic/aic_ecstar.h"
 
 /* <Bi, Y>_F into `out` (caller-initialised acb_t). Bi, Y are n x n; n taken from
  * Y (Bi must match). */

@@ -12,7 +12,7 @@
  * ccall layer (later) reads it through this same symbol rather than duplicating
  * a constant.
  */
-#include "aic.h"
+#include "aic/aic.h"
 
 #define AIC_VERSION_STRING "aic 0.0.1"
 

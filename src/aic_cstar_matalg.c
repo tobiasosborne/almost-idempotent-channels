@@ -28,8 +28,8 @@
 
 #include <flint/acb_mat.h>
 
-#include "aic_cstar.h"
-#include "aic_ecstar.h"
+#include "aic/aic_cstar.h"
+#include "aic/aic_ecstar.h"
 
 /* The genuine-product star: Phi = identity, so out = XY (the product already
  * formed by aic_ecstar_star). ctx/prec unused (id map, exact copy). */

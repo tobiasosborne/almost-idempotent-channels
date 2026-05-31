@@ -40,9 +40,9 @@
 
 #include <flint/acb_mat.h>
 
-#include "aic_funcalc.h"
-#include "aic_ucp.h"
-#include "aic_assoc.h"
+#include "aic/aic_funcalc.h"
+#include "aic/aic_ucp.h"
+#include "aic/aic_assoc.h"
 
 void aic_assoc_regularize(acb_mat_t S_tilde, const aic_ucp_kraus *phi,
                           slong prec)

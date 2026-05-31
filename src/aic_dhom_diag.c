@@ -72,7 +72,7 @@
 #include <flint/acb_mat.h>
 #include <flint/arb.h>
 
-#include "aic_dhom.h"
+#include "aic/aic_dhom.h"
 #include "aic_dhom_internal.h"
 
 void aic_dhom_pauli(acb_mat_t out, slong d, slong j, slong k, slong prec)

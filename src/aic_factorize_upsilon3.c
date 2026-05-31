@@ -32,11 +32,11 @@
 #include <flint/acb_mat.h>
 #include <flint/arb.h>
 
-#include "aic_dhom.h"
-#include "aic_factorize.h"
-#include "aic_factorize_internal.h"
-#include "aic_mat.h"
-#include "aic_ucp.h"
+#include "aic/aic_dhom.h"
+#include "aic/aic_factorize.h"
+#include "aic/aic_factorize_internal.h"
+#include "aic/aic_mat.h"
+#include "aic/aic_ucp.h"
 
 void aic_factorize_upsilon_prime_block(acb_mat_t out, const aic_factorize *F,
                                        slong j, const acb_mat_t X, slong prec)

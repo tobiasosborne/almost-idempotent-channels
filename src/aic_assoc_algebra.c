@@ -41,9 +41,9 @@
 #include <flint/acb.h>
 #include <flint/acb_mat.h>
 
-#include "aic_assoc.h"
-#include "aic_ecstar.h"
-#include "aic_ucp.h"
+#include "aic/aic_assoc.h"
+#include "aic/aic_ecstar.h"
+#include "aic/aic_ucp.h"
 
 /* ctx for the star thunk: a borrowed pointer to the owner's S_tilde. */
 typedef struct { const acb_mat_struct *S; } assoc_star_ctx;

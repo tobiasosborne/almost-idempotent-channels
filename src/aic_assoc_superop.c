@@ -28,9 +28,9 @@
 
 #include <flint/acb_mat.h>
 
-#include "aic_mat.h"
-#include "aic_ucp.h"
-#include "aic_assoc.h"
+#include "aic/aic_mat.h"
+#include "aic/aic_ucp.h"
+#include "aic/aic_assoc.h"
 
 /* Column (p*n+q) of S = vec_r(Phi(E_{pq})), built via aic_ucp_apply. */
 void aic_assoc_superop_from_ucp(acb_mat_t S, const aic_ucp_kraus *phi,

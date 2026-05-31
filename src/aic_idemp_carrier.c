@@ -31,10 +31,10 @@
 
 #include <flint/acb_mat.h>
 
-#include "aic_idemp.h"
+#include "aic/aic_idemp.h"
 #include "aic_idemp_internal.h"
-#include "aic_latd.h"
-#include "aic_ucp.h"
+#include "aic/aic_latd.h"
+#include "aic/aic_ucp.h"
 
 static double frob_norm_arr(const double _Complex *A, slong n)
 {

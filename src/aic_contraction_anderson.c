@@ -22,8 +22,8 @@
 #include <flint/acb_mat.h>
 #include <flint/arb.h>
 
-#include "aic_mat.h"
-#include "aic_contraction.h"
+#include "aic/aic_mat.h"
+#include "aic/aic_contraction.h"
 #include "aic_contraction_internal.h"
 
 /* Real inner product Re Tr(A^dag B) (midpoints) as a double, used only to form

@@ -74,7 +74,7 @@
 #include <flint/acb_mat.h>
 #include <flint/arb.h>
 
-#include "aic_mat.h"
+#include "aic/aic_mat.h"
 
 void aic_mat_frobenius_norm(arb_t out, const acb_mat_t A, slong prec)
 {

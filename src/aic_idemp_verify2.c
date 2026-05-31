@@ -13,9 +13,9 @@
 #include <flint/acb_mat.h>
 #include <flint/arb.h>
 
-#include "aic_idemp.h"
-#include "aic_mat.h"
-#include "aic_ucp.h"
+#include "aic/aic_idemp.h"
+#include "aic/aic_mat.h"
+#include "aic/aic_ucp.h"
 
 /* reshape column k of Delta into B (n x n). */
 static void col_to_mat(acb_mat_t B, const acb_mat_t Delta, slong k, slong n)

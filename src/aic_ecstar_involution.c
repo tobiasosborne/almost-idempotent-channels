@@ -34,9 +34,9 @@
 #include <flint/acb_mat.h>
 #include <flint/arb.h>
 
-#include "aic_ecstar.h"
+#include "aic/aic_ecstar.h"
 #include "aic_ecstar_internal.h"
-#include "aic_ucp.h"
+#include "aic/aic_ucp.h"
 
 /* The shared metric, generalised in the map `apply` (= the star's Phi). For each
  * ordered pair (j,k): apply(B_j B_k)^dag - apply(B_k^dag B_j^dag), op-norm, max.

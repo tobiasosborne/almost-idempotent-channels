@@ -47,7 +47,7 @@
 
 #include <flint/acb_mat.h>
 
-#include "aic_ucp.h"
+#include "aic/aic_ucp.h"
 
 /* aic_ucp.h: Kraus(Phi o Psi) = { L_b K_a } = { psi.K[b] @ phi.K[a] },
  * requires phi->dim_K == psi->dim_H; out shape (psi->dim_K, phi->dim_H),

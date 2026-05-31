@@ -26,10 +26,10 @@
 #include <flint/arf.h>
 #include <flint/mag.h>
 
-#include "aic_corner.h"
+#include "aic/aic_corner.h"
 #include "aic_corner_internal.h"
-#include "aic_ecstar.h"
-#include "aic_mat.h"
+#include "aic/aic_ecstar.h"
+#include "aic/aic_mat.h"
 
 /* CERTIFIED upper bound on ||M||_op = ||mid(M)||_op + ||rad(M)||_F (FIX 2). The
  * Rule-4 ||gamma||<1 contraction decision in aic_corner_alpha was previously made

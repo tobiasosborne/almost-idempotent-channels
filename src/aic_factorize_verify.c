@@ -54,11 +54,11 @@
 #include <flint/acb_mat.h>
 #include <flint/arb.h>
 
-#include "aic_cbnorm.h"
-#include "aic_dhom.h"
-#include "aic_factorize.h"
-#include "aic_mat.h"
-#include "aic_ucp.h"
+#include "aic/aic_cbnorm.h"
+#include "aic/aic_dhom.h"
+#include "aic/aic_factorize.h"
+#include "aic/aic_mat.h"
+#include "aic/aic_ucp.h"
 
 /* Write the N_out x N_out output block of a map applied to ambient unit E_pq into
  * Convention-A position (p,q): J[p*N_out + a, q*N_out + b] = blk[a,b]. */

@@ -20,7 +20,7 @@
 #include <flint/acb.h>
 #include <flint/acb_mat.h>
 
-#include "aic_mat.h"
+#include "aic/aic_mat.h"
 
 void aic_mat_kronecker(acb_mat_t out, const acb_mat_t A, const acb_mat_t B,
                        slong prec)

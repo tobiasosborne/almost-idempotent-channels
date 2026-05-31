@@ -33,9 +33,9 @@
 #include <flint/arb.h>
 #include <flint/arf.h>
 
-#include "aic_cbnorm.h"
-#include "aic_ucp.h"
-#include "aic_ucp_shim.h"
+#include "aic/aic_cbnorm.h"
+#include "aic/aic_ucp.h"
+#include "aic/aic_ucp_shim.h"
 
 /* Build the internal aic_ucp_kraus self-map Phi (dim_K == dim_H == n) from the
  * flat double Kraus arrays, layout kraus_*[a*n*n + i*n + j] (aic_ucp.h /

@@ -30,7 +30,7 @@
 #include <flint/arf.h>
 
 #include "aic_cbnorm_internal.h"
-#include "aic_mat.h"
+#include "aic/aic_mat.h"
 
 /* Assemble out = [[A,B],[C,D]], each block m x m, into a 2m x 2m matrix. */
 static void block2(acb_mat_t out, const acb_mat_t A, const acb_mat_t B,

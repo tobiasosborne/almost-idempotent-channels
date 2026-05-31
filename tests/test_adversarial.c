@@ -22,7 +22,7 @@
 #include <flint/arb.h>
 
 #include "aic_adversarial.h"
-#include "aic_mat.h"
+#include "aic/aic_mat.h"
 #include "aic_test.h"
 
 static const slong PREC = 256;

@@ -24,7 +24,7 @@
 #include <stdlib.h>
 
 #include "aic_ecstar_hopm.h"
-#include "aic_latd.h"
+#include "aic/aic_latd.h"
 
 /* C = A*B (n x n, row-major). */
 void aic_ehk_matmul(cx *C, const cx *A, const cx *B, slong n)

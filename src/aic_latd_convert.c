@@ -28,7 +28,7 @@
 #include <flint/arb.h>
 #include <flint/arf.h>
 
-#include "aic_latd.h"
+#include "aic/aic_latd.h"
 
 void aic_latd_from_acb_mat(double _Complex *out, const acb_mat_t A)
 {

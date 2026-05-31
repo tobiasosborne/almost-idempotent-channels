@@ -24,7 +24,7 @@
 
 #include <flint/acb_mat.h>
 
-#include "aic.h"
+#include "aic/aic.h"
 
 int main(void)
 {

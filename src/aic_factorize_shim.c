@@ -40,14 +40,14 @@
 #include <flint/arb.h>
 #include <flint/arf.h>
 
-#include "aic_assoc.h"
-#include "aic_cstar.h"
-#include "aic_dhom.h"
-#include "aic_ecstar.h"
-#include "aic_factorize.h"
-#include "aic_factorize_shim.h"
-#include "aic_mat.h"
-#include "aic_ucp.h"
+#include "aic/aic_assoc.h"
+#include "aic/aic_cstar.h"
+#include "aic/aic_dhom.h"
+#include "aic/aic_ecstar.h"
+#include "aic/aic_factorize.h"
+#include "aic/aic_factorize_shim.h"
+#include "aic/aic_mat.h"
+#include "aic/aic_ucp.h"
 
 /* Build the internal aic_ucp_kraus self-map Phi (dim_K == dim_H == n) from the
  * flat double Kraus arrays, layout kraus_*[a*n*n + i*n + j] (Convention A,

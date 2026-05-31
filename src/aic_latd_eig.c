@@ -33,7 +33,7 @@
 
 #include <lapacke.h>
 
-#include "aic_latd.h"
+#include "aic/aic_latd.h"
 
 void aic_latd_eig_hermitian(double *evals, double _Complex *evecs,
                             const double _Complex *H_arr, slong n)

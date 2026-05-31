@@ -33,8 +33,8 @@
 
 #include <flint/acb_mat.h>
 
-#include "aic_corner.h"
-#include "aic_ecstar.h"
+#include "aic/aic_corner.h"
+#include "aic/aic_ecstar.h"
 
 void aic_corner_cdot(acb_mat_t out, const aic_ecstar *A, const acb_mat_t CoPR,
                      const acb_mat_t X, const acb_mat_t Y, slong prec)

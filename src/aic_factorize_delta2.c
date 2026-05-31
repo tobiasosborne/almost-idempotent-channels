@@ -20,10 +20,10 @@
 #include <flint/acb_mat.h>
 #include <flint/arb.h>
 
-#include "aic_dhom.h"
-#include "aic_factorize.h"
-#include "aic_funcalc.h"
-#include "aic_mat.h"
+#include "aic/aic_dhom.h"
+#include "aic/aic_factorize.h"
+#include "aic/aic_funcalc.h"
+#include "aic/aic_mat.h"
 
 void aic_factorize_delta_build(aic_factorize *F, slong prec)
 {

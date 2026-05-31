@@ -32,9 +32,9 @@
 #include <flint/arb.h>
 #include <flint/arf.h>
 
-#include "aic_cbnorm.h"
+#include "aic/aic_cbnorm.h"
 #include "aic_cbnorm_internal.h"
-#include "aic_mat.h"
+#include "aic/aic_mat.h"
 
 void aic_cbnorm_certify(arb_t lo, arb_t hi, const acb_mat_t J,
                         const acb_mat_t X, const acb_mat_t P, const acb_mat_t Q,

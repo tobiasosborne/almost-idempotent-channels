@@ -30,9 +30,9 @@
 #include <flint/acb_mat.h>
 #include <flint/arb.h>
 
-#include "aic_contraction.h"
-#include "aic_funcalc.h"
-#include "aic_mat.h"
+#include "aic/aic_contraction.h"
+#include "aic/aic_funcalc.h"
+#include "aic/aic_mat.h"
 #include "aic_test.h"
 
 typedef struct {

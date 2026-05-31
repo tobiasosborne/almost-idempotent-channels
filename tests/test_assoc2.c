@@ -39,17 +39,17 @@
 #include <flint/acb_mat.h>
 #include <flint/arb.h>
 
-#include "aic_assoc.h"
-#include "aic_ecstar.h"
-#include "aic_funcalc.h"
+#include "aic/aic_assoc.h"
+#include "aic/aic_ecstar.h"
+#include "aic/aic_funcalc.h"
 /* U6 (aic-8hz) drives the funcalc Gelfand certifier directly (the public prop_P
  * aborts on a not-certified verdict; the test asserts the certified verdict). */
 #include "../src/aic_funcalc_internal.h"
-#include "aic_idemp.h"
-#include "aic_latd.h"
-#include "aic_mat.h"
+#include "aic/aic_idemp.h"
+#include "aic/aic_latd.h"
+#include "aic/aic_mat.h"
 #include "aic_test.h"
-#include "aic_ucp.h"
+#include "aic/aic_ucp.h"
 #include "test_idemp.h"
 
 static double dd(const arb_t x) { return arf_get_d(arb_midref(x), ARF_RND_NEAR); }

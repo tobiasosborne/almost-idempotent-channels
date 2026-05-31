@@ -36,9 +36,9 @@
 #include <flint/arb.h>
 
 #include "aic_corner_internal.h" /* aic_corner_gamma_opnorm_ub (certified UB) */
-#include "aic_dhom.h"
-#include "aic_ecstar.h"
-#include "aic_mat.h"
+#include "aic/aic_dhom.h"
+#include "aic/aic_ecstar.h"
+#include "aic/aic_mat.h"
 
 /* CERTIFIED operator-norm UPPER BOUND, dodging the aic_mat_opnorm Gram-path
  * Hermiticity false-fail on near-zero off-diagonals (bead aic-qgs/aic-2yo). Used

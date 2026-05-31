@@ -62,8 +62,8 @@
 #include <flint/arb.h>
 #include <flint/mag.h>
 
-#include "aic_mat.h"
-#include "aic_funcalc.h"
+#include "aic/aic_mat.h"
+#include "aic/aic_funcalc.h"
 #include "aic_funcalc_internal.h"
 
 #define AIC_SGN_MAX_ITERS 100

@@ -43,10 +43,10 @@
 #include <flint/acb_mat.h>
 #include <flint/arb.h>
 
-#include "aic_corner.h"
+#include "aic/aic_corner.h"
 #include "aic_corner_internal.h"
-#include "aic_ecstar.h"
-#include "aic_mat.h"
+#include "aic/aic_ecstar.h"
+#include "aic/aic_mat.h"
 
 void aic_corner_alpha(acb_mat_t alpha, acb_mat_t alpha_inv,
                       arb_t norm_alpha, arb_t norm_alpha_inv, arb_t gamma_norm,

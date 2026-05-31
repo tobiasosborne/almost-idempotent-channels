@@ -34,9 +34,9 @@
 #include <flint/acb.h>
 #include <flint/acb_mat.h>
 
-#include "aic_assoc.h"
-#include "aic_factorize.h"
-#include "aic_opspace.h"
+#include "aic/aic_assoc.h"
+#include "aic/aic_factorize.h"
+#include "aic/aic_opspace.h"
 
 void aic_factorize_build(aic_factorize *out, const aic_dhom_v *v,
                          const aic_assoc_ecstar *Aec, const aic_ucp_kraus *phi,

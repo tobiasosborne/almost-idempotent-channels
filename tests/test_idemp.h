@@ -15,10 +15,10 @@
 #include <flint/acb_mat.h>
 #include <flint/arb.h>
 
-#include "aic_idemp.h"
-#include "aic_mat.h"
+#include "aic/aic_idemp.h"
+#include "aic/aic_mat.h"
 #include "aic_test.h"
-#include "aic_ucp.h"
+#include "aic/aic_ucp.h"
 
 #define PREC 53
 static void set_tol(arb_t tol, double t) { arb_set_d(tol, t); }

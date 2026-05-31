@@ -34,7 +34,7 @@
 
 #include <lapacke.h>
 
-#include "aic_latd.h"
+#include "aic/aic_latd.h"
 
 /* Shared core: copy A (zgesvd destroys its input), call zgesvd with the given
  * job chars and (possibly NULL) U/Vt buffers, assert info==0. */

@@ -20,9 +20,9 @@
 #include <flint/acb_mat.h>
 #include <flint/arb.h>
 
-#include "aic_ecstar.h"
-#include "aic_mat.h"
-#include "aic_ucp.h"
+#include "aic/aic_ecstar.h"
+#include "aic/aic_mat.h"
+#include "aic/aic_ucp.h"
 
 void aic_ecstar_init(aic_ecstar *out, slong n, slong dim_A,
                      const aic_ucp_kraus *phi)

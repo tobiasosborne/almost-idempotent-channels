@@ -20,7 +20,7 @@
 #include <flint/arb.h>
 
 #include "aic_bench.h"
-#include "aic_mat.h"
+#include "aic/aic_mat.h"
 
 /* Build an n x n Hermitian matrix with a well-separated spectrum: real diagonal
  * 10*(i+1) (distinct, dominant) plus small conjugate-symmetric off-diagonals. */

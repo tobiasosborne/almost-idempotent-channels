@@ -57,8 +57,8 @@
 #include <flint/acb_mat.h>
 #include <flint/arb.h>
 
-#include "aic_dhom.h"
-#include "aic_ecstar.h"
+#include "aic/aic_dhom.h"
+#include "aic/aic_ecstar.h"
 
 #ifdef __cplusplus
 extern "C" {

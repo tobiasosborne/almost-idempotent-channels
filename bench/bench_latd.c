@@ -28,8 +28,8 @@
 #include <flint/arb.h>
 
 #include "aic_bench.h"
-#include "aic_latd.h"
-#include "aic_mat.h"
+#include "aic/aic_latd.h"
+#include "aic/aic_mat.h"
 
 /* n x n Hermitian, well-separated spectrum: diagonal 10*(i+1), small generic
  * conjugate-symmetric off-diagonals. */

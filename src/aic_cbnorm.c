@@ -49,9 +49,9 @@
 #include <flint/acb_mat.h>
 #include <flint/arb.h>
 
-#include "aic_cbnorm.h"
-#include "aic_mat.h"
-#include "aic_ucp.h"
+#include "aic/aic_cbnorm.h"
+#include "aic/aic_mat.h"
+#include "aic/aic_ucp.h"
 
 /* approximate_algebras.tex:347-352 — cb-norm (= diamond-norm for Herm-pres.):
  *   ||Lambda||_cb = sup_n sup_{X!=0} ||(1_{M_n} (x) Lambda)(X)|| / ||X||,

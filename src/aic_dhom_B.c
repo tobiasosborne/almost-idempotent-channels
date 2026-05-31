@@ -19,7 +19,7 @@
 #include <flint/acb_mat.h>
 #include <flint/arb.h>
 
-#include "aic_dhom.h"
+#include "aic/aic_dhom.h"
 #include "aic_dhom_internal.h"
 
 void aic_dhom_B_init(aic_dhom_B *B, const slong *dims, slong m)

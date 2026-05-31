@@ -4,7 +4,7 @@
 #ifndef AIC_ECSTAR_SETUP_H
 #define AIC_ECSTAR_SETUP_H
 
-#include "aic_ecstar.h"
+#include "aic/aic_ecstar.h"
 #include "aic_ecstar_search.h"
 
 /* double snapshot of an aic_ecstar (Kraus + basis -> double buffers, midpoints). */

@@ -48,10 +48,10 @@
 #include <flint/acb_mat.h>
 #include <flint/arb.h>
 
-#include "aic_corner.h"
-#include "aic_cstar.h"
-#include "aic_dhom.h"
-#include "aic_ecstar.h"
+#include "aic/aic_corner.h"
+#include "aic/aic_cstar.h"
+#include "aic/aic_dhom.h"
+#include "aic/aic_ecstar.h"
 
 /* lem_add_dim (.tex:1363): certify dim S_{P,Q} = sum_{jk} dim S_{P_j,Q_k} and
  * return the common value. aic_corner_alpha_dims computes BOTH N = sum dim

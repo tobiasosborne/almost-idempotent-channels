@@ -46,7 +46,7 @@
 #include <flint/arb.h>
 #include <flint/mag.h>
 
-#include "aic_mat.h"
+#include "aic/aic_mat.h"
 #include "aic_mat_internal.h"
 
 void aic_mat_int_tol(arb_t tol, slong prec)

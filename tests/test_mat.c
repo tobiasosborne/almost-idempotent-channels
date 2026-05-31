@@ -28,11 +28,11 @@
 #include <flint/arb.h>
 
 #include "aic_adversarial.h"   /* evil-matrix corpus (aic-dbo.2): gen5 graded_diag */
-#include "aic_assoc.h"
-#include "aic_latd.h"
-#include "aic_mat.h"
+#include "aic/aic_assoc.h"
+#include "aic/aic_latd.h"
+#include "aic/aic_mat.h"
 #include "aic_test.h"
-#include "aic_ucp.h"
+#include "aic/aic_ucp.h"
 #include "../src/aic_mat_internal.h" /* aic_mat_int_is_hermitian (aic-2yo teeth test) */
 
 /* tol as an acb (zero imaginary) for the matrix close-checker, and as arb. */

@@ -72,11 +72,11 @@
 #include <flint/acb_mat.h>
 #include <flint/arb.h>
 
-#include "aic_corner.h"
-#include "aic_cstar.h"
-#include "aic_dhom.h"
-#include "aic_ecstar.h"
-#include "aic_latd.h"
+#include "aic/aic_corner.h"
+#include "aic/aic_cstar.h"
+#include "aic/aic_dhom.h"
+#include "aic/aic_ecstar.h"
+#include "aic/aic_latd.h"
 
 /* Step 2+3 codomain map h_{11}v : M_n -> B(S_{P,Q}) = M_n (.tex:1390-1391). For
  * each matrix unit E_{lm} of M_n, h11v(E_lm) = Ha^Q_{P,P}(v(E_lm)) (n x n, the

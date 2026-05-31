@@ -23,8 +23,8 @@
 #include <flint/acb_mat.h>
 #include <flint/arb.h>
 
-#include "aic_latd.h"
-#include "aic_opspace.h"
+#include "aic/aic_latd.h"
+#include "aic/aic_opspace.h"
 #include "aic_opspace_map_internal.h"
 
 /* Matrix-unit linear index i -> global (row,col) in the n_B x n_B block-diagonal

@@ -48,8 +48,8 @@
 #include <flint/acb.h>
 #include <flint/acb_mat.h>
 
-#include "aic_factorize.h"
-#include "aic_ucp.h"
+#include "aic/aic_factorize.h"
+#include "aic/aic_ucp.h"
 
 /* PSD-cone abort floor for the dual Kraus read-off (FINDINGS §C14). At multi-block
  * eta>0 Choi(Delta)/Choi(Upsilon) inherit the UCP maps' O(eta^2) cone defect (the

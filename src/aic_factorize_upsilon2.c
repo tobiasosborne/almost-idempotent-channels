@@ -39,13 +39,13 @@
 #include <flint/acb_mat.h>
 #include <flint/arb.h>
 
-#include "aic_dhom.h"
-#include "aic_factorize.h"
-#include "aic_factorize_internal.h"
-#include "aic_funcalc.h"
-#include "aic_latd.h"
-#include "aic_mat.h"
-#include "aic_ucp.h"
+#include "aic/aic_dhom.h"
+#include "aic/aic_factorize.h"
+#include "aic/aic_factorize_internal.h"
+#include "aic/aic_funcalc.h"
+#include "aic/aic_latd.h"
+#include "aic/aic_mat.h"
+#include "aic/aic_ucp.h"
 
 /* xi_j = top RIGHT singular vector of C_j (D4): aic_latd_svd on the e_j x e_j
  * midpoint of C_j; v_0[i] = conj(Vt[0,i]). Returns sigma_max(C_j) (the gauge-

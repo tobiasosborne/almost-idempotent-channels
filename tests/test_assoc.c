@@ -33,11 +33,11 @@
 #include <flint/acb_mat.h>
 #include <flint/arb.h>
 
-#include "aic_assoc.h"
-#include "aic_funcalc.h"
-#include "aic_mat.h"
+#include "aic/aic_assoc.h"
+#include "aic/aic_funcalc.h"
+#include "aic/aic_mat.h"
 #include "aic_test.h"
-#include "aic_ucp.h"
+#include "aic/aic_ucp.h"
 
 #include "test_idemp.h"   /* exact-idempotent channel builders + make_conjugated */
 

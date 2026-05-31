@@ -59,9 +59,9 @@
 #include <flint/arb.h>
 #include <flint/arf.h>
 
-#include "aic_cbnorm.h"
-#include "aic_mat.h"
-#include "aic_ucp.h"
+#include "aic/aic_cbnorm.h"
+#include "aic/aic_mat.h"
+#include "aic/aic_ucp.h"
 #include "aic_test.h"
 
 /* The teeth read the internal restoration defects (delta/eps) and drive the

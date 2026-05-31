@@ -12,7 +12,7 @@
 #include <flint/acb_mat.h>
 #include <flint/arb.h>
 
-#include "aic_contraction.h"
+#include "aic/aic_contraction.h"
 
 /* Scratch matrices reused across iterations (one set per solve), so a candidate
  * does not re-init/clear acb_mat_t every step. All are x0-shaped. */

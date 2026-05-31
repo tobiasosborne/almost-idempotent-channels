@@ -26,7 +26,7 @@
 #include <flint/acb_mat.h>
 #include <flint/arb.h>
 
-#include "aic_ecstar.h"
+#include "aic/aic_ecstar.h"
 #include "aic_ecstar_internal.h"
 
 /* approximate_algebras.tex:410-411 ax_prodnorm:

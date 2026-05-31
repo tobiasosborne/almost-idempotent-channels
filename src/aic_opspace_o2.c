@@ -27,8 +27,8 @@
 #include <flint/arb.h>
 #include <flint/arf.h>
 
-#include "aic_cbnorm.h"
-#include "aic_opspace.h"
+#include "aic/aic_cbnorm.h"
+#include "aic/aic_opspace.h"
 
 /* rigorous lower endpoint of an arb ball as a double (FLOOR). */
 static double arb_lb_d(const arb_t x)

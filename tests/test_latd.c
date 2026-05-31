@@ -34,8 +34,8 @@
 #include <flint/acb_mat.h>
 #include <flint/arb.h>
 
-#include "aic_latd.h"
-#include "aic_mat.h"
+#include "aic/aic_latd.h"
+#include "aic/aic_mat.h"
 #include "aic_test.h"
 
 static void set_tol(arb_t tol, double t) { arb_set_d(tol, t); }

@@ -26,10 +26,10 @@
 #include <flint/acb_mat.h>
 #include <flint/arb.h>
 
-#include "aic_idemp.h"
+#include "aic/aic_idemp.h"
 #include "aic_idemp_internal.h"
-#include "aic_mat.h"
-#include "aic_ucp.h"
+#include "aic/aic_mat.h"
+#include "aic/aic_ucp.h"
 
 /* max_ij ||Phi(Phi(E_ij)) - Phi(E_ij)||_op as a certified ball (idempotence). */
 static void idemp_defect(arb_t out, const aic_ucp_kraus *phi, slong n, slong prec)

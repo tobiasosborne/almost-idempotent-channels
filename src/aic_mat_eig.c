@@ -30,7 +30,7 @@
 #include <flint/arb.h>
 #include <flint/arf.h>
 
-#include "aic_mat.h"
+#include "aic/aic_mat.h"
 #include "aic_mat_internal.h"
 
 void aic_mat_eig_hermitian(arb_ptr evals, acb_mat_t evecs,

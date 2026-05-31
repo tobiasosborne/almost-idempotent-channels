@@ -48,7 +48,7 @@
 #include <flint/acb.h>
 #include <flint/acb_mat.h>
 
-#include "aic_opspace.h"
+#include "aic/aic_opspace.h"
 #include "aic_opspace_map_internal.h"
 
 /* J(v*) for v*: M_N -> M_{n_B}, d_maj = in = N, d_min = out = n_B.

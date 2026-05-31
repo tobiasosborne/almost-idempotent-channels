@@ -49,11 +49,11 @@
 #include <flint/arb.h>
 #include <flint/mag.h>
 
-#include "aic_funcalc.h"
+#include "aic/aic_funcalc.h"
 /* the certified-domain probe aic_funcalc_int_def_X2 is a funcalc internal (the
  * public wrappers abort); the test drives it directly like test_funcalc_global.c. */
 #include "../src/aic_funcalc_internal.h"
-#include "aic_mat.h"
+#include "aic/aic_mat.h"
 #include "aic_test.h"
 
 static void set_tol(arb_t tol, double t) { arb_set_d(tol, t); }

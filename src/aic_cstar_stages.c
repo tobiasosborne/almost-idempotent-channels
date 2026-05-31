@@ -33,12 +33,12 @@
 #include <flint/acb_mat.h>
 #include <flint/arb.h>
 
-#include "aic_corner.h"
-#include "aic_cstar.h"
-#include "aic_cstar_internal.h"
-#include "aic_dhom.h"
-#include "aic_ecstar.h"
-#include "aic_errreduce.h"
+#include "aic/aic_corner.h"
+#include "aic/aic_cstar.h"
+#include "aic/aic_cstar_internal.h"
+#include "aic/aic_dhom.h"
+#include "aic/aic_ecstar.h"
+#include "aic/aic_errreduce.h"
 
 static double smid(const arb_t x) { return arf_get_d(arb_midref(x), ARF_RND_NEAR); }
 

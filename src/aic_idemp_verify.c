@@ -21,9 +21,9 @@
 #include <flint/acb_mat.h>
 #include <flint/arb.h>
 
-#include "aic_idemp.h"
-#include "aic_mat.h"
-#include "aic_ucp.h"
+#include "aic/aic_idemp.h"
+#include "aic/aic_mat.h"
+#include "aic/aic_ucp.h"
 
 /* y (length dA, as a dA x 1 acb_mat) = Gamma applied to Y (dM x dM): the
  * row-major-vec contraction Gamma[l, i*dM+j] Y[i,j]. */

@@ -33,8 +33,8 @@
 #include <flint/acb_mat.h>
 #include <flint/arb.h>
 
-#include "aic_mat.h"
-#include "aic_ucp.h"
+#include "aic/aic_mat.h"
+#include "aic/aic_ucp.h"
 
 void aic_ucp_kraus_init(aic_ucp_kraus *phi, slong dim_K, slong dim_H, slong r)
 {

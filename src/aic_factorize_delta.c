@@ -42,11 +42,11 @@
 #include <flint/acb_mat.h>
 #include <flint/arb.h>
 
-#include "aic_dhom.h"
-#include "aic_factorize.h"
-#include "aic_funcalc.h"
-#include "aic_mat.h"
-#include "aic_ucp.h"
+#include "aic/aic_dhom.h"
+#include "aic/aic_factorize.h"
+#include "aic/aic_funcalc.h"
+#include "aic/aic_mat.h"
+#include "aic/aic_ucp.h"
 
 slong aic_factorize_design_nterms(const aic_factorize *F)
 {

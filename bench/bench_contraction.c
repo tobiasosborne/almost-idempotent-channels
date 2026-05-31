@@ -25,7 +25,7 @@
 #include <flint/arb.h>
 
 #include "aic_bench.h"
-#include "aic_contraction.h"
+#include "aic/aic_contraction.h"
 
 typedef struct { acb_mat_t V, Vinv; double eps; double kappa; } prob_ctx;
 

@@ -15,7 +15,7 @@
 #include <flint/acb_mat.h>
 #include <flint/arb.h>
 
-#include "aic_opspace.h"
+#include "aic/aic_opspace.h"
 #include "aic_opspace_map_internal.h"
 
 void aic_opspace_forward_stretch(arb_t out, const aic_dhom_v *v, slong n,

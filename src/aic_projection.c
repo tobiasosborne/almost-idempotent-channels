@@ -32,10 +32,10 @@
 #include <flint/arb.h>
 
 #include "aic_corner_internal.h"   /* aic_corner_gamma_opnorm_ub (aic-qgs dodge) */
-#include "aic_ecstar.h"
-#include "aic_funcalc.h"
-#include "aic_mat.h"
-#include "aic_projection.h"
+#include "aic/aic_ecstar.h"
+#include "aic/aic_funcalc.h"
+#include "aic/aic_mat.h"
+#include "aic/aic_projection.h"
 #include "aic_projection_internal.h"
 
 /* Step 3: ambient spectral projector. Y = s(H - tI), s = 1/max(t-lam_min,

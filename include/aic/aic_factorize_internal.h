@@ -10,7 +10,7 @@
 
 #include <flint/acb_mat.h>
 
-#include "aic_factorize.h"
+#include "aic/aic_factorize.h"
 
 #ifdef __cplusplus
 extern "C" {

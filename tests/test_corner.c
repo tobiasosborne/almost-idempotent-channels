@@ -55,12 +55,12 @@
 #include <flint/acb_mat.h>
 #include <flint/arb.h>
 
-#include "aic_assoc.h"
-#include "aic_corner.h"
-#include "aic_ecstar.h"
-#include "aic_mat.h"
+#include "aic/aic_assoc.h"
+#include "aic/aic_corner.h"
+#include "aic/aic_ecstar.h"
+#include "aic/aic_mat.h"
 #include "aic_test.h"
-#include "aic_ucp.h"
+#include "aic/aic_ucp.h"
 #include "test_idemp.h"
 
 static double dd(const arb_t x) { return arf_get_d(arb_midref(x), ARF_RND_NEAR); }

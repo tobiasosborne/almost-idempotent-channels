@@ -29,8 +29,8 @@
 #include <flint/arb.h>
 #include <flint/arf.h>
 
-#include "aic_cbnorm.h"
-#include "aic_ucp.h"
+#include "aic/aic_cbnorm.h"
+#include "aic/aic_ucp.h"
 #include "aic_test.h"
 
 #include "fixtures_d24.inc.h"

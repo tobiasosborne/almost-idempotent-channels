@@ -31,9 +31,9 @@
 #include <flint/arb.h>
 #include <flint/arf.h>
 
-#include "aic_latd.h"
-#include "aic_mat.h"
-#include "aic_ucp.h"
+#include "aic/aic_latd.h"
+#include "aic/aic_mat.h"
+#include "aic/aic_ucp.h"
 #include "aic_test.h"
 
 #define PREC 53

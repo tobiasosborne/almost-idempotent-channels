@@ -51,9 +51,9 @@
 #include <flint/acb_mat.h>
 #include <flint/arb.h>
 
-#include "aic_dhom.h"
-#include "aic_ecstar.h"
-#include "aic_latd.h"
+#include "aic/aic_dhom.h"
+#include "aic/aic_ecstar.h"
+#include "aic/aic_latd.h"
 
 void aic_dhom_v_sigma_min(arb_t out, const aic_dhom_v *v, slong prec)
 {

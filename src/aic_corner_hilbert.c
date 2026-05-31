@@ -42,9 +42,9 @@
 #include <flint/acb_mat.h>
 #include <flint/arb.h>
 
-#include "aic_corner.h"
+#include "aic/aic_corner.h"
 #include "aic_corner_internal.h"  /* aic_corner_gamma_opnorm_ub (aic-2yo workaround) */
-#include "aic_ecstar.h"
+#include "aic/aic_ecstar.h"
 
 /* <A, B>_F = Tr(A^dag B) = sum_{a,b} conj(A[a,b]) B[a,b] into `out` (caller-init'd
  * acb_t). A, B are n x n. Kept LOCAL to this TU (the production aic_corner_frob_ip

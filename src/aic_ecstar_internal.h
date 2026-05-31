@@ -9,7 +9,7 @@
 #include <flint/acb_mat.h>
 #include <flint/arb.h>
 
-#include "aic_mat.h"
+#include "aic/aic_mat.h"
 
 /* worst = max(worst, ||M||_op) (certified arb). */
 static inline void aic_ecstar_bump_opnorm(arb_t worst, const acb_mat_t M,

@@ -39,8 +39,8 @@
 #include <flint/arb.h>
 #include <flint/arf.h>
 
-#include "aic_cbnorm.h"
-#include "aic_mat.h"
+#include "aic/aic_cbnorm.h"
+#include "aic/aic_mat.h"
 
 /* Assemble out = [[A,B],[C,D]], each block m x m, into a 2m x 2m matrix.
  * (Local copy of the restore.c helper; kept self-contained to leave the self-map
