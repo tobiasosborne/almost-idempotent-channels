@@ -418,13 +418,18 @@ agent repeats them:
   aic-xo0 mitigation) — but still put throwaway code outside `tests/` (a `/tmp`
   build, or a name that does not start with `test_` that you delete
   immediately), never as `tests/test_zprobe.c`.
-- **Stay inside the `η < 1/4` regime.** `Φ̃ = θ(2Φ−1)` needs `ρ(Φ²−Φ) < 1/4`
-  (`.tex:520`); a fixture sweep that pushes the mixing knob so `η ≳ 1/4` leaves
-  both the `η`-idempotence hypothesis and the regularization basin —
-  `funcalc`/`cstar_build` are not guaranteed to converge there and can **spin
-  without a fail-loud abort** (that Rule-4 gap is filed as a bead). For
-  `make_mixconj*`, `t ≲ 0.1` is safe; `t = 0.45` is not a valid
-  almost-idempotent channel — do not feed it to the pipeline.
+- **Stay inside the spectral `ρ(Φ²−Φ) < 1/4` regime — and know what actually
+  leaves it.** `Φ̃ = θ(2Φ−1)` needs the SPECTRAL basin `ρ(Φ²−Φ) < 1/4`
+  (`.tex:520-525`; since bead aic-8hz the guard is the eig-free Gelfand `ρ`, NOT
+  the stricter op-norm `‖Φ²−Φ‖`). The pipeline now **fails loud** out-of-basin —
+  it aborts in ~0.2 s at `aic_prop_P` and at the `aic_assoc_regularize` entry
+  guard (bead aic-xo0); it does NOT hang (the old hang was the pre-aic-8hz
+  op-norm route). **Correction (FINDINGS §C15):** `make_mixconj*` CANNOT leave
+  the spectral basin at ANY `t` — it mixes two spectrally-idempotent maps, so
+  `ρ(Φ²−Φ) < 1/4` for all `t` (measured `ρ≈0.165` even at `t=0.45`); the earlier
+  "`t=0.45` is out-of-regime" claim was the stale op-norm proxy and is FALSE. A
+  genuine out-of-regime fixture needs a non-idempotent spectrum, e.g. unitary
+  conjugation by a reflection `Φ(X)=UXU†`, `U=diag(1,−1)` (`ρ(Φ²−Φ)=2`).
 - **Bound every exploratory sweep.** Wrap each heavy pipeline build in a
   per-point `timeout`, or run it backgrounded, so one non-converging point
   cannot hang forever. Note `pkill -f "make test"` self-matches the shell

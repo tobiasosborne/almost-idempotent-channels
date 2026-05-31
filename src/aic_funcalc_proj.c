@@ -28,7 +28,7 @@
  * 2P-I with no purely-imaginary eigenvalue, i.e. rho(I-(2P-I)^2) = 4 rho(P^2-P)<1).
  * The op-NORM guard ||P^2-P||_op < 1/4 is STRICTER than this and rejects valid
  * non-normal inputs (where ||.||_op >> rho), so we certify the SPECTRAL condition
- * via the eig-free Gelfand bound on M = I - (2P-I)^2 = 4(P^2-P): accept the first
+ * via the eig-free Gelfand bound on M = I - (2P-I)^2 = 4(P - P^2): accept the first
  * k with ||M^k||_F^{1/k} certainly < 1 (rho(M)<1 <=> rho(P^2-P)<1/4). This is a
  * RELAXATION — it accepts strictly more P (the full non-normal eta<1/4 regime) —
  * and fails loud at the true rho(P^2-P) >= 1/4 boundary (Rule 4). The sign itself
@@ -71,7 +71,7 @@ void aic_prop_P(acb_mat_t out, const acb_mat_t P, slong prec)
     assert(out != P && "aic_prop_P: out must not alias P");
 
     /* Certify the SPECTRAL prop_P hypothesis rho(P^2 - P) < 1/4 (tex:525),
-     * EIG-FREE via the Gelfand bound on M = I - (2P-I)^2 = 4(P^2 - P): a certified
+     * EIG-FREE via the Gelfand bound on M = I - (2P-I)^2 = 4(P - P^2): a certified
      * rho(M) < 1 is exactly rho(P^2 - P) < 1/4. This RELAXES the previous op-norm
      * guard ||P^2-P||_op < 1/4 to the spectral one (bead aic-8hz), reaching the
      * full non-normal regime; fail loud at the true boundary (Rule 4). */
@@ -80,12 +80,12 @@ void aic_prop_P(acb_mat_t out, const acb_mat_t P, slong prec)
     acb_mat_init(X, n, n);
     acb_mat_init(M, n, n);
 
-    /* X = 2P - I; M = I - X^2 = 4(P^2 - P). */
+    /* X = 2P - I; M = I - X^2 = 4(P - P^2). */
     acb_mat_scalar_mul_2exp_si(X, P, 1);         /* 2P */
     acb_mat_one(P2);                             /* reuse P2 as I */
     acb_mat_sub(X, X, P2, prec);                 /* X = 2P - I */
     acb_mat_sqr(M, X, prec);                     /* X^2 */
-    acb_mat_sub(M, P2, M, prec);                 /* M = I - X^2 = 4(P^2 - P) */
+    acb_mat_sub(M, P2, M, prec);                 /* M = I - X^2 = 4(P - P^2) */
 
     arb_t rho;
     arb_init(rho);

@@ -715,6 +715,39 @@ with the concrete evidence from where they bit.
   columns of `J_UpsDel` are zero — this IS why route (i) ≡ route (ii); §D probe `offblk=0.000`).
   Mutation-proven (revert `P_B`→full-`I` → `‖J_UpsDel‖_F=2.83` RED). Source: `aic_factorize_verify.c`.
 
+### C15. `make_mixconj` CANNOT produce an out-of-regime (`η ≥ 1/4`) channel — the "t≈0.45 is out-of-regime" claim is FALSE for the SPECTRAL basin; the real fail-loud fixture is unitary conjugation by a reflection
+- **Status:** CONFIRMED + RESOLVED (bead aic-xo0, the fail-loud entry guard). Corrects a load-bearing
+  premise in the bead, in CLAUDE.md "Probe/sweep hygiene", and in the aic-xo0 NOTES.
+- **The trap.** The bead + CLAUDE.md cite `make_mixconj(5,3,t≈0.45)` as an OUT-OF-REGIME channel that
+  hangs the pipeline, via the OP-NORM eta-proxy (`~6.5 t`, so t=0.45 ⇒ proxy ~2.9 ≫ 1/4). But the
+  proxy is `‖S_Φ²−S_Φ‖_op`, NOT the spectral radius `rho(S_Φ²−S_Φ)` that `aic_prop_P` actually
+  certifies post-aic-8hz. `make_mixconj` is a CONVEX MIX of an exactly-idempotent compression and its
+  UNITARY conjugate — BOTH summands are spectrally idempotent — so the mix stays SPECTRALLY
+  near-idempotent at EVERY `t`. **Measured** `rho(4(S²−S))` (Gelfand ub) over `t ∈ {0, .02, .06, .45,
+  .7, .85, .95, 1.0}`: `{0, .095, .27, .66, .56, .62, .23, ~0}` — ALL `< 1` (`rho(S²−S) < 1/4`), so
+  `make_mixconj` is IN regime for the whole `t`-range (it is exactly idempotent at both t=0 and t=1).
+  Feeding any `make_mixconj` to `aic_assoc_regularize` SUCCEEDS; it never trips the basin guard. So
+  any "evil η-sweep" over `make_mixconj` `t` is exercising IN-regime inputs (the original session
+  "hang" was the OLD op-norm guard + radius inflation on a large-`n` non-normal `S`, a path the
+  aic-8hz spectral relaxation removed — the current Gelfand guard at `k_max=32` aborts in ~0.2 s, it
+  does NOT hang).
+- **The genuine out-of-regime fixture.** The `*`-automorphism `Φ(X)=U X U^†` with `U=diag(1,−1)` (a
+  Pauli-Z reflection): superop `S = U ⊗ conj(U)` has eigenvalues `u_i conj(u_j) ∈ {+1,−1}`, and the
+  `λ=−1` eigenvalues give `(S²−S)` the eigenvalue `(−1)²−(−1)=2`, so `rho(S²−S)=2 ≥ 1/4` and
+  `rho(4(S²−S))=8` (measured Gelfand ub ~8.09, NOT certified `<1`). It is unital, CP, trace-
+  preserving — a VALID UCP map, just not almost-idempotent. This is the fail-loud fixture in
+  `tests/test_xo0_failloud.c`.
+- **Where the guard lives.** Added at the `aic_assoc_regularize` PUBLIC entry
+  (`src/aic_assoc_regularize.c`, `aic_assoc_int_assert_eta_basin`): certifies `rho(4(S²−S)) < 1` via
+  the EXISTING eig-free Gelfand certifier `aic_funcalc_int_gelfand_rho` (NOT a cheap op-norm gate,
+  which would FALSE-reject the §C/U6 spectral-relaxation regime where `‖S²−S‖_op ≥ 1/4` but
+  `rho < 1/4`, aic-8hz), and aborts with a CHANNEL-LEVEL message naming `aic_assoc_regularize`, the
+  `η < 1/4` hypothesis (`.tex:2168/2176`), and the prop_P basin (`.tex:524-525`). The deeper
+  `aic_prop_P` Gelfand guard ALREADY aborted fast, but with a generic "P²−P / prop_P" message that did
+  not attribute the failure to the input channel; the entry guard is the API-boundary attribution.
+  The cstar_build master loop has NO unbounded loop (Stage-1 capped at `dim_A+1`, errreduce at
+  `max_steps`, the only `while` is a bounded union-find); the funcalc sgn iterations cap at 100/200.
+
 ---
 
 ## D. Open questions / escalations (unresolved)
