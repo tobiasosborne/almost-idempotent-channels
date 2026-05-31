@@ -1835,6 +1835,85 @@ c₀ canary, T5 bijectivity, T6 the collapse-abort). `C0_CERT=10` (output-inclus
 ceiling), `EPS_FLOOR=4` (lem_approx termination floor — the defect cannot beat
 ~c₀ε). No eig in errreduce; σ_min uses double-path SVD.
 
-**th_main status:** `corner`✓ `projection`✓ `dhom`✓ `errreduce`✓ — only the §9
-master loop **`cstar_build`** (aic-097) remains; it assembles all four into the
-proof of `th_main`. See HANDOFF.md "RESUME HERE".
+**th_main status:** `corner`✓ `projection`✓ `dhom`✓ `errreduce`✓ `cstar_build`✓ —
+**th_main is COMPLETE** (see the cstar_build section below).
+
+## Module `cstar_build` — the master loop = the constructive proof of th_main (bead aic-097, §9)
+
+Realizes `th_main` (`.tex:460`): every finite-dim ε-C\* algebra `A` is
+`O(ε)`-isomorphic to a genuine C\* algebra `B = ⊕_C M_{|C|}` with a
+**dimension-independent** constant, by an EXPLICIT isomorphism `v: B → A`. Built as
+five increments over the four closed modules above; the paper's proof
+(`.tex:1414-1444`) is already constructive in finite dim, so each increment
+transcribes a proof move onto the closed routines.
+
+**The data-model linchpin.** The loop's inner objects are the compressed
+subalgebras `S_P`, which must be ε′-C\* algebras *in their own right* so projection /
+corner / dhom / errreduce recurse on them. `aic_cstar_subalg_build` (I1) re-presents
+`S_P` as a DERIVED `aic_ecstar`: star `X⋆Y = Co_P(Φ̃(XY))` (the compressed product
+`.tex:1080`), unit `Ptilde = Co_P(P)` (`.tex:1082`), basis = corner-extract, via the
+`star_phi`/`star_ctx` seam — the parent's modules recurse UNCHANGED. `aic_cstar_
+matrix_algebra` (I1) wraps `M_d` as a genuine C\* `aic_ecstar` (star = plain matmul),
+the lem_extension codomain `B(S_{P,Q})≅M_n`.
+
+**I2–I3 (assembly lemmas).** `aic_cstar_lem_add_dim` (`.tex:1363`, the dimension
+decomposition `dim S_{P,Q}=Σ dim S_{P_j,Q_k}`); `aic_cstar_merge_sum` (cor_merge_sum,
+`.tex:1352`, concat two δ-inclusions); `aic_cstar_lem_merging` (`.tex:1325`, the
+general 2×2 block assembler — `two_block=0` single `M_{n1+n2}` with LIVE off-diagonal
+for lem_extension, `two_block=1` for cor_merge_sum; FINDINGS §C9). All STRUCTURAL GLUE
++ the dhom defect_sweep / σ_min certification.
+
+**I4 (`lem_extension`, `.tex:1378`) — the substantive lemma.** Grows `v: M_n → S_P`
+into `v_+: M_{n+1} → A` by adjoining the rank-1 `Q` complementary to `P`. Six steps:
+(1) `dim S_{P,Q}=n` (lem_add_dim); (2) `h_{11}=Ha^Q_{P,P}` the O(δ+ε)-homomorphism
+`S_P → B(S_{P,Q})` (`aic_corner_ha`, arg order `(P,P,Q)` — the highest convention
+risk); (3) `μ_{11}=lem_approx(h_{11}∘v)` snapped to an exact hom (codomain genuine
+`M_n`, eps_target=0); (4) `U_1` from the rank-1 SVD of `μ_{11}(E_00)=u_0 u_0^†` then
+`U1_col_l = μ_{11}(E_l0)u_0/‖u_0‖²` (`.tex:1404`); (5) the four `γ_{jk}` (`.tex:1405`:
+`γ_11=v`, `γ_12=U_1`, `γ_21=(U_1(·†))†`, `γ_22=·Qtilde`); (6) assemble via lem_merging
+(`two_block=0`, `n1=n`, `n2=1`). Directional U₁ correctness is pinned by a
+non-symmetric-rotation η=0 fixture (T4). `src/aic_cstar_extension.c`, `test_cstar_
+extension` n=32.
+
+**I5 (`aic_cstar_build`) — the 3-stage master loop.**
+- **Stage 1 (commutative skeleton):** init `{P_1, Ptilde_A−P_1}` from
+  `aic_projection_nontrivial(A)`; while any `dim S_{P_m}>1`, split `P_m` via the
+  `S_{P_m}` wrapper's nontrivial projection (nontriviality verified against the WRAPPER
+  unit `Ptilde_m`, `‖Ptilde_m−P'‖≥0.15`, FINDINGS §C11/§C7 — NOT the vacuous ambient
+  `1_n`) + errreduce; terminate `≤dim_A+1` (the `.tex:1417-1426` contradiction). Then
+  union-find the 1-d projections into equivalence classes (`aic_corner_equiv_1d`,
+  `.tex:1428`) and assert `S_{P_C,P_D}=0` for distinct classes (`.tex:1443`).
+- **Stage 2 (per-class induction):** `v_r: M_r → S_{P_[1,r]}` via `lem_extension` (I4)
+  on the `S_P` wrapper-as-parent + `errreduce_unit` (the §C7 cor_improvement against
+  the wrapper unit `Ptilde`, not `1_n`).
+- **Stage 3 (merge):** cor_merge_sum over classes + errreduce_unit → `B = ⊕_C M_{|C|}`.
+- `c_0` is the MEASURED first-errreduce constant (FINDINGS §D2); later steps gated.
+
+**Cross-checks (`test_cstar_build` n=63).** The η=0 oracle is the cleanest ground
+truth: an EXACT-idempotent channel → `A=ImgΦ` genuine C\* → `v` an EXACT iso, and
+`B`'s block sizes MATCH the INDEPENDENT `aic_idemp_decompose` (th_idemp_structure)
+decomposition EXACTLY (block_cond_exp→[2,2]/[2,4]/[3,3], noiseless→[3],
+dephasing→[1,1,1,1]; iso_def=0). The **universality canary** (`.tex:484`): η=0
+iso_def FLAT at 0 over dim_A 8..20 — the dimension-independent-constant claim HOLDS
+(no naive-Haar `n`-blowup). Oblique η>0 (in-basin `n≤5`): the §C8 `c=iso_def/η` star
+tooth (`c_star~1 ≪ c_plain~42-65`).
+
+**The substrate unblock (aic-qgs).** Running the corner machinery on a doubly-oblique
+`S_P` wrapper exposed a Gram-Hermiticity false-fail in `aic_mat_opnorm`'s sgn-basin
+path. Fixed at root: `aic_mat_gram` now returns the exact-Hermitian midpoint `Gmid` +
+a rigorous Weyl perturbation bound `R=‖G−Gmid‖_F`; opnorm/svals run the certified eig
+on `Gmid` then inflate by `R` (PSD-clamped). Rigorous (sampling-proved enclosure),
+value-preserving on tight inputs.
+
+### Files
+`include/aic_cstar.h` (I1–I5 API), `include/aic_cstar_internal.h`, `src/aic_cstar_
+{subalg,matalg,merge,merging,extension}.c` (I1–I4), `src/aic_cstar_{build,stages,
+classes}.c` (I5), `tests/test_cstar{,_merge,_merging,_extension,_build}.c`. Design:
+`docs/research/{cstar_build_design,lem_extension_spec,cstar_masterloop_spec}.md`.
+
+### Open frontier (post-th_main, tracked)
+The `aic_sgn` convergence wall for large oblique cases (`n≥6`/`m≥3`) bounds the η>0
+canary to `n≤5` and leaves the η>0 multi-class merge + the `errreduce_unit`
+running-unit branch η=0-only — bead **aic-1vp** (diagnose basin-coverage vs the §D1
+gap-degeneracy stop condition). FINDINGS §C11. `th_main_ext` (§10) and `factorize`
+(`th_factorization`, the D4 outline stop condition) come after.

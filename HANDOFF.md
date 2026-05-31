@@ -27,27 +27,51 @@ findings this session: §A1 (`tex:1109` `lem_alpha` β subscript `Q_j`→`Q_k`) 
 §A2 (`tex:1254` direct-sum diagonal is non-central for the finite Pauli design;
 the correct one is the embedded sum `Σ_l D_l`).
 
-**LATEST (2026-05-30, cstar_build session):** `th_main` master loop now **40%
-built** — `cstar_build` I1/I2/I3 of 5 increments landed (see the RESUME section
-just below for the exact pickup: hostile-review I3, then build I4 `lem_extension`,
-then I5 the loop). 3 new test binaries (`test_cstar`/`test_cstar_merge`/
-`test_cstar_merging`, n=35/29/27). Everything else below is the prior session.
+**LATEST (2026-05-31, orchestrated th_main-completion session): `th_main` is
+DONE — `cstar_build` COMPLETE (I1–I5), bead `aic-097` CLOSED.** The constructive
+`O(ε)`-isomorphism `v: B → A` (proof of `th_main`, `.tex:1414-1444`) is realized
+and verified: the η=0 oracle produces `B = ⊕_C M_{|C|}` matching the INDEPENDENT
+`aic_idemp_decompose` block decomposition EXACTLY with zero defect, and the
+`.tex:484` universality canary is FLAT (constant = 0 over dim_A 8..20 — the
+dimension-independent-constant claim HOLDS). This session landed: I4 `lem_extension`
+(two-parallel-impl synthesis + hostile review + U₁-gap fix), the **aic-qgs**
+substrate fix (opnorm/svals now handle Grams with accumulated radius via a Weyl
+midpoint+R enclosure — this unblocked the oblique S_P-wrapper corner path I5 needs),
+and I5 `aic_cstar_build` (the 3-stage master loop; two-parallel-impl synthesis +
+hostile review). New binaries: `test_cstar_extension` (n=32), `test_cstar_build`
+(n=63).
 
-Current state: `master` clean (pushed to `origin`), **25 test binaries green,
-zero warnings**, 28 beads closed of 62. `make test` ~5 min (the n=16 canary in
-`test_assoc2` U3, bead `aic-erz`; per-binary `make build/test_X && ./build/test_X`
-stays quick). Read §"Channel-module conventions" before touching
-`ucp`/`idemp`/`cbnorm`/`ecstar`/`assoc_ecsa`, and `paper/FINDINGS.md` §C (the
-"tests that can't fail" the reviews keep catching: the **star vs plain product**
-blindness, the **oblique-`Φ̃`-not-`Π_A`** projection, **rem_X2** = no funcalc
-inside A, the **`aic_corner_gamma_opnorm_ub`** workaround for the `aic-qgs`
-opnorm Gram false-fail).
+Current state: `master` clean (pushed to `origin`), **27 test binaries green,
+zero warnings**, `make test` all-green (the two `test_corner` T9(iv) "FAILED"
+stderr lines are EXPECTED forked mutation-teeth, not failures). `make test` ~5 min.
+Read `paper/FINDINGS.md` §C (the "tests that can't fail" the reviews keep catching:
+**star vs plain product** blindness §C2, the **oblique-`Φ̃`-not-`Π_A`** projection
+§C3, **rem_X2** §C1, the unit-is-`Ptilde`-not-`1_n` §C7, §C11 the I5 subtleties).
+**§C5/§C10 (the `aic-qgs` Gram false-fail) is now RESOLVED** — the
+`aic_corner_gamma_opnorm_ub` workaround is retireable (separate cleanup).
+
+**▶ NEXT FRONTIER (th_main is done; these are the post-th_main steps):**
+1. **`aic-1vp`** — the `aic_sgn` convergence wall: Stage-2 oblique-wrapper
+   `lem_extension` fails to converge for ambient `n≥6` or block `m≥3` (a
+   convergence-BASIN issue, prec-independent; `FINDINGS §C11`). Both independent I5
+   impls hit it. Diagnose: `aic_sgn` basin-coverage gap (fix: wider-basin sgn =
+   `aic-68c` scaled-Newton/Kenney–Laub, or an eig-based fallback) vs the §D1/`aic-3qv`
+   structural gap-degeneracy stop condition. Fixing it extends the η>0 oblique canary
+   + closes the η>0 multi-class coverage gap. THE immediate next step.
+2. **`th_main_ext` (§10 `opspace`, `aic-zwo`)** — the tensor/cb-norm extension;
+   constructive modulo the cb-truncation `N` (open escalation D3).
+3. **`factorize` (`th_factorization`, `aic-tff`)** — the FINAL headline; carries the
+   D4 stop condition (the paper's proof is an OUTLINE; escalate per the mandate).
 
 ---
 
-## ⚠️ RESUME HERE — `cstar_build` (§9 master loop, bead `aic-097`, IN PROGRESS) = the proof of `th_main`
+## ✅ COMPLETE (historical design notes) — `cstar_build` (§9 master loop, bead `aic-097`, CLOSED) = the proof of `th_main`
 
-**Updated 2026-05-30 (orchestrated cstar_build session).** `cstar_build` is the
+**This section is now HISTORICAL** (cstar_build shipped I1–I5; see the LATEST block
+above for the current state and the NEXT FRONTIER). The design notes below remain a
+useful map of how the master loop was assembled.
+
+**Originally updated 2026-05-30 (orchestrated cstar_build session).** `cstar_build` was the
 **only remaining `th_main` step**: it assembles the four CLOSED modules below into
 the constructive `O(ε)`-isomorphism `v: B → A`. Being built as **5 increments**
 (I1–I5) per the design doc **`docs/research/cstar_build_design.md`** — READ THAT
