@@ -173,6 +173,35 @@ void aic_ucp_compose(aic_ucp_kraus *out, const aic_ucp_kraus *phi,
 void aic_ucp_choi_diff(acb_mat_t C, const aic_ucp_kraus *phi1,
                        const aic_ucp_kraus *phi2, slong prec);
 
+/* --- channel power + Choi-rank compression (bead aic-xxk; aic_ucp_power.c) --- */
+
+/* Choi-rank COMPRESSION: minimal-Kraus-rank form of `phi`. Builds the Choi
+ * matrix C_Phi (Convention A) and re-extracts its minimal PSD eigenbasis via
+ * aic_ucp_choi_to_kraus_latd, which keeps only eigenpairs with lambda > the
+ * QETLAB threshold (dim_K*dim_H)*eps_mach*||C||_F. The CHANNEL is unchanged
+ * (same Choi matrix); only the Kraus count drops to the Choi rank, so
+ *   out->r = (count of nonzero Choi eigenvalues) <= dim_K * dim_H.
+ * EXACT up to the latd extraction tolerance (the QETLAB threshold ~ 1e-15||C||_F:
+ * numerically-zero eigenpairs are dropped — that drop IS the compression).
+ * Kraus reps are unique only up to a unitary gauge, so the recovered operators
+ * are NOT the originals: compare AS CHANNELS (rebuild Choi), never op-by-op.
+ * `out` is aic_ucp_kraus_init'd HERE (by the latd extractor); caller clears it. */
+void aic_ucp_compress(aic_ucp_kraus *out, const aic_ucp_kraus *phi, slong prec);
+
+/* Channel POWER Phi^k (Heisenberg map composition Phi o ... o Phi), k >= 0.
+ *   k = 0  -> identity channel on C^{dim_H} (r = 1, K_0 = 1_{dim_H});
+ *   k = 1  -> a copy of phi (uncompressed; phi's own Kraus set);
+ *   k >= 2 -> repeated compose, COMPRESSING AFTER EACH compose so the running
+ *             Kraus count stays at the Choi rank (<= dim_H^2) instead of blowing
+ *             up as phi->r^k (compose multiplies operator counts). The compress-
+ *             each-step is why this is paired with aic_ucp_compress.
+ * REQUIRES dim_K == dim_H for k != 1 (the identity and composition are
+ * endomorphisms); asserted fail-loud (Rule 4). For a power both compose factors
+ * are powers of the same Phi (which commute), so the compose direction is moot.
+ * `out` is aic_ucp_kraus_init'd HERE; caller clears it. */
+void aic_ucp_power(aic_ucp_kraus *out, const aic_ucp_kraus *phi, slong k,
+                   slong prec);
+
 /* --- double path (LAPACK): degenerate-spectrum extraction (aic_ucp_*_latd) --- */
 
 /* Choi->Kraus extraction (.tex / shard G): PSD eigendecomposition of C_Phi,
