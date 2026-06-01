@@ -19,6 +19,25 @@ Bead track: epic `aic-dbo`. Feeds the shared benchmark corpus (`aic-f9u.1`).
   projections, the `ε~c/n` blowup regime), projection/corner, δ-hom/main-loop,
   factorization composite bound. Plus the `η=0` oracle and a sweep matrix.
 
+### Increment 2, tranche 1 (landed 2026-06-01, bead aic-dbo.2)
+
+The first two channel/UCP-map generators are in `tests/aic_adversarial_domain.c`.
+Self-test count: 65 (up from 33 after Increment 1). Both mutation-proven.
+
+- **1B `chan_cb_op_gap`** (tex:366-388): measure-prepare cb-vs-op gap. Closed-form
+  defect `||Phi^2-Phi||_cb = eta*sqrt(1-eta)`. Measured anchor (prec=256, d=2):
+  eta=0.20 gives 0.178885, certified bracket [0.126491, 0.505964]. eta=0 reduces to
+  exact dephasing (bracket [0,0]).
+- **2A `chan_depol_boundary`** (tex:516-525): depolarizing, rho(Phi^2-Phi) = p(1-p),
+  hitting 1/4 at p=1/2. Lower bound lo = p(1-p)*sqrt(3)/2 at d=2 (ratio lo/[p(1-p)]
+  constant = 0.866025 across all p). Measured anchor (prec=256, d=2): p=0.5 gives
+  bracket [0.216506, 0.866025], the exact basin edge. p in {0,1} reduce to exact
+  idempotents (bracket [0, ~3e-16]).
+
+Remaining inc-2 families (tranche 2): 3D eps~c/dim universality canary (unblocks
+aic-dbo.3), non-commutative calibrated eta->1/4, families 1C/1D/2B, and the
+make_mixconj corpus-unification.
+
 ## Most lethal instances (merged shortlist)
 1. **Exact-degeneracy projector** (nla 4b) — eigenvalues {0,1} highly repeated;
    FLINT's certified *simple*-spectrum eig cannot isolate it. Proves the eig-free

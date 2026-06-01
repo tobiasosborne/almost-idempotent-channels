@@ -20,10 +20,13 @@
  * reproducible. Where a "random" off-diagonal is wanted (gen2), a fixed deterministic
  * pattern (a small rational LCG, fixed seed AIC_ADV_SEED) stands in.
  *
- * CATALOGUE PROVENANCE (Law 1). Each generator cites its docs/adversarial/nla.md
- * family/sub-section and, where the catalogue cites the paper, the
- * approximate_algebras.tex line. The seven generators span the distinct NLA attack
- * modes plus the merged lethal shortlist (README.md "Most lethal instances"):
+ * CATALOGUE PROVENANCE (Law 1). Each generator cites its docs/adversarial/nla.md or
+ * domain.md family/sub-section and, where the catalogue cites the paper, the
+ * approximate_algebras.tex line. Increment 1 (aic_adversarial.c / aic_adversarial_nla.c)
+ * has seven NLA generators; Increment 2 (aic_adversarial_domain.c) adds the first two
+ * channel/UCP-map generators. The full list:
+ *
+ * NLA generators (bare acb_mat_t; Increment 1):
  *   1 jordan_t13        nla 1a, tex:540-544  : non-Lipschitz t^{1/3} spectral burst
  *   2 nonnormal_tri     nla 2c               : departure-from-normality / op-vs-rho gap
  *   3 degenerate_proj   nla 4b (lethal #1)   : exact {0,1} projector, eig-free sgn only
@@ -32,10 +35,17 @@
  *   6 boundary_x2I      nla 7a (lethal #5)   : ||X^2-I||=1 straddle, funcalc domain edge
  *   7 propP_delta       nla 7b               : ||P^2-P||=delta, prop_P basin edge 1/4
  *
- * API SHAPE (reusable by tests AND benches). Every generator takes a caller-managed
+ * Channel/UCP-map generators (aic_ucp_kraus; Increment 2, tranche 1):
+ *   chan_cb_op_gap      domain 1B, tex:366-388 : cb-norm vs operator-norm gap (measure-prepare)
+ *   chan_depol_boundary domain 2A, tex:516-525 : eta->1/4 theta(2Phi-1) basin edge
+ *
+ * API SHAPE (reusable by tests AND benches). Each NLA generator takes a caller-managed
  * acb_mat_t `out` that the caller has init'd to the right shape (asserted), the
- * knob(s), and a prec. Outputs are written into `out`; the caller clears it. Names
- * are aic_adv_<family>. No global state.
+ * knob(s), and a prec; outputs are written into `out`; the caller clears it. The
+ * channel generators (aic_adv_chan_*) instead take an aic_ucp_kraus `out` that the
+ * generator INITIALISES itself (matching the aic_channels.h constructor convention);
+ * the caller clears it with aic_ucp_kraus_clear. Names are aic_adv_<family>. No
+ * global state.
  */
 #ifndef AIC_ADVERSARIAL_H
 #define AIC_ADVERSARIAL_H
