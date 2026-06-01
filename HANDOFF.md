@@ -43,8 +43,11 @@ pre-existing master slow-suite reds are now CLEARED — full `ctest` is 32/32 gr
 shipped `aic-7hg` (NEW public physical-channel constructor library — dephasing/depolarizing/
 pauli/mix_unitaries/group_twirl/cond_expectation over `aic_ucp_kraus`, exported in libaic,
 include/aic/aic_channels.h; hostile-reviewed, which closed a dag-order test-blindness gap via
-a non-Hermitian-U cross-check). New beads filed: `aic-w9f` (visibility deferral), `aic-rcm`
-(test_errreduce 115s cost), the laptop clock-skew bug.
+a non-Hermitian-U cross-check) and `aic-xxk` (`aic_ucp_power` Φ^k + `aic_ucp_compress` —
+power compresses each step so the Kraus count stays at the Choi rank, not r^k; 46 invariants,
+uses the aic-7hg channels as idempotence oracles). New beads filed: `aic-w9f` (visibility
+deferral), `aic-rcm` (test_errreduce 115s cost), the laptop clock-skew bug. **Six beads closed
+this session; master 32/32+ green throughout.**
 
 **▶ NEXT (autonomous wave plan, laptop-tractable first):** Wave B capability modules
 (`aic-xxk` ucp_power/compress, `aic-pvs` non-Herm eig zgeev, `aic-w4o.2` acb SVD; `aic-7hg`
