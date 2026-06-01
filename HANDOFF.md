@@ -46,13 +46,14 @@ include/aic/aic_channels.h; hostile-reviewed, which closed a dag-order test-blin
 a non-Hermitian-U cross-check) and `aic-xxk` (`aic_ucp_power` Φ^k + `aic_ucp_compress` —
 power compresses each step so the Kraus count stays at the Choi rank, not r^k; 46 invariants,
 uses the aic-7hg channels as idempotence oracles). New beads filed: `aic-w9f` (visibility
-deferral), `aic-rcm` (test_errreduce 115s cost), the laptop clock-skew bug. **Six beads closed
-this session; master 32/32+ green throughout.**
+deferral), `aic-rcm` (test_errreduce 115s cost), the laptop clock-skew bug. Also `aic-pvs`
+(`aic_latd_eig_general` zgeev non-Hermitian eig + `aic_latd_spectral_gap`/`_separation` helpers,
+validated by the zgeev-vs-zheev Hermitian cross-check). **SEVEN beads closed this session;
+master fully green throughout.**
 
-**▶ NEXT (autonomous wave plan, laptop-tractable first):** Wave B capability modules
-(`aic-xxk` ucp_power/compress, `aic-pvs` non-Herm eig zgeev, `aic-w4o.2` acb SVD; `aic-7hg`
-channel constructors DONE — the new `aic_channel_*` also supply the diverse/out-of-regime
-fixtures the codebase lacked) → Wave C consume the package (`aic-obc` Julia ccall now that CMake builds libaic.so,
+**▶ NEXT (autonomous wave plan, laptop-tractable first):** Wave B — only `aic-w4o.2` (full acb
+SVD: U, Σ, V) remains (`aic-7hg`/`aic-xxk`/`aic-pvs` DONE; the new `aic_channel_*` also supply
+the diverse/out-of-regime fixtures the codebase lacked) → Wave C consume the package (`aic-obc` Julia ccall now that CMake builds libaic.so,
 then `aic-95g.2` JLL / `.3` Python) → Wave D robustness/test-teeth → Wave E heavy-but-smart
 (`aic-bag` F4.2 on SMALL dims n=2-5 + dual reformulation) → Wave F research escalations
 (`aic-1bc` analytic c0, `aic-3qv` Ω(1)-gap, `aic-ynu` Artin-Wedderburn). Build/test:
