@@ -1030,6 +1030,47 @@ with the concrete evidence from where they bit.
   `src/aic_factorize_shim.{c,h}` (green), `tools/gen_fixtures_factorize_f4.jl` (eager-flush,
   `F4_ONLY` filter, relaxed-tol override, GC).
 
+### D7. Certified Choi→Kraus (`aic_ucp_choi_to_kraus_arb`) — the rank gap needs prec ≥ 64, NOT 53 — `aic-4td` inc-2 step D
+- **Status:** EXPECTED behaviour, recorded (2026-06-01, `src/aic_ucp_kraus_arb.c`,
+  `src/aic_ucp_kraus_arb_orth.c`, `tests/test_kraus_arb.c`). The certified arb counterpart of the
+  double-path `aic_ucp_choi_to_kraus_latd` mirrors it exactly (Convention-A conjugate reshape,
+  QETLAB `keep_thr = (dim_K·dim_H)·2^-52·‖C‖_F`, `_tol` PSD-cone variant) on the C1/C2 certified
+  eigensolver. The per-cluster orthonormalisation uses **Löwdin** `V = X (X†X)^{-1/2}`
+  (Rump's `X` is NOT orthonormal; a raw reshape would not rebuild `C` — proven by the S4 mutation),
+  with `x0 = ‖X‖_op²` from `aic_mat_opnorm` (Weyl-Hermitianizes the interval Gram, §C5) — NOT
+  `herm_max_eig(X†X)`, which ABORTS on the raw interval Gram (independent per-entry radii fail the
+  tight Hermiticity assert; this bit during impl). Cluster-eigenvalue route: `λ_c`-for-all-columns,
+  EXACT for k=1 (gap-clustering isolates a distinct nonzero eigenvalue into its own cluster) and for
+  a genuine degeneracy (⊕B(L) block multiplicity — all k equal); S4 round-trip-within-the-ball is
+  the acceptance gate that would catch any lumping (none in the project's spectra).
+- **The prec floor (the load-bearing measured fact).** A rank-deficient Choi has a large ZERO
+  cluster. At **prec=53** the certified zero-eigenvalue enclosure has radius **~2e-14** (densify+Rump
+  conditioning), which STRADDLES `keep_thr ~1e-15` → the routine fail-loud-aborts ("STRADDLE",
+  correct: the kept-vs-dropped rank is genuinely unresolved at that prec). **Measured floor where the
+  zero ball drops cleanly below `keep_thr`: prec ≥ 64** (zero-ball radius ~3.6e-17 at prec=64,
+  ~2.8e-17 at prec=128); we run the extraction at **prec=128** for headroom. So the double-vs-arb
+  cross-check runs the double path at its native ~53-bit and the arb path at prec=128, comparing AS
+  CHANNELS (rebuild Choi, ‖·‖_op) — equal prec is NOT required (and would defeat the certification).
+  Measured S3 ‖C_arb−C_latd‖_op: complex-asym C² `4.6e-16`, compress-idemp C³ `7.3e-16`, depolarizing
+  C³ `1.8e-16`; ranks agree (2,3,9). S4 round-trip ‖C_rebuilt−C‖_op enclosures: distinct `[0,1.4e-16]`,
+  degenerate(k=3) `[0,7.3e-16]`, depolarizing `[0,2.0e-17]` — all contain 0. S5 _tol: planted O(η²)
+  `−2.5e-6` DROPPED, clipped mass `2.5e-6`, kept Kraus rebuild a CP map; planted O(1) `−0.3` FAILS
+  LOUD. The cross-check ladder note: the certified path's natural prec is its OWN, not the double
+  anchor's — a precision wall at prec=53 here is a true rank-gap-vs-prec relation (R4/design §1.5), not
+  a bug.
+- **Latent C2 densifier limit re-surfaced (extends §D5n2).** The C2 `aic_mat_eig_hermitian_subspaces`
+  densifier-unitary guard scales its tolerance by `n²` (§D5n2). MEASURED here: the chained-Givens
+  `‖U U†−I‖_F` actually grows ~`n⁴·2^-prec` (defect/(`n²·2^-prec`) ratio: ~6 at n=4, ~490 at n=16,
+  ~3650 at n=20), so the `n²·2^-(prec-8)` guard FAIL-LOUD-ABORTS for **n ≥ 16** at prec=128
+  (measured defect `3.68e-34` > tol `1.9e-34` at n=16) — i.e. a 16×16 Choi (a dim-4 channel's Choi)
+  cannot go through the certified subspace path at prec=128. **Not a step-D blocker** (the carrier /
+  factorization channels of interest are small; the step-D test corpus stays at n≤9, the C2 S1
+  range). **Recipe for the C2 follow-up bead:** scale the densifier tolerance by `n³` instead of `n²`
+  in BOTH `aic_mat_int_assert_densify_unitary` (`src/aic_mat_eigvec_seed.c`) and the C1 retry guard
+  (`src/aic_mat_eig_multiple.c`) — at n=20 `n³·2^-(prec-8) ≈ 6e-32` covers the `4.3e-33` defect and
+  stays at/below the eigenvalue-ball radii (~1e-31), so a broken `U` (defect ~1) still fails loud; OR
+  raise prec for large `n`. Left for a separate review-gated C2 change (Rule 9), not done in step D.
+
 ---
 
 ## How to use / extend this file

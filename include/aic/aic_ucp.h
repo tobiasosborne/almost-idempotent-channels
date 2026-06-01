@@ -242,6 +242,53 @@ void aic_ucp_choi_to_kraus_latd_tol(aic_ucp_kraus *phi, const acb_mat_t C,
  * dim_K x dim_K carrier operator from aic_ucp_carrier_Q. */
 slong aic_ucp_carrier_rank_latd(const acb_mat_t Q, slong dim_K);
 
+/* --- certified arb path: Choi->Kraus (aic_ucp_kraus_arb.c, bead aic-4td inc.2
+ *     step D) — the certified counterpart of aic_ucp_choi_to_kraus_latd --- */
+
+/* CERTIFIED Choi->Kraus (arb counterpart to aic_ucp_choi_to_kraus_latd). PSD
+ * eigendecomposition of C (Convention A, file docstring) via the certified
+ * degeneracy-robust aic_mat_eig_hermitian_subspaces. For each eigen-cluster with
+ * lambda_c CERTIFIED above keep_thr = (dim_K*dim_H)*2^-52*||C||_F (an arb ball
+ * matching the _latd QETLAB gate), the cluster's invariant subspace X is
+ * ORTHONORMALISED (Loewdin V = X (X^dag X)^{-1/2}; Rump's X is NOT orthonormal)
+ * to orthonormal columns v, each giving a Kraus op
+ *   K_a[i,c] = sqrt(lambda_c) * conj(v[i*dim_H + c])
+ * (the Convention-A conjugate reshape, matching _latd exactly so kraus_to_choi
+ * rebuilds C). ASSERTS (Rule 4): C Hermitian; every kept cluster certified-above
+ * and every dropped certified-below keep_thr — a cluster ball STRADDLING keep_thr
+ * is rank-unresolved and ABORTS (like aic_mat_certified_rank); a cluster lambda
+ * certified < -keep_thr is non-CP and ABORTS. The cluster spectrum is identified
+ * by gap-clustering, so a distinct nonzero eigenvalue becomes a k=1 cluster
+ * (lambda_c exact) and a genuine degeneracy (one repeated nonzero eigenvalue, the
+ * (+)B(L) block multiplicities) becomes a single cluster (lambda_c exact to the
+ * ball) — either way the round-trip rebuilds C to within the certified ball; S4
+ * is the acceptance gate. Recovered Kraus are a valid rep of the SAME channel up
+ * to the unitary gauge freedom — compare AS CHANNELS (rebuild Choi), never
+ * operator-by-operator. `phi` is OUTPUT (aic_ucp_kraus_init'd HERE; caller
+ * clears). C is the (dim_K*dim_H)^2 Choi matrix. */
+void aic_ucp_choi_to_kraus_arb(aic_ucp_kraus *phi, const acb_mat_t C,
+                               slong dim_K, slong dim_H, slong prec);
+
+/* TOLERANCE-AWARE certified Choi->Kraus with a PSD-cone projection (FINDINGS
+ * §C14), arb counterpart to aic_ucp_choi_to_kraus_latd_tol. Same certified
+ * eigen-cluster decomposition as the strict variant, with three CERTIFIED
+ * regimes per cluster:
+ *   lambda_c certified > keep_thr            -> KEEP (sqrt-scaled conj-reshape);
+ *   lambda_c certified in (-neg_tol, keep_thr] -> DROP (cone-defect/noise); if its
+ *                                              midpoint < 0 add k_c*|mid| to
+ *                                              *clipped_neg_out (certified cone-
+ *                                              defect mass);
+ *   lambda_c certified <= -neg_tol           -> FAIL LOUD (genuine non-CP input).
+ * A cluster ball STRADDLING keep_thr or -neg_tol is UNRESOLVED -> ABORT (raise
+ * prec). `neg_tol` must be >= 0; the strict aic_ucp_choi_to_kraus_arb delegates
+ * here with neg_tol = keep_thr (so it fails loud for lambda <= -keep_thr exactly
+ * as the strict QETLAB gate). `clipped_neg_out` (if non-NULL) receives the total
+ * clipped negative mass (the genuine-bug guard checks it is O(eta^2)-small).
+ * `phi` is OUTPUT (init'd HERE; caller clears). */
+void aic_ucp_choi_to_kraus_arb_tol(aic_ucp_kraus *phi, const acb_mat_t C,
+                                   slong dim_K, slong dim_H, double neg_tol,
+                                   double *clipped_neg_out, slong prec);
+
 /* Certified carrier rank: rank of the Hermitian PSD carrier Q = sum_a K_a K_a^dag
  * via aic_mat_certified_rank with thr = dim_K * eps_mach * ||Q||_F (an arb ball,
  * matching the double-path aic_ucp_carrier_rank_latd threshold; eps_mach =
