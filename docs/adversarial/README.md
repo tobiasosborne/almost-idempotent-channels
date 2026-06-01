@@ -34,9 +34,28 @@ Self-test count: 65 (up from 33 after Increment 1). Both mutation-proven.
   bracket [0.216506, 0.866025], the exact basin edge. p in {0,1} reduce to exact
   idempotents (bracket [0, ~3e-16]).
 
-Remaining inc-2 families (tranche 2): 3D eps~c/dim universality canary (unblocks
-aic-dbo.3), non-commutative calibrated eta->1/4, families 1C/1D/2B, and the
-make_mixconj corpus-unification.
+### Increment 2, tranche 2-partial (landed 2026-06-01, bead aic-cxo)
+
+Two more channel generators; self-test count 84.
+
+- **1D `chan_unital_defect`** (tex:432/672): single Hermitian Kraus
+  `K_0 = diag(sqrt(1+delta_u), sqrt(1-delta_u), 1,..)`, so `Phi(I) = I + delta_u*E`
+  (E traceless, ||E||=1) and the certified unital defect equals `delta_u` exactly
+  (measured == delta_u to ~1e-12 at delta_u in {1e-3,0.1,0.5}; delta_u=0 unital).
+- **1C `chan_carrier_dropout`** (tex:1724/1731, new file `aic_adversarial_carrier.c`):
+  single Hermitian Kraus `K_0 = diag(1,..,1,sqrt(gap))`, carrier `Q = sum K K^dag =
+  diag(1,..,gap)`. Certified carrier rank = d for gap >> thr (gap in {0.5,1e-3,1e-6});
+  smallest carrier eig == gap; gap=0 oracle certifies rank d-1. NOTE (hostile review):
+  a DIAGONAL carrier only drives the *certify* path (point-ball eigenvalues, never
+  straddles); the straddle/fail-loud hard case needs a densified carrier (covered at
+  the eigvec level by test_eigvec S6b) — a channel-level densified generator is the
+  follow-up bead aic-v5f.
+
+Remaining inc-2 families (tranche 3): 3D eps~c/dim universality canary (unblocks
+aic-dbo.3); a DENSIFIED near-degenerate carrier `U diag(1,..,gap) U^dag` (drives the
+straddle/fail-loud path + is convention-sensitive — closes the 1C diagonal-carrier
+gap); non-commutative calibrated eta->1/4; family 2B; the make_mixconj
+corpus-unification.
 
 ## Most lethal instances (merged shortlist)
 1. **Exact-degeneracy projector** (nla 4b) — eigenvalues {0,1} highly repeated;
