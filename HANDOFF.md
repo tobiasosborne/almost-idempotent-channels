@@ -1,5 +1,70 @@
 # HANDOFF.md — almost-idempotent-channels
 
+## ▶▶ NEXT AGENT — START HERE (2026-06-01)
+
+**State:** master is FULLY GREEN — `ctest --test-dir build` (32 fast/slow tests) all pass;
+working tree clean; everything committed AND pushed. bd: **43 open (39 ready) / 43 closed.**
+The paper's five constructive headlines (`th_idemp_structure`, `th_almost_idemp`, `th_main`,
+`th_main_ext`, `th_factorization`) were already done before this session; this session was
+infrastructure + correctness + capability beads (see the CHECKPOINT below).
+
+**Mandate (standing user directive — memory `feedback_autonomous_orchestration`):** drive the
+WHOLE backlog autonomously and serially; delegate each step to subagents (Opus for code / heavy
+design with thinking level by task; Sonnet/Explore for survey/summary); hostile-review every
+Core change (Rule 9); mutation-prove the load-bearing teeth; **commit AND push every green
+increment** (`bd export > .beads/issues.jsonl` before each commit); **raise a bead for every
+issue you surface**; be laptop-compute-aware (iterate on `ctest -L fast`, bound heavy runs, run
+MOSEK on SMALL dims — do NOT blanket-defer). Guiding bar: *what would a senior expert C/Julia
+engineer demand for best practice/quality?* Escalate only on a SERIOUS blocker.
+
+> **⚠ META-LESSON FROM THIS SESSION — do NOT repeat:** the previous agent closed 7 beads then
+> STOPPED at a "clean checkpoint" while 39 ready beads remained, rationalising it as
+> context/compaction risk. That was wrong: atomic commit+push after every bead + a current
+> HANDOFF make continuing safe (compaction at worst loses one *uncommitted* in-flight bead). The
+> user explicitly wanted continuous work. **Keep going until the backlog is genuinely exhausted
+> or you hit a real blocker — a checkpoint is not a stopping point.**
+
+**First commands:**
+```
+bd ready ; bd show <id>                          # 39 ready
+cmake -S . -B build && cmake --build build -j$(nproc)
+ctest --test-dir build -L fast                   # ~1s, 14 tests — the iteration gate
+ctest --test-dir build                           # full (slow set arb-heavy, ~7-8 min at -j3)
+```
+Build/layout: `make` is now a thin wrapper over CMake; `src/*.c` and `tests/test_*.c` are
+AUTO-GLOBBED (CONFIGURE_DEPENDS) — no CMakeLists edit to add a file. Tests link the STATIC lib
+(full symbols, NDEBUG stripped so `assert()` is live). After adding src, `cmake --build build
+--target aic` refreshes `libaic.so` so the new symbols export (default visibility).
+
+**Best next picks (laptop-tractable, rough priority):**
+1. **`aic-95g.2` (Julia JLL) or `aic-obc` (Julia ccall pkg)** — BOTH now UNBLOCKED by the closed
+   CMake bead (`libaic.so` builds; `find_package(AIC)` / `aic.pc` work; Julia 1.12.5 present).
+   Caveat on `.2`: AICTargets bakes the absolute libflint path (the JLL builds its own FLINT —
+   see the bead note).
+2. **`aic-w4o.2` (full acb SVD U,Σ,V)** — the certified ARB path; HARDER, entangles the OPEN
+   `aic-w4o.1` degenerate-eig wall (acb SVD via eig of A†A / the Hermitian dilation hits repeated
+   singular values). The double-path `aic_latd_svd` exists as the uncertified anchor + cross-check.
+3. **Wave-D cleanups / test-teeth (compute-light):** `aic-92i`, `aic-cr6`, `aic-htb`, `aic-kyj`,
+   `aic-dka`, `aic-7xx` (umbrella header; couples with `aic-w9f` visibility), `aic-rcm`/`aic-erz`
+   (canary-cost cuts).
+4. **Heavy-but-smart (bounded):** `aic-bag` (F4.2 dim-canary on n=2-5 + dual reformulation —
+   MOSEK 11 + `~/mosek/mosek.lic` ARE on this box), `aic-l5b`, `aic-0at`.
+
+**Reusable assets shipped this session (use, don't reinvent):**
+- `include/aic/aic_channels.h` — public channel constructors; the exactly-idempotent ones
+  (dephasing / cond_expectation / depolarizing@p=1 / closed-group twirl) are clean η=0 oracles.
+- `tests/test_xo0_failloud.c` — the fork+SIGALRM watchdog pattern for testing Rule-4 ABORTS
+  without crashing the test binary (`test_channels.c` reuses it for input-validation teeth).
+- `aic_ucp_power` / `aic_ucp_compress` (`aic_ucp.h`); `aic_latd_eig_general` / `aic_latd_spectral_gap`
+  / `aic_latd_spectral_separation` (`aic_latd.h`).
+
+**Env (filed `aic-kel`):** laptop clock skew → `make` emits benign "Clock skew detected"; Ninja
+hard-fails "manifest dirty" → the build uses the default **Make** generator (`rm -rf build` clears
+a stuck dir). MOSEK 11 + license present; Julia 1.12.5 (juliaup); Python 3.12 present but `venv`
+missing (use `uv` for the Python bead `aic-95g.3`).
+
+---
+
 ## ▶ LATEST CHECKPOINT (2026-06-01, LAPTOP session: CMake migration CLOSED; autonomous backlog orchestration) — READ FIRST
 
 **New working mode (user directive):** drive ALL beads autonomously, serial, delegating
