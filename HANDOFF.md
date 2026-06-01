@@ -1,5 +1,52 @@
 # HANDOFF.md — almost-idempotent-channels
 
+## ▶▶ LATEST (2026-06-01d, orchestrated, laptop): aic-l5b CLOSED + the adversarial CHANNEL corpus opened (4 generators) — three beads landed, ~10 commits, all green+pushed
+
+**State:** master FULLY GREEN — full `ctest --test-dir build` **39/39** (re-run after aic-l5b;
+the channel-generator work only ADDS test code, no src path touched, so the `fast` gate +
+`test_adversarial` n=84 are the evidence since). Working tree clean, up to date with
+`origin/master` (HEAD `90e847f`). bd: **93 issues**, 46 closed. Commit range this session:
+`30dcd7c..90e847f`. Every increment committed AND pushed (user directive: commit/push
+regularly). Orchestration shape: serial Opus implementers, per-increment independent verify +
+Rule-9 hostile review, Sonnet for docs, commit+push each green step.
+
+**Three beads landed this session:**
+1. **`aic-l5b` (P1) CLOSED — certified eig-free cb/diamond DISTANCE `‖Φ−Ψ‖_cb`** (commits
+   `d27e52a`,`3a20b2b`). `aic_cbnorm_eigfree_distance` (`src/aic_cbnorm_distance.c`, 72 LOC,
+   arb/acb-only) = glue over `aic_ucp_choi_diff` + `aic_cbnorm_eigfree_ball_choi`; `Λ=Φ−Ψ`
+   Herm-preserving so the Watrous `N=n` bracket `[‖J‖_F/n, 2‖J‖_F]` reuses verbatim. 84-check
+   suite incl. the closed-form id-vs-unitary oracle `‖Φ_I−Φ_W‖_cb=2 sin(θ/2)` (W=diag(1,e^{iθ})),
+   depolarizing linearity, fail-loud teeth. Hostile review SHIP (rederived the closed form +
+   `‖J‖_F` independently). TIGHT MOSEK rung + Julia wrapper deferred → **`aic-jhe` (P2)**.
+2. **`aic-dbo.2` inc-2 tranche-1 — the FIRST channel/UCP-map adversarial generators** (the corpus
+   had only NLA matrix gens). New `tests/aic_adversarial_domain.c`. (commits `0143b30`,`1f29fb4`,
+   `8eb800d`,`138f960`). **G1 `aic_adv_chan_cb_op_gap`** (1B, tex:366-388 measure-prepare;
+   exact `‖Φ²−Φ‖_cb=η√(1−η)`; cb≫op gap). **G2 `aic_adv_chan_depol_boundary`** (2A, tex:516-525;
+   `Φ_p²−Φ_p=p(1−p)C`, `ρ=p(1−p)→1/4` at p=½; cb-defect exactly linear in p(1−p)). Hostile
+   review SHIP + fixed MINOR G2.5 (absolute-coefficient pin `lo=p(1−p)√(d²−1)/d`).
+3. **`aic-cxo` (P1, NEW, claimed) tranche — two more channel gens** (commits `0d96b07`,`a5dd31c`,
+   `90e847f`). **G3 `aic_adv_chan_unital_defect`** (1D, tex:432/672; single Herm Kraus
+   `diag(√(1+δ),√(1−δ),1..)`, certified unital defect `=δ_u` exact). **G4 `aic_adv_chan_carrier_dropout`**
+   (1C, tex:1724/1731, new file `tests/aic_adversarial_carrier.c`; `Q=ΣKK†=diag(1,..,gap)`,
+   certified carrier rank, smallest eig`=gap`). Hostile review SHIP. **Finding:** a DIAGONAL
+   carrier only drives the carrier-rank *certify* path (point balls never straddle); the
+   straddle/fail-loud hard case needs a DENSIFIED carrier → follow-up **`aic-v5f` (P2)**.
+
+**Bead hygiene this session:** closed `aic-l5b`, `aic-w4o.1` (reconciliation — delivered in full
+by its increment-2 `aic-4td`; was stale-in_progress). Filed `aic-jhe` (tight cb-distance + Julia),
+`aic-cxo` (channel-corpus tranche 2, P1, claimed+in-progress — `dep: aic-dbo.3` now depends on it),
+`aic-v5f` (densified carrier). `test_adversarial`: n 33→41→61→65→70→84 across the 4 generators.
+
+**▶ NEXT picks (aic-cxo remaining = the consequential channel-corpus continuation):**
+`aic-v5f` (P2, densified near-degen carrier — closes the 1C diagonal-carrier no-straddle +
+convention-insensitive gaps in one instance; clean, uses the aic-4td certified-rank machinery);
+the **3D eps~c/dim** universality family (the HIGH-value one — UNBLOCKS **`aic-dbo.3`** the
+dim-independence regression, the paper's central `.tex:484` claim; compute-bound the sweep,
+laptop dim_A≲64); non-commutative calibrated η→1/4; family 2B (O(√η) cancellation in Φ_assoc1);
+the `make_mixconj` corpus-unification (with `aic-f9u.1`). Also still open: Julia packaging
+(`aic-obc`/`aic-95g.2`), `aic-jhe` (tight cb-distance). The new channel generators are reusable
+across every module's tests + the shared bench corpus `aic-f9u.1`.
+
 ## ▶▶ LATEST (2026-06-01c, orchestrated, laptop): aic-4td CLOSED — the D5n degenerate-eig wall RESOLVED; full certified invariant-subspace + Choi→Kraus + carrier stack landed
 
 **State:** master FULLY GREEN — `ctest --test-dir build` **38/38** (was 36; +`test_eigvec`,
