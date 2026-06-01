@@ -881,15 +881,21 @@ with the concrete evidence from where they bit.
   `aic_mat_eig_hermitian_multiple` (seed `acb_mat_approx_eig_qr` → `acb_mat_eig_multiple`
   Rump cluster enclosures) and `aic_mat_certified_rank` / `aic_ucp_carrier_rank`
   (`src/aic_mat_eig_multiple.c`, `src/aic_ucp_carrier.c`; `tests/test_eigmult.c`). The
-  **certified carrier dimension** is therefore no longer double-path-only. STILL OPEN:
-  certified *subspace/eigenvector* extraction for degenerate clusters (corner `dim S`,
-  idemp/assoc invariant subspaces) — increment 2 (`aic-w4o.2`). Eig-free Cholesky (Route 2)
+  **certified carrier dimension** is therefore no longer double-path-only — and since the
+  §D5n densify-retry (aic-4td, see §D5n RESOLVED) the eigenvalue/rank layer no longer aborts
+  on the two-clusters-each-mult-≥2 / `⊕B(L_j)` carrier inputs (`diag(2,2,0,0)` etc.) either.
+  STILL OPEN: certified *subspace/eigenvector* extraction for degenerate clusters
+  (corner `dim S`, idemp/assoc invariant subspaces) — increment 2 (`aic-w4o.2` / `aic-4td`
+  step C2). Eig-free Cholesky (Route 2)
   is a FLINT-3.x dead end (no `acb_mat_cho`; `arb_mat_cho/ldl` need strict PD, return 0 on
   the semidefinite Choi); Route 1 (Rump) is the only degeneracy-native route with all
   primitives present.
 
-### D5n. `acb_mat_eig_multiple` is SEED-CONDITIONING-limited on multi-cluster degeneracy (`aic-w4o.1`)
-- **Status:** OPEN limitation, documented + guarded (fail-loud). Surfaced building the
+### D5n. `acb_mat_eig_multiple` fails on ROW-SPARSE multi-cluster degeneracy — FIXED by densification (`aic-w4o.1`, `aic-4td`)
+- **Status:** RESOLVED (aic-4td increment-2 step C1, 2026-06-01) by **dense-unitary
+  preconditioning** `A' = U H U†`. The original framing below ("SEED-CONDITIONING-limited")
+  was the *first hypothesis* and is **FALSE** — kept for history. The true root cause and the
+  fix are in the **RESOLUTION** block at the end of this section. Surfaced building the
   `aic_mat_eig_hermitian_multiple` cross-checks (2026-06-01).
 - **What:** FLINT's `acb_mat_eig_multiple` (Rump invariant-subspace enclosures) certifies a
   degenerate Hermitian spectrum only when the `acb_mat_approx_eig_qr` SEED gives
@@ -910,10 +916,48 @@ with the concrete evidence from where they bit.
   deliberately feeds the C^5 `{2,3}` boundary fixture and asserts the routine FAILS LOUD with
   "clusters unresolved" (NOT a silent miscount). The abort message names the seed-conditioning
   cause and warns that raising prec may not help.
-- **Route forward (increment 2 / `aic-w4o.2`):** improve the seed before Rump (re-orthonormalise
-  the per-cluster approximate eigenvectors; or a gap-based deflation that hands Rump a clean
-  invariant-subspace basis), or a projector-deflation route. Until then the layer is sound
-  (fail-loud, never wrong) and covers the well-conditioned degenerate inputs the project hits.
+- **Route forward (the ORIGINAL, now-superseded plan):** improve the seed before Rump
+  (re-orthonormalise the per-cluster approximate eigenvectors; or a gap-based deflation
+  that hands Rump a clean invariant-subspace basis), or a projector-deflation route. — This
+  plan rested on the FALSE seed-conditioning hypothesis; see the RESOLUTION below.
+
+- **RESOLUTION (aic-4td increment-2 step C1, 2026-06-01 — measured, design `docs/research/eigvec_certified_design.md` §2).**
+  - **The seed-conditioning hypothesis is FALSE.** Measured probes (design §2.1):
+    `acb_mat_eig_multiple`/per-cluster Rump still returns `0`/`[±∞]` on the C^5 `{2,3}` case
+    *even with a clean ORTHONORMAL zheev seed*, *even at prec=256/1024* — so it is neither seed
+    near-parallelism nor a precision wall.
+  - **True root cause:** FLINT 3.0.1 `acb_mat_eig_enclosure_rump`'s internal **frozen-row
+    partition** (`partition_X_sorted` picks `k` rows of `X_approx` by magnitude) degenerates
+    when the cluster's invariant subspace is **ROW-SPARSE** (supported on few coordinates — an
+    axis-aligned or disjoint-Givens projector leaves whole rows ≈0 across all `k` columns), so
+    no well-conditioned `k`-row frozen set exists and the Krawczyk preconditioner is singular.
+    A `k=n` cluster (every row used) or a DENSE subspace (every row nonzero) has a good
+    partition — which is why single-cluster `(1/d)I` and `{n−1,1}` splits always certified.
+  - **The fix:** conjugate by a certified **dense unitary** before the eigensolve,
+    `A' = U H U†`, where `U = aic_mat_dense_unitary` (`src/aic_mat_densify.c`) is the product
+    over ALL planes `(a,b)`, `a<b`, of the rational Givens `cos=3/5, sin=4/5` (the exact
+    rationals already in the test fixtures). `U U† − I` is certified to ~1.3e-37 (n=4) …
+    2.6e-37 (n=5) at prec=128. Densification spreads every eigenvector across all `n` rows, so
+    Rump's partition is well-conditioned on `A'`; the spectrum is conjugation-invariant
+    (`spec(A')=spec(H)`), so the eigenvalue balls of `A'` ARE those of `H` (written straight
+    to `E`). `aic_mat_eig_hermitian_multiple` now does this as a **densify-retry**: on
+    `acb_mat_eig_multiple(H)==0` it asserts `U` certified-unitary then retries on `A'`, and
+    only fails loud if the *densified* retry ALSO returns 0.
+  - **Measured (prec=128 unless noted):** the §D5n killers now certify the correct rank —
+    C^5 `{2,3}` → 2; `diag(2,2,0,0)` → 2; `diag(5,5,2,2)` → 2; `diag(1,1,1,0)` → 3 — both
+    AXIS-ALIGNED (the maximally row-sparse worst case) and conjugated off-axis
+    (`tests/test_eigmult.c` T5). Independent repro: raw `eig_multiple` returns 0 on all four
+    and 1 after densification; `{2,2}` at gap `2^-20` is 0 raw, 1 densified at prec=53.
+  - **The remaining genuine fail-loud tooth** (`tests/test_eigmult.c` T6, the eigenvalue
+    layer): two mult-2 clusters at eigenvalues `1` and `1+2^-10` at **prec=24** — measured `0`
+    BOTH raw AND densified — so `aic_mat_eig_hermitian_multiple` fails loud
+    ("...even after dense-unitary densification"). Note: an *unresolvable simple gap* does NOT
+    make `eig_multiple` return 0 (it returns success with merged/overlapping balls), so the
+    eigenvalue-layer abort is only reachable via the two-mult-≥2-clusters-too-close fixture;
+    the **rank-layer** straddle abort (`aic_mat_certified_rank`, T4/T4b) is the other tooth.
+  - **R3 defence-in-depth retained:** if a future input were left row-sparse by this fixed `U`
+    (none found), the densified retry would still return 0 and fail loud (never silently
+    wrong) — see design §5 R3 for the second-angle fallback.
 
 ### D6. `factorize` F4.2 — the diamond-norm DUAL SDP stalls (SLOW_PROGRESS) at n≥6 in Convex.jl
 - **Status:** OPEN, DEFERRED to v0.2 (bead `aic-bag`). Surfaced 2026-05-31 building the

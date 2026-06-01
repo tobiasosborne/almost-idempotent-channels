@@ -116,13 +116,19 @@ void aic_mat_eig_hermitian(arb_ptr evals, acb_mat_t evecs,
 
 /* Certified eigenvalue enclosures for a HERMITIAN matrix with a possibly
  * DEGENERATE spectrum. Degeneracy-robust counterpart to aic_mat_eig_hermitian
- * (which REQUIRES a simple spectrum and aborts on any repeat). Route (bead
- * aic-w4o.1, FINDINGS §D5): acb_mat_approx_eig_qr seed -> acb_mat_eig_multiple
- * (Rump cluster enclosures, degeneracy-native). E (caller-allocated acb_ptr of
- * length n = nrows(H)) receives n certified eigenvalue balls, GROUPED: a run of
- * k identical balls is a certified k-cluster (could not be split at this prec
- * but is isolated from the other n-k eigenvalues). ABORTS (Rule 4) if
- * acb_mat_eig_multiple returns 0 (clusters unresolved -> message to raise prec).
+ * (which REQUIRES a simple spectrum and aborts on any repeat). Route (beads
+ * aic-w4o.1 / aic-4td, FINDINGS §D5/§D5n): acb_mat_approx_eig_qr seed ->
+ * acb_mat_eig_multiple (Rump cluster enclosures, degeneracy-native). E
+ * (caller-allocated acb_ptr of length n = nrows(H)) receives n certified
+ * eigenvalue balls, GROUPED: a run of k identical balls is a certified k-cluster
+ * (could not be split at this prec but is isolated from the other n-k
+ * eigenvalues). DENSIFY-RETRY (FINDINGS §D5n RESOLVED): on acb_mat_eig_multiple
+ * returning 0 (FLINT Rump's frozen-row partition failing on a ROW-SPARSE
+ * invariant subspace — e.g. a C^5 {2,3} projector or diag(2,2,0,0)) it RETRIES on
+ * the densified A' = U H U† (U = aic_mat_dense_unitary; spectrum conjugation-
+ * invariant, so the balls are those of H written straight to E), asserting U
+ * certified-unitary first. ABORTS (Rule 4) only if the DENSIFIED retry ALSO
+ * returns 0 (a genuine near-degeneracy unresolvable at this prec -> raise prec).
  * Asserts each ball's imaginary part encloses 0 (Hermitian => real spectrum). */
 void aic_mat_eig_hermitian_multiple(acb_ptr E, const acb_mat_t H, slong prec);
 

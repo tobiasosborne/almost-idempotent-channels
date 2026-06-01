@@ -31,4 +31,18 @@ void aic_mat_int_assert_hermitian(const acb_mat_t H, slong prec);
 void aic_mat_int_eig_certified(acb_ptr E, acb_mat_t R, const acb_mat_t A,
                                slong prec);
 
+/* The dense-unitary DENSIFIER (docs/research/eigvec_certified_design.md §1.3).
+ * Builds U = product over ALL planes (a,b), a<b, of the rational Givens rotation
+ * cos = 3/5, sin = 4/5 (the exact rationals already used in test_eigmult.c's
+ * fixtures). U is unitary far below the working precision (||U U† - I||_F
+ * certified ~1.3e-37 at n=4, prec=128 — measured). Conjugating A' = U A U†
+ * SPREADS every invariant subspace across all n coordinates, defeating FLINT
+ * Rump's frozen-row partition failure on ROW-SPARSE subspaces (FINDINGS §D5n;
+ * design §2). The spectrum is conjugation-invariant, so eigenvalue balls of A'
+ * equal those of A. `U` must be init'd n x n by the caller; the caller forms
+ * A' = U A U† (two acb_mat_mul with U† = acb_mat_conjugate_transpose). Shared
+ * between aic_mat_eig_multiple.c (eigenvalue retry) and aic_mat_eigvec.c
+ * (subspace densify, increment-2 step C2). */
+void aic_mat_dense_unitary(acb_mat_t U, slong n, slong prec);
+
 #endif /* AIC_MAT_INTERNAL_H */

@@ -12,30 +12,38 @@
  * certification deferred here (FINDINGS §D5). This file is the eigenvalue+rank
  * layer of that deferred work.
  *
- * THE AUDITION (CLAUDE.md Law 4), FLINT 3.x constraints.
- *  - Route 1 (CHOSEN): acb_mat_approx_eig_qr seed -> acb_mat_eig_multiple. The
- *    latter certifies ALL n eigenvalues WITH multiplicity: it tries the simple
- *    (van der Hoeven-Mourrain) method first and falls back to Rump cluster
- *    enclosures, so it is degeneracy-native. Output balls are either disjoint or
- *    IDENTICAL, identical ones grouped consecutively; a run of k identical balls
- *    is a certified k-cluster that could not be split at this prec but IS
- *    isolated from the other n-k eigenvalues (acb_mat.rst). Every primitive is
- *    present in FLINT 3.0.1.
- *  - Route 2 (DEAD END in FLINT 3.x): an eig-free pivoted Cholesky. There is no
- *    acb_mat_cho; arb_mat_cho / arb_mat_ldl require STRICT positive-definiteness
- *    and return 0 on the semidefinite Choi/carrier we must handle.
- *  - Route 3 (inertia count): viable but needs the same degeneracy-robust
- *    primitive; not better than Route 1, which gives the eigenvalues outright.
- * Route 1 is the only one whose primitives all exist and which is
- * degeneracy-native, so it is the implemented route for this increment.
+ * THE AUDITION (CLAUDE.md Law 4), FLINT 3.x constraints. Route 1 (CHOSEN):
+ * acb_mat_approx_eig_qr seed -> acb_mat_eig_multiple, which certifies ALL n
+ * eigenvalues WITH multiplicity (simple van der Hoeven-Mourrain first, Rump
+ * cluster enclosures as fallback) — degeneracy-native, all primitives present in
+ * FLINT 3.0.1. Output balls are either disjoint or IDENTICAL, identical ones
+ * grouped consecutively; a run of k identical balls is a certified k-cluster
+ * isolated from the other n-k eigenvalues. (Route 2, eig-free Cholesky: DEAD END
+ * — no acb_mat_cho, arb_mat_cho/ldl need strict PD, fail on semidefinite Choi.
+ * Route 3, inertia count: needs the same degeneracy-robust primitive, no better.
+ * FINDINGS §D5.)
  *
  * HERMITIAN => REAL SPECTRUM. The inputs are Hermitian, so the certified
  * imaginary part of each ball must enclose 0; we assert that (a ball excluding 0
  * means the solver certified a non-real eigenvalue, contradicting the asserted
  * Hermiticity — a real bug, abort). The seed (approx_eig_qr) return value is
  * only a convergence heuristic and is NOT trusted; eig_multiple's return value
- * is. If eig_multiple returns 0 the clusters are unresolved at this prec and we
- * FAIL LOUD (Rule 4) with a "raise prec" message.
+ * is.
+ *
+ * THE §D5n WALL, RESOLVED BY DENSIFICATION (FINDINGS §D5n RESOLVED; design
+ * docs/research/eigvec_certified_design.md §2 has the full root-cause + numbers).
+ * acb_mat_eig_multiple returns 0 on two-clusters-each-multiplicity-≥2 Hermitian
+ * inputs (a C^5 {2,3} projector, diag(2,2,0,0), ...) even at prec=256/1024. The
+ * cause is NOT seed conditioning (the original §D5n hypothesis, proven FALSE) and
+ * NOT precision: it is FLINT Rump's frozen-row partition (partition_X_sorted)
+ * degenerating on a ROW-SPARSE invariant subspace. THE FIX: on eig_multiple(H)==0
+ * RETRY on the densified A' = U H U† (U = aic_mat_dense_unitary, §1.3, spreading
+ * every eigenvector across all n rows). The spectrum is conjugation-invariant
+ * (U U† = I to ~1e-37 ⇒ spec(A')=spec(H)), so the balls of A' ARE those of H and
+ * we write them straight to E. Measured: rescues diag(2,2,0,0)/(5,5,2,2)/(1,1,1,0),
+ * C^5 {2,3}, all previously-failing carriers (design §2). Only if the DENSIFIED
+ * retry ALSO returns 0 — a genuine near-degeneracy unresolvable at this prec, e.g.
+ * two mult-2 clusters separated by 2^-10 at prec=24 — do we FAIL LOUD (Rule 4).
  *
  * CERTIFIED RANK. aic_mat_certified_rank counts eigenvalues certified ABOVE a
  * threshold ball thr. Each ball must be certified-above (arb_gt) OR
@@ -73,20 +81,73 @@ void aic_mat_eig_hermitian_multiple(acb_ptr E, const acb_mat_t H, slong prec)
     /* Certify ALL n eigenvalues with multiplicity (Rump cluster fallback). */
     int ok = acb_mat_eig_multiple(E, H, E_approx, R_approx, prec);
     if (!ok) {
-        /* eig_multiple's Rump enclosure failed to certify. This is usually a
-         * SEED-CONDITIONING limit, not a precision limit (FINDINGS §D5n): when
-         * two clusters each have multiplicity >= 2 and the approx_eig_qr seed
-         * gives near-parallel cluster eigenvectors, the invariant-subspace
-         * enclosure cannot close — and raising prec does NOT help (measured:
-         * still 0 at prec=256). Fail loud (Rule 4); raising prec is worth a try
-         * only if the spectrum has a true near-degeneracy at this prec. */
-        fprintf(stderr,
-                "aic_mat_eig_hermitian_multiple: acb_mat_eig_multiple could not "
-                "certify the spectrum at prec=%ld (clusters unresolved — likely "
-                "a seed-conditioning limit, FINDINGS §D5n; raising prec may not "
-                "help); bead aic-w4o.1\n",
-                (long) prec);
-        abort();
+        /* DENSIFY-RETRY (FINDINGS §D5n RESOLVED; design §2). The 0 is FLINT
+         * Rump's frozen-row partition failing on a ROW-SPARSE invariant subspace
+         * (NOT seed conditioning, NOT precision). Conjugate by the dense unitary
+         * U: A' = U H U†. The spectrum is conjugation-invariant (U U† = I to
+         * ~1e-37), so spec(A') = spec(H) and the eigenvalue balls of A' ARE
+         * those of H — we write them straight to E. Densification spreads every
+         * eigenvector across all n rows, so Rump's partition is well-conditioned
+         * on A' even when it was singular on H. */
+        acb_mat_t U, Ud, A1, T;
+        acb_mat_init(U, n, n);
+        acb_mat_init(Ud, n, n);
+        acb_mat_init(A1, n, n);
+        acb_mat_init(T, n, n);
+        aic_mat_dense_unitary(U, n, prec);
+        acb_mat_conjugate_transpose(Ud, U);
+
+        /* Assert U is unitary to far below the working prec before trusting the
+         * conjugation: ||U U† - I||_F must be certified tiny (Rule 4). A loose U
+         * would silently change the spectrum. */
+        acb_mat_mul(T, U, Ud, prec);
+        for (slong i = 0; i < n; i++)
+            acb_sub_si(acb_mat_entry(T, i, i), acb_mat_entry(T, i, i), 1, prec);
+        arb_t uu;
+        arb_init(uu);
+        acb_mat_frobenius_norm(uu, T, prec);
+        arb_t utol;
+        arb_init(utol);
+        aic_mat_int_tol(utol, prec);        /* 2^-(prec-8): a generous floor */
+        if (!arb_lt(uu, utol)) {
+            char *uu_s = arb_get_str(uu, 8, 0);
+            fprintf(stderr,
+                    "aic_mat_eig_hermitian_multiple: densifier U not certified "
+                    "unitary (||U U†-I||_F=%s not < 2^-(prec-8)) at prec=%ld — "
+                    "the conjugation would not preserve the spectrum; bead "
+                    "aic-4td\n",
+                    uu_s ? uu_s : "?", (long) prec);
+            flint_free(uu_s);
+            abort();
+        }
+        arb_clear(utol);
+        arb_clear(uu);
+
+        acb_mat_mul(T, U, H, prec);
+        acb_mat_mul(A1, T, Ud, prec);       /* A' = U H U† */
+
+        /* Re-seed on A' (the seed eigenvectors differ; the eigenvalues match). */
+        acb_mat_approx_eig_qr(E_approx, NULL, R_approx, A1, NULL, 0, prec);
+        int ok2 = acb_mat_eig_multiple(E, A1, E_approx, R_approx, prec);
+
+        acb_mat_clear(T);
+        acb_mat_clear(A1);
+        acb_mat_clear(Ud);
+        acb_mat_clear(U);
+
+        if (!ok2) {
+            /* Even the densified A' is unresolved — a GENUINE near-degeneracy at
+             * this prec (two mult-≥2 clusters separated by far below 2^-prec;
+             * measured: {2,2} clusters at gap 2^-10, prec=24). Raising prec
+             * resolves a true gap. Fail loud (Rule 4). */
+            fprintf(stderr,
+                    "aic_mat_eig_hermitian_multiple: acb_mat_eig_multiple could "
+                    "not certify the spectrum at prec=%ld even after dense-unitary "
+                    "densification (clusters unresolved — a genuine near-degeneracy "
+                    "at this prec; raise prec); FINDINGS §D5n, bead aic-4td\n",
+                    (long) prec);
+            abort();
+        }
     }
 
     /* Hermitian => real spectrum: each certified imaginary part must enclose 0.

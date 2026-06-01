@@ -6,7 +6,7 @@
  * the implementation (RED baseline). Rule 4 fail-loud: the straddle abort is
  * tested under the fork+SIGALRM watchdog (reused from test_xo0_failloud.c).
  *
- * The four teeth (cross-check ladder rungs in parentheses):
+ * The teeth (cross-check ladder rungs in parentheses):
  *  T1 (rung 2) double-vs-arb: each certified ball from
  *     aic_mat_eig_hermitian_multiple CONTAINS the corresponding double
  *     eigenvalue (aic_latd_eig_hermitian), for a SIMPLE and a DEGENERATE
@@ -20,10 +20,26 @@
  *     aic_ucp_carrier_rank(Q) == aic_ucp_carrier_rank_latd(Q) == known rank.
  *  T4 (Rule 4) FAIL-LOUD straddle tooth: a Hermitian H with an eigenvalue at
  *     the threshold so a ball STRADDLES thr -> aic_mat_certified_rank ABORTS
- *     (child dies by SIGABRT under the watchdog, not exit 0).
+ *     (child dies by SIGABRT under the watchdog, not exit 0). T4b pins arb_gt
+ *     vs arb_ge: an EXACT-integer eigenvalue equal to a zero-radius threshold
+ *     must ALSO straddle-abort (arb_gt false AND arb_lt false), not be silently
+ *     counted by a sloppy >= comparison.
+ *  T5 (rung 3, §D5n RESOLVED) the DENSIFY-RETRY acceptance tooth: the cases
+ *     that used to FAIL LOUD (C^5 {2,3}; the reviewer's diag(2,2,0,0),
+ *     diag(5,5,2,2), diag(1,1,1,0) "⊕B(L)" carriers) now CERTIFY the correct
+ *     rank, BOTH axis-aligned (maximally row-sparse) and conjugated off-axis,
+ *     via aic_mat_certified_rank AND a direct aic_mat_eig_hermitian_multiple
+ *     call (the direct variant makes the eig-guard the ONLY abort source).
+ *  T6 (Rule 4) the GENUINE eigenvalue-layer fail-loud tooth that SURVIVES
+ *     densification: two mult-2 clusters at eigenvalues 1 and 1+2^-10 at
+ *     prec=24 -> acb_mat_eig_multiple returns 0 even on A' = U H U†, so
+ *     aic_mat_eig_hermitian_multiple FAILS LOUD ("clusters unresolved ...
+ *     even after dense-unitary densification"). Measured: this fixture is 0
+ *     both raw and densified at prec=24.
  *
- * prec=128 for the {0,1} fixtures (gap ~1, resolves trivially). Concrete numbers
- * (radii, ranks, abort message) printed, Rule 12.
+ * prec=128 for the {0,1} fixtures (gap ~1, resolves trivially); the T6 tooth
+ * is at prec=24 (the genuine near-degeneracy floor). Concrete numbers (radii,
+ * ranks, abort message) printed, Rule 12.
  */
 #define _POSIX_C_SOURCE 200809L
 #include <fcntl.h>
@@ -199,6 +215,18 @@ static void build_conj_diag(acb_mat_t X, const slong *diag, slong n, slong prec)
     acb_mat_clear(Qt);
     acb_mat_clear(Q);
     acb_mat_clear(D);
+}
+
+/* AXIS-ALIGNED real diagonal diag (length n) — the MAXIMALLY row-sparse case:
+ * each cluster's invariant subspace lives on a disjoint coordinate block, so
+ * FLINT Rump's frozen-row partition has whole-row-zero columns. This is the
+ * §D5n killer that returned 0 (raw) and now CERTIFIES via the densify-retry
+ * (design §2). Used to prove densification handles the worst case, not just the
+ * off-axis ones. */
+static void build_diag(acb_mat_t X, const slong *diag, slong n)
+{
+    acb_mat_zero(X);
+    for (slong i = 0; i < n; i++) acb_set_si(acb_mat_entry(X, i, i), diag[i]);
 }
 
 /* --- T1: double-vs-arb agreement, simple AND degenerate spectra --- */
@@ -459,30 +487,164 @@ static void test_t4_straddle_failloud(void)
                        "STRADDLES");
 }
 
-/* --- T5: FAIL-LOUD on an UNRESOLVED cluster (§D5n seed-conditioning boundary) --- */
-/* A rank-2 projector in C^5 (clusters {2,3}) is the §D5n boundary: the dense
- * cluster eigenbases from approx_eig_qr are near-parallel, acb_mat_eig_multiple
- * returns 0, and aic_mat_eig_hermitian_multiple MUST fail loud (Rule 4) — NOT
- * silently miscount the rank. This guards the eig_multiple-returned-0 path. */
-static void child_unresolved(void)
+/* --- T4b: arb_gt vs arb_ge — an exact eigenvalue ON a zero-radius threshold --- */
+/* A SIMPLE exact-integer diagonal diag(2,3,5,7): acb_mat_eig_multiple dispatches
+ * to the van der Hoeven-Mourrain simple method and returns EXACT, zero-radius
+ * eigenvalue balls (measured: [2 +/- 0], [3 +/- 0], ...). With thr = exact 2 the
+ * eigenvalue ball EXACTLY EQUALS the threshold, BOTH zero-radius. For that pair
+ * arb_gt is FALSE and arb_lt is FALSE -> the ball STRADDLES -> abort. But arb_GE
+ * is TRUE (measured) — so a sloppy >= would silently COUNT the boundary
+ * eigenvalue and never abort. This pins the strict arb_gt/arb_lt comparison.
+ * (W1-A hostile-review MINOR (ii).) MUTATION: arb_gt -> arb_ge in
+ * aic_mat_certified_rank makes the boundary eigenvalue counted, no abort, child
+ * exit 0 -> RED. (A DEGENERATE diag would get a ~3e-16 Rump radius and straddle
+ * for the wrong reason — arb_ge also false — masking the mutation; the SIMPLE
+ * spectrum's zero radius is what makes the gt-vs-ge distinction load-bearing.) */
+static void child_exact_on_thr(void)
 {
+    acb_mat_t H;
+    acb_mat_init(H, 4, 4);
+    slong d[4] = {2, 3, 5, 7};             /* SIMPLE -> zero-radius eig balls */
+    build_diag(H, d, 4);
+    arb_t thr;
+    arb_init(thr);
+    arb_set_si(thr, 2);                     /* exact 2 == the smallest eval */
+    (void) aic_mat_certified_rank(H, thr, EM_PREC);
+    arb_clear(thr);
+    acb_mat_clear(H);
+}
+
+static void test_t4b_exact_on_thr(void)
+{
+    printf("T4b: exact eigenvalue ON a zero-radius threshold must STRADDLE-abort "
+           "(pins arb_gt over arb_ge)\n");
+    em_assert_failloud(child_exact_on_thr,
+                       "aic_mat_certified_rank(exact-on-thr)", "STRADDLES");
+}
+
+/* --- T5: DENSIFY-RETRY acceptance — the cases that USED to FAIL LOUD now CERTIFY --- */
+/* §D5n RESOLVED (design §2). C^5 {2,3} and the reviewer's diag(2,2,0,0) /
+ * diag(5,5,2,2) / diag(1,1,1,0) "⊕B(L)" carriers returned 0 (raw eig_multiple)
+ * and aborted; the dense-unitary retry (A' = U H U†) rescues every one. Tested
+ * BOTH axis-aligned (maximally row-sparse — the worst case for Rump's frozen-row
+ * partition) AND conjugated off-axis, through aic_mat_certified_rank. A separate
+ * DIRECT aic_mat_eig_hermitian_multiple call (T5 W1-A MINOR (i)) makes the
+ * eig-guard the ONLY possible abort source, so a pass cannot be masked by a
+ * downstream FLINT-NaN-straddle coincidence in the rank layer. */
+static slong rank_of_diag_axis(const slong *d, slong n, double thr_d)
+{
+    acb_mat_t H;
+    acb_mat_init(H, n, n);
+    build_diag(H, d, n);
+    arb_t thr;
+    arb_init(thr);
+    arb_set_d(thr, thr_d);
+    slong rk = aic_mat_certified_rank(H, thr, EM_PREC);
+    arb_clear(thr);
+    acb_mat_clear(H);
+    return rk;
+}
+
+static slong rank_of_diag_conj(const slong *d, slong n, double thr_d)
+{
+    acb_mat_t H;
+    acb_mat_init(H, n, n);
+    build_conj_diag(H, d, n, EM_PREC);
+    arb_t thr;
+    arb_init(thr);
+    arb_set_d(thr, thr_d);
+    slong rk = aic_mat_certified_rank(H, thr, EM_PREC);
+    arb_clear(thr);
+    acb_mat_clear(H);
+    return rk;
+}
+
+static void test_t5_densify_certifies(void)
+{
+    printf("T5: densify-retry CERTIFIES the §D5n killers (rank correct)\n");
+
+    /* C^5 {2,3} projector: certified rank == 2 (was the old T5 fail-loud case). */
     acb_mat_t P;
     acb_mat_init(P, 5, 5);
-    build_projector(P, 5, 2, EM_PREC);     /* {2,3}: eig_multiple returns 0 */
+    build_projector(P, 5, 2, EM_PREC);
     arb_t thr;
     arb_init(thr);
     arb_set_d(thr, 0.5);
-    (void) aic_mat_certified_rank(P, thr, EM_PREC);
+    slong rk23 = aic_mat_certified_rank(P, thr, EM_PREC);
+    AIC_CHECK_MSG(rk23 == 2, "C^5 {2,3} projector: certified rank %ld != 2",
+                  (long) rk23);
+    /* DIRECT eig call: the eig-guard is the only abort source (W1-A (i)). If the
+     * densify-retry were broken this aborts; reaching here proves it certified. */
+    acb_ptr E = _acb_vec_init(5);
+    aic_mat_eig_hermitian_multiple(E, P, EM_PREC);   /* must NOT abort */
+    _acb_vec_clear(E, 5);
     arb_clear(thr);
     acb_mat_clear(P);
+    printf("  C^5 {2,3}: certified rank 2 (certified_rank + direct eig) (OK)\n");
+
+    /* The reviewer's ⊕B(L) carriers, AXIS-ALIGNED (maximally row-sparse) and
+     * conjugated off-axis. {2,2,0,0}: thr 1.0 -> rank 2 (the two 2's). */
+    struct { slong d[4]; double thr; slong rk; const char *name; } cases[] = {
+        {{2, 2, 0, 0}, 1.0, 2, "diag(2,2,0,0)"},
+        {{5, 5, 2, 2}, 3.5, 2, "diag(5,5,2,2)"},   /* thr 3.5 -> the two 5's */
+        {{1, 1, 1, 0}, 0.5, 3, "diag(1,1,1,0)"},
+    };
+    for (size_t i = 0; i < sizeof cases / sizeof cases[0]; i++) {
+        slong ra = rank_of_diag_axis(cases[i].d, 4, cases[i].thr);
+        slong rc = rank_of_diag_conj(cases[i].d, 4, cases[i].thr);
+        AIC_CHECK_MSG(ra == cases[i].rk,
+                      "%s axis-aligned: certified rank %ld != %ld",
+                      cases[i].name, (long) ra, (long) cases[i].rk);
+        AIC_CHECK_MSG(rc == cases[i].rk,
+                      "%s conjugated: certified rank %ld != %ld",
+                      cases[i].name, (long) rc, (long) cases[i].rk);
+        printf("  %s: rank %ld (axis-aligned AND off-axis) (OK)\n",
+               cases[i].name, (long) cases[i].rk);
+    }
 }
 
-static void test_t5_unresolved_failloud(void)
+/* --- T6: GENUINE eigenvalue-layer fail-loud that SURVIVES densification --- */
+/* Two mult-2 clusters at eigenvalues 1 and 1+2^-10, at prec=24: acb_mat_eig_multiple
+ * returns 0 even on the densified A' = U H U† (measured: 0 both raw and densified
+ * at prec=24 — the gap is below what Rump can split at 24 bits regardless of
+ * conditioning). So aic_mat_eig_hermitian_multiple FAILS LOUD with the
+ * "even after dense-unitary densification" message — the real eigenvalue-layer
+ * tooth (not the seed-conditioning §D5n fixture, which densification now rescues).
+ * DIRECT eig call so the eig-guard is the only abort source. */
+#define T6_PREC 24
+static void child_genuine_unresolved(void)
 {
-    printf("T5: unresolved cluster ({2,3} seed-conditioning) must FAIL LOUD\n");
-    em_assert_failloud(child_unresolved,
-                       "aic_mat_eig_hermitian_multiple(unresolved)",
-                       "clusters unresolved");
+    const slong n = 4;
+    acb_mat_t H;
+    acb_mat_init(H, n, n);
+    acb_mat_zero(H);
+    /* eigenvalues {1, 1, 1+2^-10, 1+2^-10} */
+    acb_t g, v;
+    acb_init(g);
+    acb_init(v);
+    acb_one(g);
+    acb_mul_2exp_si(g, g, -10);             /* 2^-10 */
+    acb_one(v);
+    acb_add(v, v, g, T6_PREC);              /* 1 + 2^-10 */
+    acb_set_si(acb_mat_entry(H, 0, 0), 1);
+    acb_set_si(acb_mat_entry(H, 1, 1), 1);
+    acb_set(acb_mat_entry(H, 2, 2), v);
+    acb_set(acb_mat_entry(H, 3, 3), v);
+    acb_ptr E = _acb_vec_init(n);
+    aic_mat_eig_hermitian_multiple(E, H, T6_PREC);   /* must abort */
+    _acb_vec_clear(E, n);
+    acb_clear(v);
+    acb_clear(g);
+    acb_mat_clear(H);
+}
+
+static void test_t6_genuine_failloud(void)
+{
+    printf("T6: a near-degeneracy unresolvable at prec=24 must FAIL LOUD even "
+           "after densification\n");
+    em_assert_failloud(child_genuine_unresolved,
+                       "aic_mat_eig_hermitian_multiple(genuine-unresolved)",
+                       "even after dense-unitary densification");
 }
 
 int main(void)
@@ -491,7 +653,9 @@ int main(void)
     test_t2_exact_rank();
     test_t3_carrier_rank();
     test_t4_straddle_failloud();
-    test_t5_unresolved_failloud();
+    test_t4b_exact_on_thr();
+    test_t5_densify_certifies();
+    test_t6_genuine_failloud();
     aic_test_report("test_eigmult");
     printf("OK test_eigmult\n");
     return 0;
