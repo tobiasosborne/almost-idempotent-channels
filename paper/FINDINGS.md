@@ -851,6 +851,31 @@ with the concrete evidence from where they bit.
   were STALE — the real m=3 ratio is 1.26, which is what surfaced this fix.) The
   errreduce-layer canary (T4(A) above) keeps the dim-sweep ratio form because its `c_0`
   is a smooth, monotone-in-dim quantity there (no geometry spike).
+- **The dedicated dim-sweep canary (2026-06-02, `aic-dbo.3`, `tests/test_dbo3.c`):** the
+  th_main constant `c=iso_def/η` on the `(+)_{j=1}^k M_d` block-algebra family (generator
+  `aic_adv_chan_blockalg`, the cleanest dim_A lever — grows via block-count `k` AND block-size
+  `d`). 5-point sweep at prec=256, eps:=η (§C11), Axis A `k∈{2,3,4,5}` d=2 + Axis B `k=2`
+  `d∈{2,3}`: `(dim_A, c)` = (8, 0.0182), (12, 0.0470), (16, 0.0247), (18, 0.0410), (20, 0.0134)
+  — OLS slope `b=−2.7e-4`, max `c=0.047` at the SMALLEST nontrivial dim, min at the LARGEST.
+  **Verdict: tex:484 dimension-independence HOLDS empirically on this family — no stop-condition.**
+  Predicate (AND-gate, framed deterministically since fixed-prec builds give fixed `c_i`):
+  (P1) abs cap `max c < 0.10`; (P2) `b < 0.5·c0` where `c0 = c[smallest dim_A]/dim_A` is the
+  slope a proportional `c~c0·dim` law would have — i.e. the threshold is HALF the tex:484
+  proportional-growth slope, **self-calibrated in-code from the data, NOT tuned to the measured
+  slope** (measured `b=−2.7e-4` ≪ threshold `1.14e-3`). Mutation-proven three ways: `c_i:=c0·dim_A`
+  (proportional p=1) → slope=`c0` RED; a single largest-dim spike → RED; an INDEPENDENT
+  `c=0.001·dim` model (re-derived by the hostile reviewer) → RED. Discrimination envelope: catches
+  power-law `c~dim^p` for `p≳0.65` (the proportional p=1 mode solidly); tolerates sub-proportional
+  `p<0.65` BY DESIGN (the robust-canary tradeoff above — it is a tex:484 *proportional*-mode canary,
+  not a general dimension-dependence detector). **Caveats (laptop, follow-up bead filed):** the
+  sweep is capped at `dim_A≤20` (k=6/dim24 and k=2,d=4/dim32 DNF at prec=256/180s); the GREEN
+  slope HINGES on the `dim_A=20` endpoint (dropping it tilts the 4-point slope to `+1.28e-3` >
+  threshold — the feasible scatter is lumpy, flat-by-OLS not visibly flat); prec=256 is MANDATORY
+  (the k=4 point's `c` is recursion-path-dependent per §C16, only the full-prec path hits the
+  degenerate `dim_A=2` wrapper); the high-leverage cross-machine anchor is the `dim_A=8` point
+  (sets the threshold), mitigated because the `k=2` point is the most path-stable (§C16). This is
+  an EMPIRICAL regression canary CONSISTENT WITH tex:484, NOT a proof; the ANALYTIC `c_0` (this
+  §D2 head) remains open (aic-1bc).
 
 ### D3. cb-norm truncation `N` (shard F, `tex:1447-1561`)
 - **Status:** RESOLVED (2026-05-31, bead **aic-2jd** / **aic-zwo**); O1 IMPLEMENTED.

@@ -1,6 +1,6 @@
 # HANDOFF.md — almost-idempotent-channels
 
-## ▶▶ LATEST (2026-06-02a, orchestrated, laptop): aic-66n + aic-t5w CLOSED — BOTH k≥4 universality walls cleared; aic-dbo.3 unblocked + in flight
+## ▶▶ LATEST (2026-06-02a, orchestrated, laptop): aic-66n + aic-t5w + aic-dbo.3 CLOSED — the tex:484 universality thread COMPLETE (both k≥4 walls cleared + the dim-sweep canary green)
 
 **State:** master FULLY GREEN — `ctest -L fast` 18/18 (~3.4s); `test_adversarial` 45.5s (the
 new k≥4 regression GREEN); working tree clean, up to date with `origin/master` (HEAD
@@ -33,22 +33,30 @@ handoff's densify hypothesis was a RED HERRING** — densify is not on the proje
 eps_assoc, §C11) is now ENCODED in `test_fam3d_bijective_eta` (was probe-confirmed only at
 2026-06-01e).
 
-**▶ IN FLIGHT — `aic-dbo.3` (P1, claimed): the universality dim-sweep regression** (THE
-highest-value correctness test, tex:484 dimension-independence). Both gating walls cleared.
-Recon workflow `w10p1ft57` measuring `c=iso_def/η` + wall-time across the blockalg family to
-fix the laptop-feasible sweep envelope + a data-driven predicate. COMPUTE CONSTRAINT (laptop):
-prec=256 builds are slow (k3~25s, k4~120s, k5 N=10 DNF in 200s) AND the degenerate-wrapper
-stress only reproduces at prec=256 — so the handoff's k=8/dim_A=64 sweep is INFEASIBLE; the
-realistic sweep is Axis A k∈{2,3,4} d=2 (dim_A 8/12/16) + Axis B k=2 d∈{2,3} (dim_A 8/18).
-HEADLINE DECISION pending recon: `c` bounded ⟹ tex:484 HOLDS (green); `c` genuinely grows ⟹ a
-real STOP-CONDITION to escalate (do NOT tune the predicate to pass). Plan + data durable in
-`bd show aic-dbo.3` (design field).
+**▶ LANDED — `aic-dbo.3` (P1) CLOSED: the tex:484 universality dim-sweep canary** (THE
+highest-value correctness test). HEADLINE RESULT: **tex:484 dimension-independence HOLDS
+empirically** on the `(+)_jM_d` family — `c=iso_def/η` is flat, NO stop-condition. New
+`tests/test_dbo3.c` (376 LOC, SLOW prec=256 ~197s, TIMEOUT 600): 5-point sweep eps:=η (§C11),
+Axis A k∈{2,3,4,5} d=2 + Axis B k=2 d∈{2,3}, `(dim_A,c)`=(8,0.0182)(12,0.0470)(16,0.0247)
+(18,0.0410)(20,0.0134), OLS slope `b=−2.7e-4`, max c=0.047 at the SMALLEST dim. PREDICATE
+(AND-gate, NOT tuned): (P1) max c < 0.10; (P2) `b < 0.5·c0`, c0=c[small]/dim = HALF the
+proportional-growth slope, self-calibrated in-code. Mutation-proven 3 ways (proportional p=1,
+single-spike, an INDEPENDENT 0.001·dim model the reviewer re-derived) — all RED. Non-vacuity:
+per-build bijective + eps==fam3d_eta_proxy(≠eps_assoc §C11) + dim span + d>2 point. Hostile
+review SHIP (0 blockers, 4 envelope minors). FINDINGS §D2 extended. **Recon (workflow
+w10p1ft57) corrected the handoff:** k=5 (dim_A=20) DOES finish at prec=256 (95s, was thought
+DNF) and is REQUIRED (without it the slope tilts +; small-sample geometry); k=6/k2d4 genuinely
+DNF, so the laptop sweep is capped at dim_A≤20.
 
-**NEXT (orchestrated):** finish aic-dbo.3 (recon → set predicate from DATA → implement
-`tests/test_dbo3.c` → hostile review → commit). Then remaining aic-cxo tranche (non-comm
-calibrated η→1/4, family 2B, mixconj corpus unification w/ aic-f9u.1), aic-v5f (densified
-carrier), the NEW d≥3/k≥5 projection-coverage bead (filed this session), Julia packaging
-(aic-obc/aic-95g.2), aic-jhe (tight MOSEK cb-distance).
+**COMPUTE NOTES (laptop, for the follow-up):** prec=256 blockalg builds scale ~3×/+k (k2/3/4/5
+= 1/8/30/95s); the degenerate-wrapper stress (§C16) only reproduces at prec=256 (lower prec
+takes a different valid recursion path). The GREEN slope verdict hinges on the dim_A=20
+endpoint (lumpy scatter) — a widen-sweep + shared-fam3d-helper follow-up bead is FILED (P3).
+
+**NEXT (orchestrated):** the remaining aic-cxo tranche (non-comm calibrated η→1/4, family 2B,
+mixconj corpus unification w/ aic-f9u.1), aic-v5f (densified carrier), the d≥3/k≥5 projection-
+coverage + dbo3-widen beads, aic-jhe (tight MOSEK cb-distance), Julia packaging
+(aic-obc/aic-95g.2). The tex:484 thread is now COMPLETE (both walls cleared + the canary green).
 
 ---
 

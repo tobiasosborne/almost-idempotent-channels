@@ -42,7 +42,7 @@ set(AIC_SLOW_TESTS
     test_cstar_build test_cstar_extension test_cstar_merging test_cstar_merge
     test_cstar test_certify test_certify_teeth test_cbnorm test_opspace
     test_opspace_o2 test_opspace_choi test_factorize test_assoc test_assoc2
-    test_adversarial test_ucp_d24
+    test_adversarial test_ucp_d24 test_dbo3
     # measured-heavy (not MOSEK/arb-fixture, just long): keep them out of -L fast
     test_errreduce test_dhom test_projection test_corner test_ecstar)
 
