@@ -23,6 +23,8 @@
 
 #include "aic_adversarial.h"
 #include "aic/aic_mat.h"
+#include "aic/aic_ucp.h"
+#include "aic/aic_cbnorm.h"
 #include "aic_test.h"
 
 static const slong PREC = 256;
@@ -435,6 +437,144 @@ static void test_gen7_propP(void)
            "||P^2-P||=%.4f (basin edge 1/4=0.25)\n", def[0], def[1]);
 }
 
+/* ---- fam1B: cb-norm vs operator-norm gap (domain.md:75-123, tex:366-388).
+ * The FIRST channel generator's self-test. The named property: the certified
+ * idempotence defect ||Phi^2-Phi||_cb = eta*sqrt(1-eta) (tex:378) is STRICTLY
+ * larger than the single-copy operator-norm defect — the cb!=op trap.
+ *
+ * Teeth, in order of load-bearing weight:
+ *  (1) CLOSED-FORM PIN: the certified eig-free cb bracket [lo,hi] CONTAINS the
+ *      closed form eta*sqrt(1-eta) (lo <= cf <= hi, rigorous arb). A wrong Kraus
+ *      misses it.  (2) eta=0 ORACLE: bracket collapses to [0,0] (hi < 1e-9) —
+ *      the exact-idempotent dephasing reduction. (3) MONOTONIC KNOB: the cb
+ *      lower bound at eta=0.20 strictly exceeds that at eta=0.05 (non-toothless).
+ *  (4) THE NAMED cb-vs-op GAP: a genuinely OP-norm-flavored single-copy defect
+ *      ||Lambda(E_00)||_op (Lambda=Phi^2-Phi applied to the certified Hermitian
+ *      unit observable E_00=|0><0|; this is exactly what a naive op-norm
+ *      idempotence check measures) equals eta(1-eta) and is certified STRICTLY
+ *      BELOW the cb defect eta*sqrt(1-eta) (since sqrt(1-eta) > 1-eta), and the
+ *      cb/op ratio = 1/sqrt(1-eta) GROWS toward eta~1/4. NOTE: the op-proxy is
+ *      compared against the closed-form cb value (which (1) certifies is the true
+ *      cb-norm), NOT the loose eig-free lower bound ||J||_F/n which sits below
+ *      the true cb-norm by design (ratio 2n) and so cannot exceed any op proxy.
+ *
+ * MUTATION: drop the knob from K_0 — set v=(1,0,...) regardless of eta (so K_0 =
+ * |0><0|, the exact dephasing for ALL eta) => defect collapses to 0 for all eta
+ * => the closed-form-containment pin (cf>0 must be in [0,0]) goes RED. Confirmed
+ * RED, restored byte-identical. */
+static void test_fam1b_cb_op_gap(void)
+{
+    /* measured (prec=256, d=2): closed cf, bracket, op-defect, ratio
+     *   eta=0.05: cf=0.048734 in [0.034460,0.137840]; ||Lam(E00)||=0.047500; ratio 1.026
+     *   eta=0.20: cf=0.178885 in [0.126491,0.505964]; ||Lam(E00)||=0.160000; ratio 1.118 */
+    const slong d = 2;
+    double etas[2] = {0.05, 0.20}; /* mild, lethal (toward the 1/4 maximum) */
+    double cb_lo[2], ratio[2];
+
+    arb_t cf, lo, hi, opd, one;
+    arb_init(cf);
+    arb_init(lo);
+    arb_init(hi);
+    arb_init(opd);
+    arb_init(one);
+    arb_one(one);
+
+    for (int it = 0; it < 2; it++) {
+        double eta = etas[it];
+        aic_ucp_kraus phi;
+        aic_adv_chan_cb_op_gap(&phi, d, eta, PREC);
+
+        /* unital sanity: sum_a K_a^dag K_a = I (pins the OBSERVABLE convention) */
+        arb_t ud;
+        arb_init(ud);
+        aic_ucp_unital_defect_kraus(ud, &phi, PREC);
+        check_ball_eq(ud, 0.0, 1e-12); /* <v|v>=1 exactly; ~4e-17 rounding floor */
+        arb_clear(ud);
+
+        /* certified eig-free cb bracket on ||Phi^2-Phi||_cb */
+        aic_cbnorm_eigfree_ball(lo, hi, &phi, PREC);
+        cb_lo[it] = arf_get_d(arb_midref(lo), ARF_RND_NEAR);
+
+        /* (1) closed-form pin: lo <= eta*sqrt(1-eta) <= hi, rigorous arb. */
+        arb_set_d(cf, eta);
+        arb_t t;
+        arb_init(t);
+        arb_set_d(t, 1.0 - eta);
+        arb_sqrt(t, t, PREC);
+        arb_mul(cf, cf, t, PREC); /* cf = eta*sqrt(1-eta) */
+        arb_clear(t);
+        AIC_CHECK_MSG(arb_le(lo, cf) && arb_le(cf, hi),
+                      "fam1B eta=%.2f: closed form eta*sqrt(1-eta)=%.6f NOT in cb "
+                      "bracket [%.6f, %.6f] (Kraus construction wrong)", eta,
+                      arf_get_d(arb_midref(cf), ARF_RND_NEAR), cb_lo[it],
+                      arf_get_d(arb_midref(hi), ARF_RND_NEAR));
+
+        /* (4) op-flavored single-copy defect ||Lambda(E_00)||_op, Lambda=Phi^2-Phi.
+         * E_00 = |0><0| is a certified Hermitian unit-op-norm observable; this is
+         * the quantity a naive op-norm idempotence check reports. */
+        aic_ucp_kraus phi2;
+        aic_ucp_compose(&phi2, &phi, &phi, PREC);
+        acb_mat_t E00, Y2, Y1, D;
+        acb_mat_init(E00, d, d);
+        acb_mat_init(Y2, d, d);
+        acb_mat_init(Y1, d, d);
+        acb_mat_init(D, d, d);
+        acb_set_si(acb_mat_entry(E00, 0, 0), 1); /* |0><0|, ||.||_op = 1 */
+        aic_ucp_apply(Y2, &phi2, E00, PREC);
+        aic_ucp_apply(Y1, &phi, E00, PREC);
+        acb_mat_sub(D, Y2, Y1, PREC);
+        aic_mat_opnorm(opd, D, PREC); /* certified ||Lambda(E_00)||_op */
+
+        /* the GAP, certified: op defect STRICTLY < cb defect (sqrt(1-eta)>1-eta) */
+        AIC_CHECK_MSG(arb_lt(opd, cf),
+                      "fam1B eta=%.2f: op-defect ||Lam(E00)||=%.6f not certainly < "
+                      "cb-defect eta*sqrt(1-eta)=%.6f (the cb!=op gap collapsed)",
+                      eta, arf_get_d(arb_midref(opd), ARF_RND_NEAR),
+                      arf_get_d(arb_midref(cf), ARF_RND_NEAR));
+        /* ratio cb/op = 1/sqrt(1-eta), grows toward eta~1/4 */
+        ratio[it] = arf_get_d(arb_midref(cf), ARF_RND_NEAR) /
+                    arf_get_d(arb_midref(opd), ARF_RND_NEAR);
+
+        acb_mat_clear(D);
+        acb_mat_clear(Y1);
+        acb_mat_clear(Y2);
+        acb_mat_clear(E00);
+        aic_ucp_kraus_clear(&phi2);
+        aic_ucp_kraus_clear(&phi);
+    }
+
+    /* (3) monotonic knob: cb lower bound grows with eta (corpus not toothless) */
+    AIC_CHECK_MSG(cb_lo[1] > cb_lo[0] && cb_lo[0] > 0.0,
+                  "fam1B: cb defect not increasing with eta (mild=%.6f lethal=%.6f)",
+                  cb_lo[0], cb_lo[1]);
+    /* the cb-vs-op gap WIDENS toward eta~1/4 (ratio 1/sqrt(1-eta) increasing) */
+    AIC_CHECK_MSG(ratio[1] > ratio[0],
+                  "fam1B: cb/op gap ratio not widening toward 1/4 (mild=%.4f "
+                  "lethal=%.4f)", ratio[0], ratio[1]);
+
+    /* (2) eta=0 oracle: exact-idempotent dephasing => bracket [0,0]. */
+    aic_ucp_kraus phi0;
+    aic_adv_chan_cb_op_gap(&phi0, d, 0.0, PREC);
+    aic_cbnorm_eigfree_ball(lo, hi, &phi0, PREC);
+    arb_set_d(opd, 1e-9);
+    AIC_CHECK_MSG(arb_lt(hi, opd),
+                  "fam1B eta=0: cb bracket upper=%.3e not < 1e-9 (exact-idempotent "
+                  "oracle: defect must be 0)",
+                  arf_get_d(arb_midref(hi), ARF_RND_NEAR));
+    aic_ucp_kraus_clear(&phi0);
+
+    printf("  fam1B cb-op-gap: eta=0.05 cb_lo=%.6f cb/op-ratio=%.4f ; "
+           "eta=0.20 cb_lo=%.6f cb/op-ratio=%.4f (gap=1/sqrt(1-eta), widens to 1/4); "
+           "eta=0 => bracket [0,0]\n",
+           cb_lo[0], ratio[0], cb_lo[1], ratio[1]);
+
+    arb_clear(one);
+    arb_clear(opd);
+    arb_clear(hi);
+    arb_clear(lo);
+    arb_clear(cf);
+}
+
 int main(void)
 {
     test_gen1_jordan();
@@ -444,6 +584,7 @@ int main(void)
     test_gen5_graded();
     test_gen6_boundary();
     test_gen7_propP();
+    test_fam1b_cb_op_gap();
 
     aic_test_report("test_adversarial");
     printf("OK test_adversarial\n");

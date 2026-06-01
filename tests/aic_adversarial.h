@@ -42,6 +42,8 @@
 
 #include <flint/acb_mat.h>
 
+#include "aic/aic_ucp.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -106,6 +108,28 @@ void aic_adv_boundary_x2I(acb_mat_t out, slong n, double s, slong prec);
  * 0 <= delta <= 1/4). Adversarial property: certified ||P^2-P||_op = delta within
  * tol — the prop_P / assoc_ecsa basin edge delta < 1/4 (tex:525). */
 void aic_adv_propP_delta(acb_mat_t out, slong n, double delta, slong prec);
+
+/* ---- Domain / channel generators (Increment 2) ---------------------------
+ * The FIRST generators producing a UCP map (aic_ucp_kraus), not a bare matrix.
+ * They punish the channel routines (ucp, cbnorm, assoc_ecsa, opspace). See
+ * aic_adversarial_domain.c for the docstring and Kraus derivations. */
+
+/* fam1B — cb-norm vs operator-norm gap (domain.md:75-123; the paper's own
+ * motivating measure-prepare example, tex:366-388). UCP self-map on B(C^d),
+ * d>=2, in the OBSERVABLE convention Phi(X)=sum_a K_a^dag X K_a:
+ *   v = (sqrt(1-eta), sqrt(eta), 0,...,0)  (unit vector, gamma_0 = |v><v|),
+ *   K_0 = |v><0|  (d x d, column 0 = v),   K_j = |j><j|  (j = 1 .. d-1),
+ * so Phi(X) = Tr(gamma_0 X) P_0 + sum_{j>=1} Tr(P_j X) P_j (the tex:369 map for
+ * d=2; exactly-idempotent dephasing pads for d>2). It is unital (<v|v>=1),
+ * entanglement-breaking (rank-1 Kraus), Kraus rank d.
+ * KNOB eta in [0,1] (asserted; gap maximized near eta~1/4, sweep {0.05..0.20}).
+ * Adversarial property (the NAMED cb!=op trap, CLAUDE.md callout): the certified
+ * idempotence defect ||Phi^2-Phi||_cb = eta*sqrt(1-eta) EXACTLY (tex:378), which
+ * is STRICTLY larger than the single-copy operator-norm defect — a routine that
+ * uses op-norm as eta underreports by up to the ampliation factor (tex:484).
+ * eta=0 REDUCTION: v=|0>, Phi = complete dephasing, EXACTLY idempotent (defect 0).
+ * `out` is aic_ucp_kraus_init'd HERE (caller aic_ucp_kraus_clears it). */
+void aic_adv_chan_cb_op_gap(aic_ucp_kraus *out, slong d, double eta, slong prec);
 
 #ifdef __cplusplus
 }
