@@ -1,6 +1,58 @@
 # HANDOFF.md — almost-idempotent-channels
 
-## ▶▶ LATEST (2026-06-01e, orchestrated, laptop): the 3D eps~c/dim universality GENERATOR landed (aic-cxo HIGH); aic-dbo.3 de-risked → TWO walls found, both fail-loud, both filed
+## ▶▶ LATEST (2026-06-02a, orchestrated, laptop): aic-66n + aic-t5w CLOSED — BOTH k≥4 universality walls cleared; aic-dbo.3 unblocked + in flight
+
+**State:** master FULLY GREEN — `ctest -L fast` 18/18 (~3.4s); `test_adversarial` 45.5s (the
+new k≥4 regression GREEN); working tree clean, up to date with `origin/master` (HEAD
+`3620f02`). bd: 96 issues (imported from JSONL at session start — the recurring SessionStart
+desync; `bd import` fixed it 88→95, then +1 new coverage bead). Commit range this session:
+`3029fe5..3620f02`. Orchestration shape: 3 workflows (diagnose → implement+hostile-review →
+recon), each commit+push per green increment, bead design/notes carry the durable plan.
+
+**LANDED — `aic-66n` (P1 BUG) CLOSED: the unit-aware projection gap-audition.** Root cause
+(diagnosed + prototyped + hostile-reviewed): the nontrivial-projection finder
+(`lem_nontriv_projection`, tex:931) chose the largest AMBIENT interior gap, BLIND to the
+algebra unit. On the `S_P` WRAPPER subalgebras the th_main master loop recurses onto, the unit
+is `Ptilde_m=Co_P(P)` (tex:1082, FINDINGS §C7), a rank-`r`<`n` ambient projector NOT `1_n` — so
+the largest gap is the support-vs-complement gap, `P_amb`=full support, `Φ̃(P_amb)=Ptilde_m` =
+TRIVIAL split; the ambient `‖1_n−P‖` gate is vacuous on a wrapper (§C11), so cstar_build aborted
+at the §C11 backstop. FIX: NEW `src/aic_projection_audit.c` — compute `U_A=Φ̃(1)=star(A,1,1)`;
+enumerate `(H_k,gap)` candidates across ALL non-scalar `H_k` sorted by gap desc; accept first
+`P` with `‖P‖>0.3` AND `‖U_A−P‖>0.3` (≥ the 0.15 backstop); removed the dead largest-gap-only
+`pick_H` (the root cause). `aic_projection.c` 207→195 split into +audit.c(169)+find.c(158), all
+≤200 LOC. Measured (prec=256, eps:=η): k2/k3/k4 d=2 all BIJECTIVE `dim_B==dim_A`,
+`c=iso/η=0.0182/0.0470/0.0247` — non-monotone, NO dim growth. k=2 byte-identical (strict
+superset). Regression `test_fam3d_bijective_eta` (`test_adversarial`, SLOW prec=256: the
+collapse only descends to the degenerate `dim_A=2` wrapper at full precision). 2 mutations + a
+combined end-to-end mutation RED; ASan/LSan leak-clean; hostile review SHIP (0 blockers, 3
+non-blocking minors). FINDINGS §C16 + ALGORITHM.md projection route updated. **The prior
+handoff's densify hypothesis was a RED HERRING** — densify is not on the projection path
+(Rule-2 skepticism paid off).
+
+**ALSO CLOSED — `aic-t5w` (P1 BUG):** the errreduce eps-scale gate (eps:=η not the ~124× smaller
+eps_assoc, §C11) is now ENCODED in `test_fam3d_bijective_eta` (was probe-confirmed only at
+2026-06-01e).
+
+**▶ IN FLIGHT — `aic-dbo.3` (P1, claimed): the universality dim-sweep regression** (THE
+highest-value correctness test, tex:484 dimension-independence). Both gating walls cleared.
+Recon workflow `w10p1ft57` measuring `c=iso_def/η` + wall-time across the blockalg family to
+fix the laptop-feasible sweep envelope + a data-driven predicate. COMPUTE CONSTRAINT (laptop):
+prec=256 builds are slow (k3~25s, k4~120s, k5 N=10 DNF in 200s) AND the degenerate-wrapper
+stress only reproduces at prec=256 — so the handoff's k=8/dim_A=64 sweep is INFEASIBLE; the
+realistic sweep is Axis A k∈{2,3,4} d=2 (dim_A 8/12/16) + Axis B k=2 d∈{2,3} (dim_A 8/18).
+HEADLINE DECISION pending recon: `c` bounded ⟹ tex:484 HOLDS (green); `c` genuinely grows ⟹ a
+real STOP-CONDITION to escalate (do NOT tune the predicate to pass). Plan + data durable in
+`bd show aic-dbo.3` (design field).
+
+**NEXT (orchestrated):** finish aic-dbo.3 (recon → set predicate from DATA → implement
+`tests/test_dbo3.c` → hostile review → commit). Then remaining aic-cxo tranche (non-comm
+calibrated η→1/4, family 2B, mixconj corpus unification w/ aic-f9u.1), aic-v5f (densified
+carrier), the NEW d≥3/k≥5 projection-coverage bead (filed this session), Julia packaging
+(aic-obc/aic-95g.2), aic-jhe (tight MOSEK cb-distance).
+
+---
+
+## ▶▶ PRIOR (2026-06-01e, orchestrated, laptop): the 3D eps~c/dim universality GENERATOR landed (aic-cxo HIGH); aic-dbo.3 de-risked → TWO walls found, both fail-loud, both filed
 
 **State:** master FULLY GREEN — `ctest -L fast` 18/18 (~28s); working tree clean, up to date with
 `origin/master` (HEAD `9e718d0`). bd: 95 issues (re-imported from JSONL at session start — the live
