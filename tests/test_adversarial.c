@@ -780,6 +780,144 @@ static void test_fam1d_unital_defect(void)
     arb_clear(ud);
 }
 
+/* ---- fam1C: near-degenerate carrier (domain.md:127-159, lem_carrier
+ * .tex:1724 / cor_carrier .tex:1731). The FOURTH channel generator's self-test.
+ * The named property: the single Hermitian diagonal Kraus K_0=diag(1,..,1,
+ * sqrt(gap)) gives the carrier operator Q = sum_a K_a K_a^dag = diag(1,..,1,gap)
+ * a spectrum {1 (x)(d-1), gap}; the certified carrier rank is d for gap above
+ * thr=dim_K*2^-52*||Q||_F, NEARLY drops to d-1 as gap->0, and the SMALLEST
+ * carrier eigenvalue is EXACTLY gap. This exercises the certified-rank routine
+ * (aic_ucp_carrier_rank, bead aic-4td) on a near-degenerate carrier.
+ *
+ * Teeth, in order of load-bearing weight:
+ *  (1) SMALLEST CARRIER EIGENVALUE == gap (the construction pin, LOAD-BEARING):
+ *      the smallest eigenvalue of Q (via the same degeneracy-robust
+ *      aic_mat_eig_hermitian_multiple the certified rank uses) equals gap to
+ *      ~1e-9, certified. A wrong Kraus / wrong carrier marginal misses it.
+ *  (2) CERTIFIED RANK == d for gap above thr (full carrier), agreeing with the
+ *      double path aic_ucp_carrier_rank_latd. The named "no silent wrong rank".
+ *  (3) NEAR-DROP at the gap=0 exact-drop oracle: certified rank == d-1 (the
+ *      carrier loses a dimension). MEASURED: this CERTIFIES d-1 (does not fail
+ *      loud) because the diagonal gap eigenvalue is a point ball — discovered,
+ *      not assumed (the densified-carrier straddle/fail-loud path is test_eigvec
+ *      S6b). gap=1 ORACLE: full rank d with a healthy smallest eig 1.
+ *  (4) MONOTONIC: the smallest carrier eigenvalue tracks gap (gap=0.5 > 1e-6).
+ *
+ * MUTATION: drop the knob from K_0 — set the last diagonal entry to 1 regardless
+ * of gap (so Q=1_d, full rank d, smallest eig 1 for ALL gap) => the smallest-eig
+ * ==gap pin (1 != 1e-6) and the gap=0 rank-drop check (rank d, not d-1) both go
+ * RED. Confirmed RED, restored byte-identical (git diff empty). */
+static void carrier_smallest_eig(arb_t out, const acb_mat_t Q)
+{
+    slong d = acb_mat_nrows(Q);
+    acb_ptr E = _acb_vec_init(d);
+    aic_mat_eig_hermitian_multiple(E, Q, PREC);
+    arb_t re;
+    arb_init(re);
+    acb_get_real(out, E + 0);
+    for (slong k = 1; k < d; k++) {
+        acb_get_real(re, E + k);
+        if (arf_cmp(arb_midref(re), arb_midref(out)) < 0) arb_set(out, re);
+    }
+    arb_clear(re);
+    _acb_vec_clear(E, d);
+}
+
+static void test_fam1c_carrier_dropout(void)
+{
+    /* measured (prec=256, d=2): smallest carrier eig == gap; certified rank
+     *   gap=0.5  : smallest eig 0.500000, cert rank 2 (full)
+     *   gap=1e-6 : smallest eig 1.0e-6,   cert rank 2 (full, gap >> thr~4.4e-16)
+     *   gap=1e-3 : smallest eig 1.0e-3,   cert rank 2 (full)
+     *   gap=0    : smallest eig 0,        cert rank 1 (near-drop CERTIFIES d-1)
+     *   gap=1    : smallest eig 1,        cert rank 2 (full-rank oracle) */
+    const slong d = 2;
+    double gaps[3] = {0.5, 1e-3, 1e-6}; /* mild, intermediate, near-drop */
+    double small_m[3];
+
+    arb_t mn;
+    arb_init(mn);
+
+    for (int it = 0; it < 3; it++) {
+        double gap = gaps[it];
+        aic_ucp_kraus phi;
+        aic_adv_chan_carrier_dropout(&phi, d, gap, PREC);
+
+        acb_mat_t Q;
+        acb_mat_init(Q, d, d);
+        aic_ucp_carrier_Q(Q, &phi, PREC);
+
+        /* (1) smallest carrier eigenvalue == gap (certified, ~1e-9) — the pin. */
+        carrier_smallest_eig(mn, Q);
+        small_m[it] = arf_get_d(arb_midref(mn), ARF_RND_NEAR);
+        check_ball_eq(mn, gap, 1e-9);
+
+        /* (2) certified carrier rank == d (gap above thr), == double path. */
+        slong rk_cert = aic_ucp_carrier_rank(Q, d, PREC);
+        slong rk_dbl = aic_ucp_carrier_rank_latd(Q, d);
+        AIC_CHECK_MSG(rk_cert == d,
+                      "fam1C gap=%.1e: certified carrier rank %ld != d=%ld (gap is "
+                      "above thr, carrier must be full rank)", gap, (long) rk_cert,
+                      (long) d);
+        AIC_CHECK_MSG(rk_cert == rk_dbl,
+                      "fam1C gap=%.1e: certified rank %ld != double-path rank %ld",
+                      gap, (long) rk_cert, (long) rk_dbl);
+
+        acb_mat_clear(Q);
+        aic_ucp_kraus_clear(&phi);
+    }
+
+    /* (4) monotonic: the smallest carrier eigenvalue tracks gap. */
+    AIC_CHECK_MSG(small_m[0] > small_m[2] && small_m[2] > 0.0,
+                  "fam1C: smallest carrier eig not tracking gap (gap=0.5 -> %.3e, "
+                  "gap=1e-6 -> %.3e)", small_m[0], small_m[2]);
+
+    /* (3) NEAR-DROP at the gap=0 exact-drop oracle: certified rank == d-1. The
+     * carrier loses a dimension; MEASURED behavior is CERTIFY d-1 (the diagonal
+     * gap eigenvalue is a point ball, so aic_ucp_carrier_rank never straddles —
+     * the fail-loud straddle is the densified-carrier path, test_eigvec S6b). The
+     * gap=0 input is a VALID Q (a rank-deficient PSD carrier) built directly here;
+     * the generator's knob asserts gap>0, so this oracle bypasses it with Q built
+     * from K_0=diag(1,0). */
+    {
+        acb_mat_t Q0;
+        acb_mat_init(Q0, d, d);
+        acb_set_si(acb_mat_entry(Q0, 0, 0), 1); /* Q = diag(1, 0): exact drop */
+        slong rk0 = aic_ucp_carrier_rank(Q0, d, PREC);
+        AIC_CHECK_MSG(rk0 == d - 1,
+                      "fam1C gap=0 oracle: certified carrier rank %ld != d-1=%ld "
+                      "(carrier must drop a dimension at the exact-zero eigenvalue)",
+                      (long) rk0, (long) (d - 1));
+        carrier_smallest_eig(mn, Q0);
+        check_ball_eq(mn, 0.0, 1e-12);
+        acb_mat_clear(Q0);
+    }
+
+    /* gap=1 ORACLE: K_0=1_d, Q=1_d, EXACT full-rank d carrier, smallest eig 1. */
+    {
+        aic_ucp_kraus phi1;
+        aic_adv_chan_carrier_dropout(&phi1, d, 1.0, PREC);
+        acb_mat_t Q1;
+        acb_mat_init(Q1, d, d);
+        aic_ucp_carrier_Q(Q1, &phi1, PREC);
+        slong rk1 = aic_ucp_carrier_rank(Q1, d, PREC);
+        AIC_CHECK_MSG(rk1 == d,
+                      "fam1C gap=1 oracle: certified rank %ld != d=%ld (full carrier)",
+                      (long) rk1, (long) d);
+        carrier_smallest_eig(mn, Q1);
+        check_ball_eq(mn, 1.0, 1e-9); /* healthy gap: smallest eig is 1 */
+        acb_mat_clear(Q1);
+        aic_ucp_kraus_clear(&phi1);
+    }
+
+    printf("  fam1C carrier-dropout: gap=0.5 small-eig=%.6f ; gap=1e-3 small-eig=%.3e "
+           "; gap=1e-6 small-eig=%.3e (cert rank d=%ld, all gap>>thr~4.4e-16) ; gap=0 "
+           "=> cert rank d-1=%ld (near-drop CERTIFIES, no straddle)\n",
+           small_m[0], small_m[1], small_m[2], (long) d, (long) (d - 1));
+
+    arb_clear(mn);
+}
+
 int main(void)
 {
     test_gen1_jordan();
@@ -792,6 +930,7 @@ int main(void)
     test_fam1b_cb_op_gap();
     test_fam2a_depol_boundary();
     test_fam1d_unital_defect();
+    test_fam1c_carrier_dropout();
 
     aic_test_report("test_adversarial");
     printf("OK test_adversarial\n");

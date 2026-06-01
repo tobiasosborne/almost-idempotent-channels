@@ -39,6 +39,7 @@
  *   chan_cb_op_gap      domain 1B, tex:366-388 : cb-norm vs operator-norm gap (measure-prepare)
  *   chan_depol_boundary domain 2A, tex:516-525 : eta->1/4 theta(2Phi-1) basin edge
  *   chan_unital_defect  domain 1D, tex:432/672 : unital-but-barely Phi(I)=I+delta_u E
+ *   chan_carrier_dropout domain 1C, tex:1724/1731 : near-degenerate carrier, rank near-drop
  *
  * API SHAPE (reusable by tests AND benches). Each NLA generator takes a caller-managed
  * acb_mat_t `out` that the caller has init'd to the right shape (asserted), the
@@ -177,6 +178,32 @@ void aic_adv_chan_depol_boundary(aic_ucp_kraus *out, slong d, double p,
  * HERE (dim_K=dim_H=d, r=1; caller aic_ucp_kraus_clears it). */
 void aic_adv_chan_unital_defect(aic_ucp_kraus *out, slong d, double delta_u,
                                 slong prec);
+
+/* fam1C — near-degenerate carrier (domain.md:127-159; lem_carrier .tex:1724,
+ * cor_carrier .tex:1731). A self-map on B(C^d), d>=2, with a SINGLE Hermitian
+ * diagonal Kraus operator
+ *   K_0 = diag(1, ..., 1, sqrt(gap))   on C^d,   gap in (0, 1],
+ * so the carrier operator that aic_ucp_carrier_Q / aic_ucp_carrier_rank inspect,
+ *   Q = sum_a K_a K_a^dag = K_0 K_0^dag = diag(1, ..., 1, gap),
+ * has spectrum {1 (x)(d-1), gap}: the last OUTPUT dimension is barely populated,
+ * so the carrier rank is d for gap above the routine's threshold
+ * thr = dim_K * 2^-52 * ||Q||_F and NEARLY drops to d-1 as gap -> 0. The smallest
+ * carrier eigenvalue is EXACTLY gap (the named adversarial quantity). NOT unital
+ * for gap != 1 (deliberate: a unital padding would refill the d-th output
+ * dimension and kill the rank near-drop; an adversarial instance need not be
+ * unital). KNOB gap in (0, 1] (asserted; d >= 2; Rule 4, fail loud).
+ * Adversarial property (the near-degenerate carrier, the silent-wrong-rank trap):
+ * aic_ucp_carrier_rank must certify rank d while gap > thr and certify the drop
+ * to d-1 (or fail loud) as gap -> 0 below thr, never silently return the wrong
+ * rank. MEASURED near-drop behavior (Rule 2, discovered not assumed): because Q
+ * is DIAGONAL with an exactly-representable entry, the gap eigenvalue is a POINT
+ * ball, so the routine ALWAYS CERTIFIES (never straddles) — rank d for gap > thr,
+ * rank d-1 at gap=0 (the exact-drop oracle); the densified-carrier STRADDLE/fail-
+ * loud path is exercised separately by test_eigvec.c:S6b (FINDINGS §D7). gap=1
+ * REDUCTION: K_0 = 1_d, Q = 1_d, EXACT full-rank d carrier (oracle). `out` is
+ * aic_ucp_kraus_init'd HERE (dim_K=dim_H=d, r=1; caller aic_ucp_kraus_clears it). */
+void aic_adv_chan_carrier_dropout(aic_ucp_kraus *out, slong d, double gap,
+                                  slong prec);
 
 #ifdef __cplusplus
 }
