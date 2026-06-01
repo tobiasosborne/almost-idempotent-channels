@@ -748,6 +748,50 @@ with the concrete evidence from where they bit.
   The cstar_build master loop has NO unbounded loop (Stage-1 capped at `dim_A+1`, errreduce at
   `max_steps`, the only `while` is a bounded union-find); the funcalc sgn iterations cap at 100/200.
 
+### C16. The projection gap-selection was BLIND to the algebra UNIT — on an `S_P` wrapper it collapsed to `Ptilde_m` (the wrapper unit); the fix is a UNIT-AWARE gap audition (extends §C7/§C11)
+- **Status:** RESOLVED (bead **aic-66n**; `src/aic_projection_audit.c` + `src/aic_projection.c`;
+  regression `tests/test_adversarial.c::test_fam3d_bijective_eta`, mutation-proven).
+- **The bug.** `aic_cstar_build` recurses Stage-1 splits onto `S_P` WRAPPER subalgebras whose
+  unit is `Ptilde_m = Co_P(P)` (`tex:1082`; §C7), an `n×n` rank-`r` ambient projector (`r << n`),
+  NOT the ambient `1_n`. The chosen Hermitian `H = (B_k+B_k^†)/2` is supported on `range(Ptilde_m)`,
+  so in `M_n` its spectrum has `r` genuine eigenvalues + `(n−r)` near-ZERO complement ones — and the
+  OLD finder (`aic_projection_pick_H` + the largest-interior-gap rule) picked the
+  SUPPORT-vs-COMPLEMENT gap. Building `P` from that gap gives `P_amb` = the full support projector
+  and `P = Φ̃(P_amb) ≈ Ptilde_m` = the wrapper UNIT — a TRIVIAL split. The finder's internal
+  nontriviality gate tested the AMBIENT `‖1_n − P‖ ≈ 1`, which is VACUOUS on a wrapper (§C11), so it
+  did not catch the collapse; only the `cstar_build.c:258` wrapper-unit backstop did, aborting with
+  no recovery: `"split projection P' is the wrapper unit Ptilde_m (‖Ptilde_m − P'‖ = 0.0000 < 0.15)"`.
+- **MEASURED repro.** `aic_adv_chan_blockalg(k=4, d=2, t=0.05)`, eps:=eta (NOT the ~700×-smaller
+  assoc defect — the §C11 caveat), prec=256: eta=0.0475, dim_A=16, Stage-1 wrapper dim_A sequence
+  descends to a dim_A=2 wrapper whose chosen `H` spectrum is `[6 near-zero, 2 genuine]`; the largest
+  interior gap is support-vs-complement → `P ≈ Ptilde_m` → ABORT at `cstar_build.c:258`. **PREC IS
+  LOAD-BEARING** (deviation from the bead's "reproduces at low prec"): the gap-SELECTION is
+  double-path/prec-independent, but the Stage-1 RECURSION path depends on the arb-computed `Φ̃` and
+  intermediate splits — only prec=256 descends to that exact degenerate wrapper. Measured: k=4
+  SUCCEEDS at prec=64/128/160, ABORTS only at prec=256 (old tree). k=3 SUCCEEDS on BOTH trees (its
+  recursion never hits the degenerate wrapper). So the regression MUST run at prec=256 (a `slow` test).
+- **The fix (root-cause, UNIT-AWARE; `tex:929`).** The nontriviality contract (`tex:929`: "a
+  δ-projection P is nontrivial if both P and I−P are nonvanishing") is measured against the
+  ALGEBRA'S unit, not `1_n`. `aic_projection_audit` computes `U_A = Φ̃(1_n) = aic_ecstar_star(A, 1_n,
+  1_n)` (= `Ptilde_m` for a wrapper, `≈1_n` at top level), enumerates ALL `(H_k, gap)` candidates
+  over ALL non-scalar `H_k` sorted by gap DESCENDING, and ACCEPTS the first `P=Φ̃(P_amb)` with
+  `‖P‖ > c` AND `‖U_A − P‖ > c` (`c=0.3 ≥` the `cstar_build` backstop 0.15, so a finder-accepted P
+  always passes the downstream gate). The vacuous ambient `‖1_n − P‖` gate is REPLACED by the
+  unit-aware `‖U_A − P‖`. **ROBUSTNESS:** auditioning across ALL `H_k` (not just the within-H gaps of
+  one pre-chosen `H`) closes the risk that the largest-ambient-gap `H_k` has its `r` genuine
+  eigenvalues clustered while a different `H_k` has a usable in-support gap. Fails loud (the aic-3qv
+  stop condition) ONLY if NO `(H_k, gap)` pair yields a nontrivial-vs-unit split (never silently
+  returns the unit, Rule 4). `aic_projection_pick_H` was removed (dead); `aic_projection_gap`
+  remains (directly tested in `test_projection.c`).
+- **MEASURED post-fix (prec=256, eps:=eta).** k=2 dim_B=8 BIJECTIVE σ_min=0.99955 c=iso/η=0.0182
+  (UNCHANGED — k=2 always accepts the largest gap, the audition is a strict superset); k=3 dim_B=12
+  BIJECTIVE σ_min=0.99897 c=0.0470; k=4 dim_B=16 BIJECTIVE σ_min=0.99931 c=0.0247. All O(η).
+- **MUTATION-PROVEN (Rule 7, by hand on `/tmp`, restored).** (a) audition→largest-gap-only (`if(1||
+  …)`): k=4 prec=256 RED (`‖P‖=1.0041, ‖U_A−P‖=0.0004` — the support-vs-complement collapse).
+  (b) gate on `1_n` instead of `U_A`: k=4 RED (`‖1_n−P‖≈1>c` accepts the trivial split, the
+  U_A-based output re-assertion then catches `‖U_A−P‖=0.0004`). Confirms BOTH the audition AND the
+  `U_A`-not-`1_n` choice are load-bearing.
+
 ---
 
 ## D. Open questions / escalations (unresolved)

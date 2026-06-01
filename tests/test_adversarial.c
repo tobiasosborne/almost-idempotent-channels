@@ -29,6 +29,7 @@
 #include "aic/aic_cstar.h"
 #include "aic/aic_dhom.h"
 #include "aic/aic_ecstar.h"
+#include "aic/aic_errreduce.h"
 #include "aic_test.h"
 
 static const slong PREC = 256;
@@ -1097,6 +1098,128 @@ static void test_fam3d_blockalg(void)
     }
 }
 
+/* eta proxy = ||S^2 - S||_op via the assoc superoperator midpoint (matches
+ * test_cstar_build.c eta_proxy / test_cstar_extension.c). The cstar_build eps
+ * argument must be eta, NOT the ~700x-smaller assoc defect eps (FINDINGS §C11). */
+static double fam3d_eta_proxy(const aic_ucp_kraus *phi, slong prec)
+{
+    slong n = phi->dim_H, nn = n * n;
+    acb_mat_t S, S2, D, M;
+    acb_mat_init(S, nn, nn);
+    acb_mat_init(S2, nn, nn);
+    acb_mat_init(D, nn, nn);
+    acb_mat_init(M, nn, nn);
+    aic_assoc_superop_from_ucp(S, phi, prec);
+    acb_mat_sqr(S2, S, prec);
+    acb_mat_sub(D, S2, S, prec);
+    for (slong i = 0; i < nn; i++)
+        for (slong j = 0; j < nn; j++)
+            acb_get_mid(acb_mat_entry(M, i, j), acb_mat_entry(D, i, j));
+    arb_t e;
+    arb_init(e);
+    aic_mat_opnorm(e, M, prec);
+    double o = arf_get_d(arb_midref(e), ARF_RND_NEAR);
+    arb_clear(e);
+    acb_mat_clear(M);
+    acb_mat_clear(D);
+    acb_mat_clear(S2);
+    acb_mat_clear(S);
+    return o;
+}
+
+/* ---- fam3D, eta>0: the aic-66n wrapper-collapse regression (REQUIRES prec=256).
+ * The k-block algebra at t>0 is GENUINELY eta-idempotent (A = (+)_j M_d an
+ * O(eta)-C* algebra). aic_cstar_build recurses Stage-1 splits onto S_P WRAPPER
+ * subalgebras whose unit is Ptilde_m = Co_P(P) (.tex:1082), NOT the ambient 1_n.
+ * The OLD projection finder ranked spectral gaps by the largest AMBIENT interior
+ * gap — on a wrapper that is the support-vs-complement gap, so it built P ~ Ptilde_m
+ * (the wrapper UNIT) — a TRIVIAL split that the cstar_build backstop (cstar_build.c:
+ * 258, FINDINGS §C11) aborted on with no recovery. The aic-66n fix makes the gap
+ * audition UNIT-AWARE (||U_A - P|| > c, U_A = Phi_tilde(1_n); .tex:929, §C7).
+ *
+ * RED on the PRE-FIX tree (measured): k=4, d=2, t=0.05, prec=256, eps=eta aborts
+ * "aic_cstar_build stage1: split projection P' is the wrapper unit Ptilde_m
+ * (||Ptilde_m - P'|| = 0.0000 < 0.15; FINDINGS §C11)" at the iter=5 dim_A=2 wrapper.
+ * GREEN post-fix: dim_B=16==dim_A, bijective, sigma_min=0.9993, c=iso/eta=0.0247.
+ *
+ * PREC IS LOAD-BEARING (deviation from the bug-report's "reproduces at low prec").
+ * The gap-SELECTION is double-path (prec-independent), but the Stage-1 RECURSION
+ * path depends on the arb-computed Phi_tilde / intermediate splits; only prec=256
+ * descends to the exact dim_A=2 degenerate wrapper that trips the abort. Measured:
+ * k=4 SUCCEEDS at prec=64/128/160 (the recursion never reaches that wrapper) and
+ * ABORTS at prec=256 on the old tree. So the regression MUST run at prec=256 —
+ * hence this is a `slow`-labeled test (test_adversarial is already `slow`, TIMEOUT
+ * 600). k is bounded to <= 4: k=5 (N=10) at prec=256 is just too slow (not a
+ * failure). k=3 (dim_A=12) SUCCEEDS on BOTH trees (its recursion never hits the
+ * degenerate wrapper) but is asserted too: it pins the bijective O(eta) isomorphism.
+ * Wall time (this box): k=3 ~25 s, k=4 ~120 s.
+ *
+ * MUTATION-PROVEN (Rule 7, by hand on /tmp, recorded in the bead handoff):
+ *  (a) revert the audition to largest-gap-only (no unit-aware reject) -> k=4 RED
+ *      (the cstar_build.c:258 wrapper-unit abort returns).
+ *  (b) gate on the ambient 1_n instead of U_A=Phi_tilde(1_n) -> k=4 RED (||1_n - P||
+ *      ~ 1 is vacuous on a wrapper, so the support-vs-complement gap is accepted and
+ *      P ~ Ptilde_m collapses the split). */
+static void test_fam3d_bijective_eta(void)
+{
+    const slong PREC3 = 256;   /* the bug ONLY reproduces at prec=256 (see banner) */
+    struct { slong k, d; double t; } cases[2] = {{3, 2, 0.05}, {4, 2, 0.05}};
+    for (int ci = 0; ci < 2; ci++) {
+        slong k = cases[ci].k, d = cases[ci].d;
+        slong dim_A_exp = k * d * d;
+
+        aic_ucp_kraus phi;
+        aic_adv_chan_blockalg(&phi, k, d, cases[ci].t, PREC3);
+        double eta = fam3d_eta_proxy(&phi, PREC3);
+        AIC_CHECK_MSG(eta > 1e-6,
+                      "fam3D eta>0 (k=%ld): eta=%.3e not > 0 (t must make Phi "
+                      "genuinely almost-idempotent)", (long) k, eta);
+
+        aic_assoc_ecstar ae;
+        aic_assoc_ecstar_from_phi(&ae, &phi, PREC3);
+        AIC_CHECK_MSG(ae.A.dim_A == dim_A_exp,
+                      "fam3D eta>0 (k=%ld): dim_A=%ld != k*d^2=%ld", (long) k,
+                      (long) ae.A.dim_A, (long) dim_A_exp);
+
+        /* eps := eta (NOT the ~700x-smaller assoc defect; FINDINGS §C11). The
+         * PRE-FIX tree aborts HERE for k=4 (the unit-aware audition is the fix). */
+        aic_dhom_B B;
+        aic_dhom_v v;
+        arb_t iso;
+        arb_init(iso);
+        aic_cstar_build(&B, &v, iso, &ae.A, eta, PREC3);
+
+        /* BIJECTIVE O(eta) isomorphism: dim_B == dim_A AND sigma_min near 1. */
+        arb_t a;
+        arb_init(a);
+        int bij = aic_errreduce_is_bijective(a, &v, PREC3);
+        double smin = arf_get_d(arb_midref(a), ARF_RND_NEAR);
+        double isod = arf_get_d(arb_midref(iso), ARF_RND_NEAR);
+        double c = isod / eta;
+        AIC_CHECK_MSG(B.dim_B == dim_A_exp,
+                      "fam3D eta>0 (k=%ld): dim_B=%ld != dim_A=%ld (not bijective; "
+                      "the wrapper-collapse abort, aic-66n)", (long) k,
+                      (long) B.dim_B, (long) dim_A_exp);
+        AIC_CHECK_MSG(bij && smin > 0.5,
+                      "fam3D eta>0 (k=%ld): v not bijective (sigma_min=%.4f <= 0.5)",
+                      (long) k, smin);
+        AIC_CHECK_MSG(c < 1.0,
+                      "fam3D eta>0 (k=%ld): c=iso_def/eta=%.4f not O(1) (eta=%.3e "
+                      "iso_def=%.3e)", (long) k, c, eta, isod);
+        printf("  fam3D blockalg eta>0 (k=%ld,d=%ld,t=%.2f): dim_B=%ld==dim_A "
+               "BIJECTIVE sigma_min=%.6f eta=%.4e iso_def=%.3e c=iso/eta=%.4f "
+               "(aic-66n wrapper-collapse FIXED)\n", (long) k, (long) d,
+               cases[ci].t, (long) B.dim_B, smin, eta, isod, c);
+
+        arb_clear(a);
+        arb_clear(iso);
+        aic_dhom_v_clear(&v);
+        aic_dhom_B_clear(&B);
+        aic_assoc_ecstar_clear(&ae);
+        aic_ucp_kraus_clear(&phi);
+    }
+}
+
 int main(void)
 {
     test_gen1_jordan();
@@ -1111,6 +1234,7 @@ int main(void)
     test_fam1d_unital_defect();
     test_fam1c_carrier_dropout();
     test_fam3d_blockalg();
+    test_fam3d_bijective_eta();   /* aic-66n wrapper-collapse regression (prec=256) */
 
     aic_test_report("test_adversarial");
     printf("OK test_adversarial\n");

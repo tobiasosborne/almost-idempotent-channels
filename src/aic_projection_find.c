@@ -1,21 +1,29 @@
-/* aic_projection_find.c — Steps 1-2 of the Route-A-ambient nontrivial-projection
- * finder (bead aic-mqf): find a non-scalar Hermitian H in A, and its largest
- * interior spectral gap + threshold. See include/aic_projection.h for the full
- * route and lem_nontriv_projection (approximate_algebras.tex:931).
+/* aic_projection_find.c — the Hermitian-part + single-gap primitives of the
+ * Route-A-ambient nontrivial-projection finder (bead aic-mqf). See
+ * include/aic_projection.h for the full route and lem_nontriv_projection
+ * (approximate_algebras.tex:931).
  *
  * approximate_algebras.tex:935 (the reduction this whole module serves):
  *   "An element P in A is a projection if and only if X = 2P - I is Hermitian and
  *    satisfies X^2 = I. Equivalently, X is both Hermitian and unitary."
- * We realize X as the AMBIENT sign of a gap-shifted Hermitian element of A; this
- * file picks that element and the gap. The eigenVALUES are the DOUBLE path
- * (LAPACK zheev): H is Hermitian, whose spectrum is STABLE (the .tex:540-544
- * eigenvalue fragility is a NON-normal phenomenon), so the double-path values are
- * a sound basis for choosing a threshold. The certified DEFECT is in the arb path
- * (aic_projection.c); the certified gap ENCLOSURE defers to bead aic-w4o.1.
+ * We realize X as the AMBIENT sign of a gap-shifted Hermitian element of A. The
+ * eigenVALUES are the DOUBLE path (LAPACK zheev): H is Hermitian, whose spectrum
+ * is STABLE (the .tex:540-544 eigenvalue fragility is a NON-normal phenomenon), so
+ * the double-path values are a sound basis for choosing a threshold. The certified
+ * DEFECT is the arb path (aic_projection.c); the certified gap ENCLOSURE defers to
+ * bead aic-w4o.1.
  *
- * FAIL-LOUD (Rule 4): no non-scalar H (spread <= floor) => a stop condition
- * (dim A > 1 but no non-scalar Hermitian element); no interior gap g >= g_min =>
- * the Omega(1)-gap escalation (bead aic-3qv), certified per-instance.
+ * POST-aic-66n. The old single-H pre-selection aic_projection_pick_H was REMOVED:
+ * it ranked H_k by the largest AMBIENT interior gap, which on an S_P wrapper is the
+ * support-vs-complement gap, collapsing the split to the wrapper unit Ptilde_m
+ * (FINDINGS §C11/§C16). The UNIT-AWARE audition (src/aic_projection_audit.c)
+ * supersedes it. This file now provides only aic_projection_herm_part (H_k) and
+ * aic_projection_gap (the single largest-gap finder, directly tested in
+ * tests/test_projection.c: the aic-3qv no-gap abort + the gap-pick teeth).
+ *
+ * FAIL-LOUD (Rule 4): aic_projection_gap aborts when there is no positive interior
+ * gap (a degenerate spectrum, all eigenvalues coincident): the aic-3qv stop
+ * condition, certified per-instance.
  */
 #include <assert.h>
 #include <math.h>
@@ -86,59 +94,14 @@ static double largest_interior_gap(const acb_mat_t H, double *spread_out,
     return best_gap;
 }
 
-/* Scan the basis for the H_k = (B_k+B_k^dag)/2 with the largest INTERIOR
- * SPECTRAL GAP (tie-break by spread). Writes the chosen index to *k_out and the
- * chosen H into Hout (caller-init'd n x n). Returns the chosen H's gap.
- *
- * WHY GAP, NOT SPREAD. The split is nontrivial for ANY positive interior gap
- * (both clusters non-empty), independent of size, but the a-posteriori star
- * defect is delta=O(eps/g) — so the LARGEST-gap H gives the tightest defect.
- * argmax(spread) != argmax(gap): a wide spectrum with all eigenvalues clustered
- * at the ends but no interior gap is worse than a narrow one with a clean gap.
- * Ranking by gap also removes the spurious-abort failure mode where a high-spread
- * H_k was chosen but its largest gap fell below the (old, now fixed) floor.
- *
- * FAILS LOUD if every H_k is near-scalar (spread <= a floor): the stop condition
- * (dim A > 1 but no non-scalar Hermitian element). A near-scalar H_k has no
- * positive gap (all eigenvalues coincide), so the gap floor would also catch it,
- * but the near-scalar diagnostic is the more informative message. */
-double aic_projection_pick_H(acb_mat_t Hout, slong *k_out, const aic_ecstar *A,
-                             slong prec)
-{
-    slong n = A->n, d = A->dim_A;
-    assert(d > 1 && "projection: lem_nontriv_projection needs 1 < dim A");
-    acb_mat_t Hk;
-    acb_mat_init(Hk, n, n);
-    double best_gap = -1.0, best_spread = -1.0;
-    slong best_k = -1;
-    for (slong k = 0; k < d; k++) {
-        aic_projection_herm_part(Hk, A->B[k], prec);
-        double sp = 0.0;
-        double g = largest_interior_gap(Hk, &sp, NULL, NULL);
-        /* primary: largest gap; tie-break: largest spread (eps-stable ranking). */
-        if (g > best_gap || (g == best_gap && sp > best_spread)) {
-            best_gap = g;
-            best_spread = sp;
-            best_k = k;
-            acb_mat_set(Hout, Hk);
-        }
-    }
-    acb_mat_clear(Hk);
-    /* Floor: a non-scalar Hermitian element must have a non-negligible spread.
-     * The unit I has spread 0; near-scalar combinations too. 1e-6 separates the
-     * genuine non-scalar (O(1) spread for our fixtures) from numerical noise. */
-    if (best_spread <= 1e-6) {
-        fprintf(stderr, "aic_projection: dim A = %ld > 1 but every Hermitian "
-                "basis part H_k = (B_k+B_k^dag)/2 is near-scalar (max spread "
-                "%.3e <= 1e-6). No non-scalar Hermitian element to split — "
-                "lem_nontriv_projection's spectral route cannot proceed; "
-                "escalate (bead aic-3qv / a degenerate algebra).\n",
-                (long) d, best_spread);
-        abort();
-    }
-    *k_out = best_k;
-    return best_gap;
-}
+/* NOTE (bead aic-66n): the old single-H pre-selection aic_projection_pick_H was
+ * REMOVED. It ranked H_k by the largest AMBIENT interior gap, which on an S_P
+ * wrapper is the support-vs-complement gap, so the projection collapsed to the
+ * wrapper unit Ptilde_m (FINDINGS §C11). The UNIT-AWARE audition
+ * (src/aic_projection_audit.c, aic_projection_audit) supersedes it: it enumerates
+ * the (H_k, gap) pairs over ALL H_k and selects by the ||U_A - P|| > c criterion,
+ * not a pre-chosen H. aic_projection_gap below remains as the directly-tested
+ * single-gap finder (tests/test_projection.c aic-3qv abort / gap-pick teeth). */
 
 /* Largest INTERIOR spectral gap of a Hermitian H (eigenVALUES via LAPACK zheev,
  * degenerate-OK double path). Among the n-1 consecutive gaps lam_{i+1}-lam_i

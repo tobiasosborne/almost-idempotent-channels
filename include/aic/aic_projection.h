@@ -19,25 +19,25 @@
  * an algorithm. In finite dimensions we build a projection directly (Route
  * A-AMBIENT, the route reconciled across three research legs, bead aic-mqf):
  *
- *   1. FIND A NON-SCALAR HERMITIAN H in A. Each H_k = (1/2)(B_k + B_k^dag) is
- *      Hermitian and in A (A is dag-closed). Pick the H_k with the largest
- *      INTERIOR SPECTRAL GAP (tie-break by spread), NOT the largest spread:
- *      argmax(spread) != argmax(gap), and the a-posteriori star defect is
- *      delta=O(eps/g), so the largest-gap H gives the tightest certified defect
- *      (and avoids the spurious-abort failure mode where a high-spread H_k's
- *      largest gap fell below the floor). All-near-scalar (spread <= 1e-6) =>
- *      FAIL LOUD (a stop condition: dim A > 1 but no non-scalar Hermitian elt).
- *   2. FIND THE SPECTRAL GAP + THRESHOLD. H is Hermitian => its spectrum is STABLE
- *      (the .tex:540-544 fragility is a NON-NORMAL phenomenon), so the double-path
- *      eigenVALUES (aic_latd_eig_hermitian / LAPACK zheev, degenerate-OK) are
- *      sound for choosing a threshold. Take the largest INTERIOR gap [lam_m,
- *      lam_{m+1}] (1 <= m < n, both sides non-empty => the split is guaranteed
- *      nontrivial REGARDLESS of gap size), t = (lam_m + lam_{m+1})/2,
- *      g = lam_{m+1} - lam_m. FAIL LOUD only if NO positive interior gap exists
- *      (the spectrum is degenerate, all eigenvalues coincide to round-off): the
- *      aic-3qv stop condition. The gap SIZE is NOT gated here; it enters the
- *      a-posteriori star defect delta=O(eps/g), certified downstream in Step 5
- *      and guarded by the T3 universality canary.
+ *   1+2. ENUMERATE (H_k, gap) CANDIDATES + AUDITION UNIT-AWARE (bead aic-66n,
+ *      src/aic_projection_audit.c). Each H_k = (1/2)(B_k + B_k^dag) is Hermitian
+ *      and in A (A is dag-closed); its double-path zheev spectrum is STABLE (the
+ *      .tex:540-544 fragility is a NON-NORMAL phenomenon). For EVERY non-scalar
+ *      H_k, enumerate ALL interior gaps [lam_i, lam_{i+1}] (t = (lam_i+lam_{i+1})/2,
+ *      g = lam_{i+1}-lam_i, both clusters non-empty), collected into one candidate
+ *      list sorted by g DESCENDING. The OLD route pre-picked ONE H_k by the largest
+ *      AMBIENT gap and built P from it — but on an S_P wrapper (unit Ptilde_m =
+ *      Co_P(P), .tex:1082; NOT 1_n) the largest gap is the support-vs-complement
+ *      gap, so P collapsed to the wrapper UNIT (FINDINGS §C11/§C16). Instead we
+ *      AUDITION candidates largest-gap-first (Steps 3-4 build P), ACCEPTING the
+ *      first that is NONTRIVIAL VS THE ALGEBRA UNIT U_A = Phi_tilde(1_n): ||P|| > c
+ *      AND ||U_A - P|| > c (c = 0.3, .tex:929; FINDINGS §C7). Auditioning across
+ *      ALL H_k (not one pre-chosen H) is ROBUST: if the largest-ambient-gap H_k has
+ *      its in-support eigenvalues clustered while a different H_k has a usable gap,
+ *      we still find it. FAIL LOUD only if NO non-scalar H_k has a positive interior
+ *      gap, or NO candidate yields a nontrivial-vs-unit split: the aic-3qv stop
+ *      condition. The gap SIZE is NOT gated; it enters the a-posteriori star defect
+ *      delta=O(eps/g), certified in Step 5 and guarded by the T3 universality canary.
  *   3. AMBIENT SPECTRAL PROJECTOR via the EIG-FREE sgn. s = 1/max(t-lam_min,
  *      lam_max-t); Y = s*(H - t*I) is n x n Hermitian with eigenvalues in [-1,1]
  *      and |eigval| >= s*g/2 off 0, so the funcalc basin ||Y^2-I|| < 1 holds
@@ -56,8 +56,10 @@
  *   5. CERTIFY (arb). delta = ||P*P - P||_op (the STAR, via aic_ecstar_star +
  *      the certified aic_corner_gamma_opnorm_ub upper bound, which dodges the
  *      aic_mat_opnorm Gram false-fail on near-zero defects, bead aic-qgs).
- *      Nontriviality: ||P||_op, ||I-P||_op both bounded away from 0 and I.
- *      Membership: aic_ecstar_proj_residual(P) = O(eta). FAIL LOUD on any failure.
+ *      Nontriviality (UNIT-AWARE): ||P||_op, ||U_A - P||_op both bounded away from
+ *      0, where U_A = Phi_tilde(1_n) is the ALGEBRA unit (= Ptilde_m for an S_P
+ *      wrapper, ~1_n at top level; the old ambient ||1_n - P|| gate was vacuous on
+ *      a wrapper, FINDINGS §C11/§C16). FAIL LOUD on any failure.
  *
  * WHY rem_X2-SAFE. The ONLY functional calculus (aic_sgn) is applied to the
  * AMBIENT Hermitian matrix Y in M_n, a genuine C* algebra where sgn is exact.
@@ -108,17 +110,17 @@ typedef struct {
  *              n x n where n = A->n.
  *   delta    : certified arb ball >= ||P*P - P||_op (the star defect).
  *   Pnorm    : certified arb ball for ||P||_op (a nonvanishing witness, ~1).
- *   ImPnorm  : certified arb ball for ||I - P||_op (~1).
+ *   ImPnorm  : certified arb ball for ||U_A - P||_op (~1; U_A the ALGEBRA unit).
  *   wit      : OPTIONAL (NULL to skip) the chosen H / gap / threshold.
  * ASSERTS (fail loud, Rule 4):
  *   - 1 < dim A (the lemma's hypothesis; dim A == 1 has no nontrivial projection),
- *   - some H_k is non-scalar (spread > a floor); else escalate (stop condition),
- *   - a positive interior spectral gap exists (else the aic-3qv escalation:
- *     a degenerate spectrum with all eigenvalues coincident),
- *   - the ambient sgn basin ||Y^2 - I|| < 1 holds,
+ *   - some non-scalar H_k has a positive interior spectral gap; else escalate
+ *     (the aic-3qv stop condition: a degenerate algebra),
+ *   - the ambient sgn basin ||Y^2 - I|| < 1 holds for the chosen candidate,
+ *   - SOME (H_k, gap) candidate yields a nontrivial-vs-unit split; else aic-3qv,
  *   - the output is a genuine nontrivial delta-projection in A: delta small,
- *     ||P|| and ||I-P|| both bounded away from 0 (>= 0.3) AND from each other's
- *     trivial value, and proj_residual(P) small.
+ *     ||P|| and ||U_A - P|| both bounded away from 0 (>= 0.3), where U_A =
+ *     Phi_tilde(1_n) is the ALGEBRA unit (FINDINGS §C16; NOT the ambient 1_n).
  * The caller owns P/delta/Pnorm/ImPnorm (init before, clear after). */
 void aic_projection_nontrivial(acb_mat_t P, arb_t delta, arb_t Pnorm,
                                arb_t ImPnorm, const aic_ecstar *A,

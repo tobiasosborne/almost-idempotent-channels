@@ -1764,30 +1764,47 @@ in-A star-Newton-Schulz; legs 2+3 + the web survey rejected it — no literature
 supports sign-iteration under ε-associativity, and ambient Hermitian spectra are
 *stable*, the fragility being non-normal-only.)
 
-**Route A-ambient (`src/aic_projection.c` + `src/aic_projection_find.c`):**
-1. **Pick H** (`aic_projection_pick_H`): scan the Hermitianized basis
-   `H_k=½(B_k+B_k†)`, choose the one with the **largest interior eigenvalue gap**
-   (tie-break by spectral spread; spread via certified `aic_mat_herm_max_eig`).
-   Fail-loud if all `H_k` near-scalar (a stop condition: dim A>1 but no non-scalar
-   Hermitian element).
-2. **Gap** (`aic_projection_gap`): eigenVALUES of H via LAPACK zheev (double path —
-   Hermitian ⟹ stable spectrum; only the values, not eigenvectors, so no
-   `aic-w4o.1` dependency); largest interior gap `[λ_m,λ_{m+1}]`, threshold
-   `t=½(λ_m+λ_{m+1})`. Fail-loud only if **no positive interior gap** exists (the
-   genuine aic-3qv degenerate-spectrum stop condition).
-3. **Ambient projector** (`ambient_projector`): `Y=s(H−tI)`, `s=1/max(t−λ_min,λ_max−t)`;
+**Route A-ambient (`src/aic_projection.c` + `src/aic_projection_find.c` +
+`src/aic_projection_audit.c`):**
+1. **Enumerate (H_k, gap) candidates** (`aic_projection_enum_cands`): for **every**
+   non-scalar Hermitianized basis element `H_k=½(B_k+B_k†)`, take **all** its interior
+   eigenvalue gaps (eigenVALUES via LAPACK zheev — Hermitian ⟹ stable spectrum; values
+   only, not eigenvectors, so no `aic-w4o.1` dependency) and collect the
+   `(H_k,[λ_m,λ_{m+1}])` pairs into ONE flat list sorted by gap **descending**,
+   threshold `t=½(λ_m+λ_{m+1})`. Fail-loud only if **no** non-scalar `H_k` has a
+   positive interior gap (the aic-3qv degenerate-spectrum stop condition).
+2. **The algebra unit** `U_A = Φ̃(1_n) = aic_ecstar_star(A,1_n,1_n)`, computed once.
+   **Why this is load-bearing (§C16, the aic-66n root-cause):** the th_main master
+   loop recurses onto `S_P` *wrapper* subalgebras whose unit is `Ptilde_m=Co_P(P)`
+   (`.tex:1082`, FINDINGS §C7), a rank-`r`<`n` ambient projector — **not** `1_n`. A
+   chosen H lives on `range(Ptilde_m)`, so its ambient spectrum carries `(n−r)`
+   near-zero complement eigenvalues; the *largest* gap is then the
+   support-vs-complement gap, whose `P_amb` is the whole support and
+   `Φ̃(P_amb)=Ptilde_m=U_A` — a TRIVIAL split. The old largest-gap-only `pick_H`
+   produced exactly this on the k≥4 degenerate `(+)_jM_d` block algebras (the ambient
+   `‖1_n−P‖≈1` nontriviality gate is **vacuous** on a wrapper, FINDINGS §C11).
+3. **Unit-aware audition** (`aic_projection_audit`): for each candidate largest-gap-
+   first, build `P_amb` (Step 4) and `P=Φ̃(P_amb)` (Step 5) and **accept the first**
+   with `‖P‖_op>c` **and** `‖U_A−P‖_op>c` (`c=0.3 ≥` the cstar_build wrapper backstop
+   `0.15`, so an accepted P always clears it). Spanning every `H_k`'s gaps means a
+   clustered-in-support `H_k` is simply skipped for one with a usable gap; cost is
+   `d·(n−1)` builds worst-case, candidate 1–2 in practice. Fail-loud (aic-3qv) only if
+   **no** candidate yields a nontrivial-vs-unit split — never silently return the unit
+   (Rule 4).
+4. **Ambient projector** (`aic_projection_ambient`): `Y=s(H−tI)`, `s=1/max(t−λ_min,λ_max−t)`;
    assert the eig-free sgn basin `‖Y²−I‖<1` (certified via
    `aic_corner_gamma_opnorm_ub` to dodge the aic-qgs Gram false-fail; holds for any
    `g>0` since `‖Y²−I‖=1−(s·g/2)²`); `X=aic_sgn(Y)` (AMBIENT, eig-free);
    `P_amb=½(I+X)` — an exact ambient idempotent onto `λ>t`.
-4. **Project into A** (`project_into_A`) — **the load-bearing discovery
+5. **Project into A** (`aic_projection_into_A`) — **the load-bearing discovery
    (corrected the research spec):** `A=ImgΦ̃` is an *oblique* image (Φ̃ is HP but
    not HS-self-adjoint), so the Frobenius-orthogonal projector `Π_A` does NOT
    respect the star structure — it leaves `‖P⋆P−P‖=O(1)` (~0.5, constant in η).
    The correct projection is **Φ̃ itself**, available through the public star API
    as `P = P_amb⋆I = Φ̃(P_amb)`, giving the O(η) defect the lemma promises.
-5. **Certify (arb):** `δ=‖P⋆P−P‖_op` (star, via `aic_corner_gamma_opnorm_ub`);
-   nontriviality `‖P‖_op,‖I−P‖_op` (fail-loud if either ≤0.3); membership
+6. **Certify (arb):** `δ=‖P⋆P−P‖_op` (star, via `aic_corner_gamma_opnorm_ub`);
+   nontriviality **vs the unit** `‖P‖_op,‖U_A−P‖_op` (fail-loud if either ≤0.3 — the
+   unit-aware gate replacing the vacuous ambient `‖I−P‖`); membership
    `aic_ecstar_proj_residual(P)`.
 
 rem_X2-safe (sgn only on ambient Y), eig-free for the projector (eigenVALUES only,
@@ -1828,9 +1845,15 @@ cannot-fail (dim-1 aborts via any guard) → message-grep + the aic-3qv path tes
 the canary print-only → slope assert; + the asymmetric/oblique coverage.
 
 ### Files
-`include/aic_projection.h`, `src/aic_projection.c` (orchestrator + ambient_projector
-+ project_into_A + star_defect + nontriviality, 207 LOC), `src/aic_projection_find.c`
-(H-pick + gap, 195 LOC), `src/aic_projection_internal.h`, `tests/test_projection.c`.
+`include/aic/aic_projection.h`, `src/aic_projection.c` (orchestrator + `U_A` +
+`aic_projection_ambient`/`aic_projection_into_A` + star_defect + unit-aware
+nontriviality, 195 LOC), `src/aic_projection_audit.c` (`aic_projection_enum_cands` +
+the unit-aware `aic_projection_audit`, 169 LOC — bead aic-66n / §C16),
+`src/aic_projection_find.c` (Hermitian-part + single-gap primitives, 158 LOC),
+`src/aic_projection_internal.h`, `tests/test_projection.c`. The k≥4 wrapper-unit
+regression (`test_fam3d_bijective_eta`, the `(+)_jM_d` family at η>0, eps:=η per §C11)
+lives in `tests/test_adversarial.c` (SLOW, prec=256: the trivial collapse only descends
+to the degenerate dim_A=2 wrapper at full precision).
 Certified gap ENCLOSURE (Rump) defers to `aic-w4o.1`; gap-finding uses double-path
 zheev now, the defect is arb-certified. Next th_main step: `dhom` (§8, bead aic-c1n).
 
