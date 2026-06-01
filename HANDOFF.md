@@ -3,8 +3,9 @@
 ## ▶▶ LATEST (2026-06-01c, orchestrated, laptop): aic-4td CLOSED — the D5n degenerate-eig wall RESOLVED; full certified invariant-subspace + Choi→Kraus + carrier stack landed
 
 **State:** master FULLY GREEN — `ctest --test-dir build` **38/38** (was 36; +`test_eigvec`,
-`test_kraus_arb`); working tree clean; all committed AND pushed (origin/master @ the docs commit).
-bd: 91 issues (2 new this session). Session also had to RESTORE the bead DB — the SessionStart
+`test_kraus_arb`); working tree clean; all committed AND pushed (work landed across
+`5b09b8b..688b932`). bd: 90 issues, 44 open / 44 closed (2 new this session: `aic-wyo`,
+`aic-d6y`). Session also had to RESTORE the bead DB — the SessionStart
 hook left an empty embedded-dolt + the bd-init auto-commit emptied `.beads/issues.jsonl`;
 reimported 88 from `cc2df58` (commit `5b09b8b`). **Env note:** this box started WITHOUT
 LAPACK/BLAS/LAPACKE — user installed `liblapacke-dev liblapack-dev libblas-dev` to unblock the
