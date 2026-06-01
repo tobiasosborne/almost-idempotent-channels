@@ -721,6 +721,65 @@ static void test_fam2a_depol_boundary(void)
     arb_clear(lob);
 }
 
+/* ---- fam1D: unital-but-barely (domain.md:163-190, tex:432/672). The THIRD
+ * channel generator's self-test. The named property: the CP single-Hermitian-
+ * Kraus map Phi(X)=K_0 X K_0, K_0=diag(sqrt(1+du),sqrt(1-du),1,...), has
+ * Phi(I)=I+du*E (E=diag(1,-1,0,..), traceless, ||E||=1), so the certified UNITAL
+ * DEFECT ||sum_a K_a^dag K_a - 1_H||_op = du EXACTLY — the eps-unit axiom edge.
+ *
+ * Teeth, in order of load-bearing weight:
+ *  (1) CERTIFIED DEFECT == delta_u (the construction pin, LOAD-BEARING): at every
+ *      knob, aic_ucp_unital_defect_kraus(ud, phi) == delta_u to ~1e-12 (rigorous
+ *      check_ball_eq). A wrong K_0 (or a defect != du) misses it — STOP/report.
+ *  (2) delta_u=0 ORACLE: K_0=1_d, Phi=identity, EXACTLY unital => ud < 1e-12.
+ *  (3) MONOTONIC / NON-TOOTHLESS: ud(0.1) > ud(1e-3) (defect tracks the knob).
+ *
+ * MUTATION: drop the knob — ignore delta_u and set K_0=1_d (a FIXED unital map,
+ * e.g. set both top diagonal entries to 1.0 regardless of du) => the defect
+ * collapses to 0 for ALL du => the ==delta_u pin (1e-3 != 0) and the monotonic
+ * check both go RED. Confirmed RED, restored byte-identical (git diff empty). */
+static void test_fam1d_unital_defect(void)
+{
+    /* measured (prec=256, d=2): certified unital defect ud == delta_u
+     *   delta_u=1e-3: ud=0.001000   delta_u=0.1: ud=0.100000   delta_u=0.5: ud=0.500000
+     *   delta_u=0   : ud=0 (~1e-17 floor; exactly-unital identity) */
+    const slong d = 2;
+    double dus[3] = {1e-3, 0.1, 0.5}; /* mild, lethal, large */
+    double ud_m[3];
+
+    arb_t ud;
+    arb_init(ud);
+
+    for (int it = 0; it < 3; it++) {
+        aic_ucp_kraus phi;
+        aic_adv_chan_unital_defect(&phi, d, dus[it], PREC);
+
+        /* (1) certified unital defect == delta_u, rigorous (the construction pin) */
+        aic_ucp_unital_defect_kraus(ud, &phi, PREC);
+        ud_m[it] = arf_get_d(arb_midref(ud), ARF_RND_NEAR);
+        check_ball_eq(ud, dus[it], 1e-12);
+        aic_ucp_kraus_clear(&phi);
+    }
+
+    /* (3) monotonic / non-toothless: lethal defect strictly exceeds the mild one */
+    AIC_CHECK_MSG(ud_m[1] > ud_m[0] && ud_m[0] > 0.0,
+                  "fam1D: unital defect not increasing with delta_u (mild=%.6f "
+                  "lethal=%.6f)", ud_m[0], ud_m[1]);
+
+    /* (2) delta_u=0 ORACLE: identity map, EXACTLY unital => defect 0. */
+    aic_ucp_kraus phi0;
+    aic_adv_chan_unital_defect(&phi0, d, 0.0, PREC);
+    aic_ucp_unital_defect_kraus(ud, &phi0, PREC);
+    check_ball_eq(ud, 0.0, 1e-12);
+    aic_ucp_kraus_clear(&phi0);
+
+    printf("  fam1D unital-defect: delta_u=1e-3 ud=%.6f ; delta_u=0.1 ud=%.6f ; "
+           "delta_u=0.5 ud=%.6f (== delta_u, the eps-unit edge tex:432/672); "
+           "delta_u=0 => ud=0 (exactly unital)\n", ud_m[0], ud_m[1], ud_m[2]);
+
+    arb_clear(ud);
+}
+
 int main(void)
 {
     test_gen1_jordan();
@@ -732,6 +791,7 @@ int main(void)
     test_gen7_propP();
     test_fam1b_cb_op_gap();
     test_fam2a_depol_boundary();
+    test_fam1d_unital_defect();
 
     aic_test_report("test_adversarial");
     printf("OK test_adversarial\n");

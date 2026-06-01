@@ -38,6 +38,7 @@
  * Channel/UCP-map generators (aic_ucp_kraus; Increment 2, tranche 1):
  *   chan_cb_op_gap      domain 1B, tex:366-388 : cb-norm vs operator-norm gap (measure-prepare)
  *   chan_depol_boundary domain 2A, tex:516-525 : eta->1/4 theta(2Phi-1) basin edge
+ *   chan_unital_defect  domain 1D, tex:432/672 : unital-but-barely Phi(I)=I+delta_u E
  *
  * API SHAPE (reusable by tests AND benches). Each NLA generator takes a caller-managed
  * acb_mat_t `out` that the caller has init'd to the right shape (asserted), the
@@ -159,6 +160,23 @@ void aic_adv_chan_cb_op_gap(aic_ucp_kraus *out, slong d, double eta, slong prec)
  * `out` is aic_ucp_kraus_init'd HERE (caller aic_ucp_kraus_clears it). */
 void aic_adv_chan_depol_boundary(aic_ucp_kraus *out, slong d, double p,
                                  slong prec);
+
+/* fam1D — unital-but-barely (domain.md:163-190; the eps-unit axiom ax_eps_unit
+ * ||XI-X|| <= eps||X||, tex:432, and the prop_unit exact-unit fix, tex:672). A CP
+ * self-map on B(C^d), d>=2, unital ONLY up to delta_u, built from a SINGLE
+ * Hermitian Kraus operator (CP trivially) in the OBSERVABLE convention
+ * Phi(X)=sum_a K_a^dag X K_a = K_0 X K_0:
+ *   K_0 = diag(sqrt(1+delta_u), sqrt(1-delta_u), 1, ..., 1)  on C^d,
+ * so Phi(I) = K_0^2 = I + delta_u*E with E = diag(1,-1,0,...,0) (traceless,
+ * ||E||_op=1). KNOB delta_u in [0,1) (asserted; real sqrt; Rule 4 fail loud).
+ * Adversarial property (the eps-unit axiom edge): the certified UNITAL DEFECT
+ * ||Phi(I)-I||_op = ||sum_a K_a^dag K_a - 1_H||_op = delta_u EXACTLY — the
+ * O(delta_u) approximate-unit term ax_eps_unit/prop_unit must absorb or refuse
+ * (assoc_ecsa assumes Phi_tilde(1)=1 exactly, tex:2181). delta_u=0 REDUCTION:
+ * K_0=1_d, Phi=identity, EXACTLY unital, defect 0. `out` is aic_ucp_kraus_init'd
+ * HERE (dim_K=dim_H=d, r=1; caller aic_ucp_kraus_clears it). */
+void aic_adv_chan_unital_defect(aic_ucp_kraus *out, slong d, double delta_u,
+                                slong prec);
 
 #ifdef __cplusplus
 }

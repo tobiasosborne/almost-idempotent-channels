@@ -161,3 +161,59 @@ void aic_adv_chan_depol_boundary(aic_ucp_kraus *out, slong d, double p,
      * (it self-inits out, caller clears). Do not reimplement (aic_channels.h). */
     aic_channel_depolarizing(out, d, p, prec);
 }
+
+/* fam1D — unital-but-barely (domain.md:163-190, "family 1D"; the eps-unit axiom
+ * ax_eps_unit ||XI-X|| <= eps||X|| tex:432 / prop_unit exact-unit fix tex:672).
+ * A CP self-map on B(C^d), d>=2, unital ONLY up to delta_u:
+ *   Phi(I) = I + delta_u*E,   E = diag(1,-1,0,...,0)  (traceless, ||E||_op=1).
+ * Single HERMITIAN Kraus operator (CP trivially — one Kraus op is always CP):
+ *   K_0 = diag(sqrt(1+delta_u), sqrt(1-delta_u), 1, ..., 1)   on C^d.
+ * OBSERVABLE convention Phi(X) = sum_a K_a^dag X K_a = K_0 X K_0 (K_0 Hermitian,
+ * K_0^dag = K_0), so Phi(I) = K_0^2 = diag(1+delta_u, 1-delta_u, 1, ..., 1) =
+ * I + delta_u*E. UNITAL DEFECT ||Phi(I)-I||_op = ||sum_a K_a^dag K_a - I||_op =
+ * ||delta_u*E||_op = delta_u (E traceless Hermitian, ||E||_op = 1) EXACTLY. The
+ * real sqrt needs 0 <= delta_u < 1 (assert; Rule 4, fail loud).
+ *
+ * WHY EVIL (domain.md:173-184). ax_eps_unit (tex:432) wants ||XI-X|| <= eps||X||
+ * in A = Img(Phi); a non-unital Phi gives A an approximate unit ||I_A-I_H|| =
+ * O(delta_u). prop_unit (tex:672) absorbs delta_u into eps by an O(eps)-change of
+ * unit+multiplication, but at delta_u ~ eps_max the absorption fails; assoc_ecsa
+ * further assumes Phi_tilde(1)=1 EXACTLY (tex:2181). The certifier must DETECT the
+ * unital defect (= delta_u) and propagate or refuse it.
+ *
+ * delta_u=0 REDUCTION (exact-unital oracle, cross-check ladder #3): K_0 = 1_d,
+ * Phi = identity, EXACTLY unital, defect 0.
+ *
+ * Determinism: exact closed form (arb sqrt of 1+/-delta_u). No RNG. `out` is
+ * aic_ucp_kraus_init'd HERE (dim_K=dim_H=d, r=1; caller aic_ucp_kraus_clears it).
+ *
+ * Measured anchors (prec=256, d=2), asserted by tests/test_adversarial.c:
+ *   delta_u=1e-3: unital defect = 0.001       (mild)
+ *   delta_u=0.1 : unital defect = 0.1         (lethal, > 1e-3)
+ *   delta_u=0.5 : unital defect = 0.5
+ *   delta_u=0   : unital defect = 0 (~1e-17 floor; exactly unital identity)
+ */
+void aic_adv_chan_unital_defect(aic_ucp_kraus *out, slong d, double delta_u,
+                                slong prec)
+{
+    assert(d >= 2 && "aic_adv_chan_unital_defect: need d >= 2");
+    assert(delta_u >= 0.0 && delta_u < 1.0 &&
+           "aic_adv_chan_unital_defect: need 0 <= delta_u < 1 (real sqrt)");
+
+    /* dim_K = dim_H = d (self-map on B(C^d)); single Hermitian Kraus op (r=1). */
+    aic_ucp_kraus_init(out, d, d, 1);
+
+    /* K_0 = diag(sqrt(1+delta_u), sqrt(1-delta_u), 1, ..., 1) — init zeroes the
+     * off-diagonal, so set only the diagonal (entries 2..d-1 are 1). */
+    arb_t s;
+    arb_init(s);
+    arb_set_d(s, 1.0 + delta_u);
+    arb_sqrt(s, s, prec); /* sqrt(1+delta_u) as a certified ball */
+    arb_set(acb_realref(acb_mat_entry(out->K[0], 0, 0)), s);
+    arb_set_d(s, 1.0 - delta_u);
+    arb_sqrt(s, s, prec); /* sqrt(1-delta_u) */
+    arb_set(acb_realref(acb_mat_entry(out->K[0], 1, 1)), s);
+    arb_clear(s);
+    for (slong j = 2; j < d; j++)
+        acb_set_si(acb_mat_entry(out->K[0], j, j), 1);
+}
