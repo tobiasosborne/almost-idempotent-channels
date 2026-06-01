@@ -19,6 +19,15 @@
  *     (mid -2.5e-6) is DROPPED with clipped mass accumulated, kept Kraus rebuild
  *     a CP map; a planted O(1) negative (-0.3) FAILS LOUD (non-CP). Mutation:
  *     flip the lambda <= -neg_tol comparison -> the O(1) case stops aborting.
+ *  S8 LUMPED-DISTINCT cluster (the finding-2 regression): a Choi whose two DISTINCT
+ *     nonzero eigenvalues {0.5, 0.5+5e-7} are separated by < gap_thr -> gap-clustering
+ *     LUMPS them into one k=2 cluster. The OLD lambda_c-for-all route scaled both by
+ *     the cluster MEAN -> silently-wrong Kraus, round-trip ~1.56*gap (measured 5.7e-7,
+ *     NOT in the certified ball). The finding-2 Option-B per-eigenvalue route
+ *     (aic_ucp_kraus_arb_int_cluster_basis) diagonalises M = V^dag C V to recover the
+ *     two distinct eigenvalues EXACTLY: round-trip ||C_rebuilt - C||_op now contains 0.
+ *     Mutation-proven RED during impl (with Option B reverted to lambda_c-for-all the
+ *     round-trip jumps to 5.7e-7, failing the contains-0 + upper bound).
  *  S7 FAIL-LOUD (Rule 4, fork+SIGALRM watchdog): (a) a Choi whose smallest kept
  *     cluster sits ON keep_thr -> strict abort ("STRADDLE"/"unresolved");
  *     (d) an O(1)-negative Choi -> strict choi_to_kraus_arb aborts ("not CP").
@@ -272,6 +281,44 @@ static void test_s4_roundtrip(void)
     aic_ucp_kraus_clear(&dp);
 }
 
+/* ---- S8: the lumped-distinct-cluster regression (finding-2) --------------- */
+/* build_diag_planted is defined below (S5 section); forward-declare for S8. */
+static void build_diag_planted(acb_mat_t C, const double *diag, slong n, slong prec);
+/* A Choi with TWO distinct nonzero eigenvalues 0.5 and 0.5+5e-7 (gap 5e-7 <
+ * gap_thr = 1e-6*spread). Gap-clustering lumps them into one k=2 cluster; the
+ * Option-B per-eigenvalue route must still rebuild C within the certified ball
+ * (round-trip contains 0). The OLD lambda_c-for-all route gives round-trip ~5.7e-7
+ * (the cluster width), which fails s4_one's contains-0 + <1e-10 assertions. */
+static void test_s8_lumped(void)
+{
+    printf("S8: lumped-distinct cluster {0.5, 0.5+5e-7} -> round-trip in the ball "
+           "(finding-2 Option-B fix)\n");
+    const slong dk = 2, dh = 2, n = dk * dh;
+    double diag[4] = {0.0, 0.5, 0.5 + 5e-7, 1.0};
+    acb_mat_t C;
+    acb_mat_init(C, n, n);
+    build_diag_planted(C, diag, n, ARB_PREC);
+
+    /* confirm the eig layer LUMPS the two distinct eigenvalues into one k=2 cluster
+     * (so this fixture genuinely exercises the lumping path, not a pre-split case). */
+    aic_mat_eigcluster *cl;
+    slong nc;
+    aic_mat_eig_hermitian_subspaces(&cl, &nc, C, -1.0, ARB_PREC);
+    slong maxk = 0;
+    for (slong c = 0; c < nc; c++)
+        if (cl[c].k > maxk) maxk = cl[c].k;
+    AIC_CHECK_MSG(maxk >= 2,
+                  "S8: fixture did not lump (max cluster k=%ld, expected >=2) — the "
+                  "regression is not exercising the lumped path", (long) maxk);
+    printf("  eig layer: %ld clusters, max k=%ld (LUMPED, as intended)\n",
+           (long) nc, (long) maxk);
+    aic_mat_eigcluster_free(cl, nc);
+
+    /* rank 3: {0.5, 0.5+5e-7, 1.0} all > keep_thr; the zero eigenvalue dropped. */
+    s4_one("lumped {0.5,0.5+5e-7}", C, dk, dh, 3);
+    acb_mat_clear(C);
+}
+
 /* ---- S5: PSD-cone _tol variant ------------------------------------------- */
 /* Build a Hermitian Choi-shaped 4x4 (dim_K=2, dim_H=2) C = diag(big, ..., small)
  * with a planted small-negative eigenvalue, conjugated by a rational Givens so it
@@ -486,6 +533,7 @@ int main(void)
 {
     test_s3_double_vs_arb();
     test_s4_roundtrip();
+    test_s8_lumped();
     test_s5_psd_cone();
     test_s7_failloud();
     aic_test_report("test_kraus_arb");

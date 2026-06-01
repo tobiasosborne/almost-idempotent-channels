@@ -6,6 +6,7 @@
 #ifndef AIC_UCP_KRAUS_ARB_INTERNAL_H
 #define AIC_UCP_KRAUS_ARB_INTERNAL_H
 
+#include <flint/acb.h>
 #include <flint/acb_mat.h>
 #include <flint/arb.h>
 
@@ -22,5 +23,17 @@ void aic_ucp_kraus_arb_int_keep_thr(arb_t thr, const acb_mat_t C, slong n,
  * a raw reshape of X would not rebuild C, and why x0 = ||X||_op^2 (NOT
  * herm_max_eig of the raw interval Gram). */
 void aic_ucp_kraus_arb_int_loewdin(acb_mat_t V, const acb_mat_t X, slong prec);
+
+/* FINDING-2 FIX: per-EIGENVALUE orthonormal eigenbasis of a kept cluster (resolves a
+ * lumped-distinct cluster, design §3.2 Option B). For an outer cluster's NON-orthonormal
+ * X (n x k) and the original Choi C, diagonalises the small dense compression
+ * M = V^dag C V (V = Loewdin(X)) and assembles the orthonormal eigenbasis VW_out (n x k,
+ * caller-init'd, sub-eigenvalue order) with per-column sqrt(eigenvalue) scales (caller
+ * arb[k]). EXACT even when the cluster lumps distinct eigenvalues; reduces to the single
+ * sqrt(lambda_c) for a genuine degeneracy. k>=1 (k=1 returns the single normalised
+ * eigenvector with sqrt(lambda)). See aic_ucp_kraus_arb_orth.c for the full rationale. */
+void aic_ucp_kraus_arb_int_cluster_basis(acb_mat_t VW_out, arb_ptr scales,
+                                         const acb_mat_t X, const acb_mat_t C,
+                                         slong prec);
 
 #endif /* AIC_UCP_KRAUS_ARB_INTERNAL_H */

@@ -1071,6 +1071,53 @@ with the concrete evidence from where they bit.
   stays at/below the eigenvalue-ball radii (~1e-31), so a broken `U` (defect ~1) still fails loud; OR
   raise prec for large `n`. Left for a separate review-gated C2 change (Rule 9), not done in step D.
 
+### D8. Increment-2 hostile-review fixes — self-certifying on-H residual (finding-1) + per-eigenvalue Kraus for lumped-distinct clusters (finding-2) — `aic-4td`
+- **Status:** RESOLVED (2026-06-01, the inc-2 `aic-4td` hostile-review gating). Two MAJOR
+  soundness/honesty gaps closed; both used data the routines already held. The recurring lesson:
+  **a `2^-(prec/2)` a-posteriori tolerance is UNSOUND for the densify+Rump path — its residuals
+  hit a CONDITIONING floor that is PREC-INDEPENDENT above ~128, so the tol must be tied to the
+  ENCLOSURE'S OWN certified ball radii, not to the working precision.**
+- **Finding 1 (self-certifying residual on H).** `aic_mat_eig_hermitian_subspaces` certified the
+  Rump enclosure on the DENSIFIED `A' = U H U†` and back-mapped `X_c = U† X'_c`, but the residual
+  `‖H X_c − X_c J_c‖` on the ORIGINAL `H` (design §1.6's named certificate) was recomputed ONLY in
+  test S1 — leaving an `O(‖H‖·n²·2^-prec)` gap UNcertified in production. **Fix:**
+  `aic_mat_int_assert_subspace_residual` (`src/aic_mat_eigvec_resid.c`, split from `_seed.c` for
+  Rule 10) recomputes `‖H X_c − X_c J_c‖_F` on `H` per cluster and aborts (Rule 4) unless it is
+  `< tol = 64·n·(1+‖H‖_F)·max(maxrad(X_c)+maxrad(J_c), 2^-(prec/2))`. **MEASURED (probe, prec ∈
+  {53,128,256}):** residual `4.2e-31` (n=5) … `1.7e-27` (n=7 block), and **prec-INDEPENDENT above
+  128** (Rump's Krawczyk radius is a conditioning floor, not a precision floor) — so the
+  brief's suggested `n²·2^-(prec/2)` would FALSE-FAIL at prec≥192 (residual > tol). The residual
+  tracks the enclosure radii (`resid/maxrad(X) ≈ 9.5` at n=5 … `25.8` at n=12), so the radius-tied
+  tol passes the legitimate residual (margin ~1e10..1e14) at every prec AND catches a genuine
+  subspace failure (an O(1) corruption of `X_c` → residual ~`‖H‖` = 0.6 ≫ tol; mutation-proven RED,
+  `tests/test_eigvec.c` S1b).
+- **Finding 2 (lumped-distinct cluster → silently-wrong Kraus).** `aic_ucp_choi_to_kraus_arb`
+  scaled all `k` orthonormal columns of a cluster by `√λ_c` (the single cluster ball). When
+  gap-clustering LUMPS two DISTINCT nonzero eigenvalues (gap < `gap_thr = 1e-6·spread`) into one
+  `k≥2` cluster, `λ_c = mean` is wrong for both → silently-wrong Kraus, **round-trip `‖C_rebuilt−C‖
+  ≈ 1.56·gap` (measured 5.7e-7 at gap 5e-7, NOT in the certified ball), no abort.** **Fix (design
+  §3.2 Option B — EXACT, no usability limit):** `aic_ucp_kraus_arb_int_cluster_basis` recovers the
+  per-eigenvalue structure by diagonalising the small dense compression `M = V† C V` (V = the
+  cluster's Löwdin basis; `spec(M)` = the cluster's eigenvalues, midpoint-projected to exact-Hermitian
+  per §C5), assembling the orthonormal eigenbasis `V·W` with each column scaled by its OWN `√μ_i`.
+  Round-trip on the lumped fixture drops `5.7e-7 → 3.3e-13` (contains 0; `tests/test_kraus_arb.c`
+  S8, mutation-proven RED with `λ_c`-for-all restored). Mirrored in the strict and `_tol` variants
+  (the strict delegates to `_tol`). **The gap_thr for the M-recursion is load-bearing:** it must sit
+  ABOVE the double-precision zheev seed jitter (`~n·DBL_EPSILON·‖M‖ ≈ 1e-15·‖M‖`, else a genuine
+  degeneracy splits into non-finite k=1 Rump enclosures → UNRESOLVED) and BELOW the project's
+  distinct separations — `gap_thr = 1e-10·(1+‖M‖_F)` sits in the measured-robust band `[1e-14, 1e-7]`
+  (keeps `(1/3)I_9` one cluster, splits `{0.5, 0.5+5e-7}` and `{0.5, 0.5+1e-8}`). **The carrier
+  projector path (`src/aic_ucp_carrier_proj.c`) is UNAFFECTED** — it sums λ-INDEPENDENT cluster
+  PROJECTORS `Π_c = X_c(X_c†X_c)⁻¹X_c†`, so a lumped pair of distinct nonzero eigenvalues yields the
+  same combined range projector (verified: lumped carrier → `trace(Π)=3`, `‖Π²−Π‖=1.9e-12`,
+  `‖ΠQ−Q‖=3.3e-13`).
+- **Finding 3 (Löwdin self-cert) — DEFERRED, not done.** A `‖V†V − I_k‖` assert in the Löwdin
+  path is NOT a clean 5-LOC add: like finding-1, an honest tolerance must be radius-tied (measured
+  `‖V†V−I‖` is `1.3e-30`..`2.2e-27` and prec-INDEPENDENT above 128, so a naive `2^-(prec/2)` tol
+  FALSE-FAILS at prec=256). Orthonormality is already cross-checked downstream by the S4/S8
+  round-trip (a non-orthonormal `V` fails to rebuild `C`); a separately-engineered radius-tied
+  self-cert is not worth the LOC. File as a follow-up only if a real input motivates it.
+
 ---
 
 ## How to use / extend this file

@@ -19,11 +19,16 @@
  * X_c = U^dag X'_c is a certified invariant subspace of H carrying the SAME J_c
  * (design §1.6(ii): A X_c = U^dag A' X'_c = U^dag X'_c J_c = X_c J_c). The residual
  * ||H X_c - X_c J_c|| recomputed on the ORIGINAL H is the certificate (~1e-31 at
- * prec=128, design §2.2).
+ * prec=128, design §2.2); production now ASSERTS it per cluster
+ * (aic_mat_int_assert_subspace_residual, aic_mat_eigvec_seed.c) — the routine is
+ * SELF-CERTIFYING on H, not merely on A' (FINDINGS §D5n, the inc-2 hostile review
+ * finding-1 fix; the residual was previously checked only in test S1).
  *
  * SOUNDNESS (design §1.6). (i) a FINITE Rump output is a Krawczyk certificate —
  * ASSERT finiteness (else fail loud "unresolved"). (ii) the conjugation is
- * spectrum/subspace-preserving (asserted ||U U^dag - I|| tiny). (iii) cross-cluster
+ * spectrum/subspace-preserving (asserted ||U U^dag - I|| tiny). (iii) the
+ * SELF-CERTIFYING residual ||H X_c - X_c J_c||_F on the ORIGINAL H is asserted
+ * small per cluster (the honest certificate; else fail loud). (iv) cross-cluster
  * lambda-ball DISJOINTNESS (!acb_overlaps, asserted, else fail loud "overlap")
  * proves distinct eigenvalues, so Sum k_c = n and the subspaces are mutually
  * orthogonal. gap_thr only chooses which approx evals feed ONE Rump call;
@@ -95,7 +100,7 @@ void aic_mat_eig_hermitian_subspaces(aic_mat_eigcluster **clusters,
     for (slong j = 1; j <= n; j++) {
         if (j == n || ev[j] - ev[j - 1] > gap_thr) {
             slong k = j - s0;                /* cluster [s0, j) */
-            aic_mat_int_certify_cluster(&cl[c], A1, Ud, Vd, ev, n, s0, k, c,
+            aic_mat_int_certify_cluster(&cl[c], H, A1, Ud, Vd, ev, n, s0, k, c,
                                         prec);
             ksum += k;
             s0 = j;

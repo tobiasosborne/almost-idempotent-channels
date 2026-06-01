@@ -13,6 +13,12 @@
  *     using the STORED J_c — design §1.6(ii) proves the same J_c works for H),
  *     all lambda balls pairwise disjoint, Sum k_c = n. These are EXACTLY the
  *     inputs test_eigmult T5 used to assert fail-loud — they now CERTIFY.
+ *  S1b (Rule 4, fork watchdog, the finding-1 tooth) the production routine now
+ *     ASSERTS the residual ||H X_c - X_c J_c||_F small on the ORIGINAL H per cluster
+ *     (aic_mat_int_assert_subspace_residual). Mutation: corrupt a certified X_c
+ *     (add 1.0 to one entry) -> residual ~||H|| >> tol -> abort ("NOT a certified
+ *     invariant subspace"). This closes the inc-2 gap where production certified
+ *     only the Rump enclosure on A' = U H U^dag, not the back-map onto H.
  *  S2 (rung 3, eta=0 oracle) a rank-r projector P -> the lambda~1 cluster
  *     projector == P (||Pi_M - P||_op < 1e-25), trace(Pi_M)=r, the lambda~0
  *     cluster projector = I - P; the depolarizing Choi (1/d)I_{d^2} -> ONE
@@ -72,6 +78,12 @@
 #include "aic/aic_mat.h"
 #include "aic/aic_ucp.h"
 #include "aic_test.h"
+
+/* Internal (non-public) self-certifying residual assert exercised by the S1b
+ * mutation tooth (finding-1 fix; aic_mat_eigvec_resid.c). */
+void aic_mat_int_assert_subspace_residual(const acb_mat_t H,
+                                          const aic_mat_eigcluster *out,
+                                          slong n, slong cidx, slong prec);
 
 #define EV_PREC 128
 
@@ -604,6 +616,40 @@ static void test_s7c_unresolved_failloud(void)
                        "UNRESOLVED");
 }
 
+/* --- S1b: the finding-1 self-certifying residual tooth must FAIL LOUD --------- */
+/* The production routine now ASSERTS ||H X_c - X_c J_c||_F small on the ORIGINAL H
+ * per cluster (aic_mat_int_assert_subspace_residual, the inc-2 finding-1 fix). The
+ * MUTATION proving the tooth has teeth: take a legitimately-certified cluster, CORRUPT
+ * its X_c (add 1.0 to one entry — an O(1) subspace-invariance violation), and re-run
+ * the assert -> residual ~||H|| (0.6) >> tol (~4e-17) -> abort. Mutation-proven RED
+ * during impl: with the assert removed from production, a corrupted back-map would
+ * flow downstream silently (the uncertified gap the finding named). */
+static void child_resid_corrupt(void)
+{
+    const slong n = 5;
+    acb_mat_t P;
+    acb_mat_init(P, n, n);
+    build_projector(P, n, 2, EV_PREC);
+    aic_mat_eigcluster *cl;
+    slong nc;
+    aic_mat_eig_hermitian_subspaces(&cl, &nc, P, -1.0, EV_PREC);
+    /* corrupt cluster 0's invariant-subspace enclosure, then re-certify it. */
+    acb_add_si(acb_mat_entry(cl[0].X, 0, 0), acb_mat_entry(cl[0].X, 0, 0), 1,
+               EV_PREC);
+    aic_mat_int_assert_subspace_residual(P, &cl[0], n, 0, EV_PREC); /* must abort */
+    aic_mat_eigcluster_free(cl, nc);
+    acb_mat_clear(P);
+}
+
+static void test_s1b_resid_failloud(void)
+{
+    printf("S1b: a corrupted invariant subspace must FAIL the self-certifying "
+           "residual on the ORIGINAL H (finding-1 fix)\n");
+    ev_assert_failloud(child_resid_corrupt,
+                       "aic_mat_int_assert_subspace_residual(corrupt X_c)",
+                       "NOT a certified invariant subspace");
+}
+
 /* --- S6b: the carrier-projector STRADDLE tooth must FAIL LOUD --------------- */
 /* A rank-deficient projector carrier Q at prec=53: the densify+Rump zero cluster
  * has certified radius ~5e-14 (FINDINGS §D7, the same conditioning as the
@@ -637,6 +683,7 @@ static void test_s6b_straddle_failloud(void)
 int main(void)
 {
     test_s1_residual();
+    test_s1b_resid_failloud();
     test_s2_oracle();
     test_s6_carrier_projector();
     test_s6b_straddle_failloud();

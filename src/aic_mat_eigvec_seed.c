@@ -10,8 +10,12 @@
  *     mirrors the C1 pattern in aic_mat_eig_multiple.c).
  *   aic_mat_int_certify_cluster — build the Rump seed Xa from the zheev cluster
  *     columns, run acb_mat_eig_enclosure_rump on A', ASSERT a FINITE + REAL
- *     enclosure (the Krawczyk certificate; design §1.6(i)), and back-map
- *     X_c = U^dag X'_c (design §1.6(ii): the SAME J_c works for the original H).
+ *     enclosure (the Krawczyk certificate; design §1.6(i)), back-map
+ *     X_c = U^dag X'_c (design §1.6(ii): the SAME J_c works for the original H),
+ *     and ASSERT the SELF-CERTIFYING residual ||H X_c - X_c J_c|| on the ORIGINAL
+ *     H is small (the honest certificate; design §1.6 names this residual as THE
+ *     certificate — via aic_mat_int_assert_subspace_residual in the sibling
+ *     aic_mat_eigvec_resid.c, split out for Rule 10 ~200 LOC/file).
  */
 #include <assert.h>
 #include <complex.h>
@@ -62,10 +66,10 @@ void aic_mat_int_assert_densify_unitary(const acb_mat_t U, const acb_mat_t Ud,
     acb_mat_clear(T);
 }
 
-void aic_mat_int_certify_cluster(aic_mat_eigcluster *out, const acb_mat_t A1,
-                                 const acb_mat_t Ud, const double _Complex *Vd,
-                                 const double *ev, slong n, slong s0, slong k,
-                                 slong cidx, slong prec)
+void aic_mat_int_certify_cluster(aic_mat_eigcluster *out, const acb_mat_t H,
+                                 const acb_mat_t A1, const acb_mat_t Ud,
+                                 const double _Complex *Vd, const double *ev,
+                                 slong n, slong s0, slong k, slong cidx, slong prec)
 {
     acb_mat_t Xa;
     acb_mat_init(Xa, n, k);
@@ -113,6 +117,11 @@ void aic_mat_int_certify_cluster(aic_mat_eigcluster *out, const acb_mat_t A1,
     arb_clear(im);
 
     acb_mat_mul(out->X, Ud, Xp, prec);        /* back-map X_c = U^dag X'_c */
+
+    /* (iii) the honest, self-certifying residual on the ORIGINAL H (design §1.6;
+     * FINDINGS §D5n). Production certifies the Rump enclosure on A'; this closes
+     * the previously-uncertified gap by proving H X_c = X_c J_c on H directly. */
+    aic_mat_int_assert_subspace_residual(H, out, n, cidx, prec);
 
     acb_mat_clear(Xp);
     acb_clear(lam_approx);

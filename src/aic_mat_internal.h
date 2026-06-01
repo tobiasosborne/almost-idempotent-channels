@@ -63,12 +63,27 @@ void aic_mat_int_assert_densify_unitary(const acb_mat_t U, const acb_mat_t Ud,
  * Builds the Rump seed Xa from the zheev eigenvector columns Vd (n x n row-major
  * double, column index = eigenvalue index) for the cluster, lambda_approx =
  * mean(ev[s0..s0+k)), runs acb_mat_eig_enclosure_rump on A1, ASSERTS a FINITE +
- * REAL enclosure (else fail loud "UNRESOLVED"/"non-real"), and back-maps
- * X_c = Ud X'_c. Writes lambda/X/J/k into *out (all init'd here; free via
- * aic_mat_eigcluster_free). cidx is the cluster index (for the abort message). */
-void aic_mat_int_certify_cluster(aic_mat_eigcluster *out, const acb_mat_t A1,
-                                 const acb_mat_t Ud, const double _Complex *Vd,
-                                 const double *ev, slong n, slong s0, slong k,
-                                 slong cidx, slong prec);
+ * REAL enclosure (else fail loud "UNRESOLVED"/"non-real"), back-maps X_c = Ud X'_c,
+ * and ASSERTS the self-certifying residual ||H X_c - X_c J_c||_F on the ORIGINAL H
+ * is small (else fail loud; design §1.6, FINDINGS §D5n — closes the gap that
+ * production certified only the enclosure on A', not on H). H is the ORIGINAL
+ * Hermitian input (A1 = U H U^dag the densified copy). Writes lambda/X/J/k into
+ * *out (all init'd here; free via aic_mat_eigcluster_free). cidx is the cluster
+ * index (for the abort messages). */
+void aic_mat_int_certify_cluster(aic_mat_eigcluster *out, const acb_mat_t H,
+                                 const acb_mat_t A1, const acb_mat_t Ud,
+                                 const double _Complex *Vd, const double *ev,
+                                 slong n, slong s0, slong k, slong cidx, slong prec);
+
+/* aic_mat_int_assert_subspace_residual (aic_mat_eigvec_resid.c, the inc-2 finding-1
+ * fix): recompute ||H X_c - X_c J_c||_F on the ORIGINAL H (using the back-mapped
+ * X_c and the STORED Rump J_c) and ABORT (Rule 4) unless it is < a radius-tied tol
+ *   tol = 64 * n * (1 + ||H||_F) * max(maxrad(X_c)+maxrad(J_c), 2^-(prec/2)).
+ * Makes the subspace routine SELF-CERTIFYING on H, not merely on the densified A'
+ * (design §1.6 names this residual as the certificate; FINDINGS §D5n). cidx is the
+ * cluster index (for the abort message). */
+void aic_mat_int_assert_subspace_residual(const acb_mat_t H,
+                                          const aic_mat_eigcluster *out,
+                                          slong n, slong cidx, slong prec);
 
 #endif /* AIC_MAT_INTERNAL_H */

@@ -172,8 +172,10 @@ typedef struct {
  * sorted ascending by eigenvalue; free with aic_mat_eigcluster_free. ASSERTS
  * (Rule 4): Hermiticity; densifier certified unitary; every per-cluster Rump
  * enclosure FINITE (else "clusters unresolved at prec" — raise prec); imag(lambda)
- * contains 0; cross-cluster lambda balls DISJOINT (!acb_overlaps, else "clusters
- * overlap at prec"); Sum k_c == n. */
+ * contains 0; the SELF-CERTIFYING residual ||H X_c - X_c J_c||_F on the ORIGINAL H
+ * small per cluster (the honest certificate, design §1.6, FINDINGS §D5n — else
+ * "NOT a certified invariant subspace"); cross-cluster lambda balls DISJOINT
+ * (!acb_overlaps, else "clusters overlap at prec"); Sum k_c == n. */
 void aic_mat_eig_hermitian_subspaces(aic_mat_eigcluster **clusters,
                                      slong *n_clusters, const acb_mat_t H,
                                      double gap_thr, slong prec);

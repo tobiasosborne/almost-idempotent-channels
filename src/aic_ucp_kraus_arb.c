@@ -23,14 +23,16 @@
  * (Weyl-Hermitianizes the interval Gram, FINDINGS §C5) — NOT herm_max_eig(G),
  * which aborts on the raw interval Gram X^dag X. k=1: V = X / sqrt(X^dag X).
  *
- * CLUSTER-EIGENVALUE ROUTE. Each kept cluster's SINGLE eigenvalue ball lambda_c is
- * scaled across all k orthonormal columns. EXACT for (i) a SIMPLE eigenvalue
- * (k=1) and (ii) a GENUINE degeneracy ((+)B(L) block multiplicities, all k equal).
- * Gap-clustering gives a distinct nonzero eigenvalue its OWN k=1 cluster, so the
- * round-trip rebuilds C to WITHIN the ball (S4 is the acceptance gate). Were two
- * DISTINCT nonzero eigenvalues ever lumped, lambda_c-for-all would be off by the
- * cluster width; S4 catches it (RED) and we fail loud (no project Choi triggers
- * it — carrier/block spectra are genuine degeneracies, design §1.5/§2).
+ * PER-EIGENVALUE ROUTE (finding-2 fix, design §3.2 Option B). Each kept cluster's k
+ * orthonormal columns are scaled by their OWN sqrt(eigenvalue), recovered by
+ * diagonalising the small dense compression M = V^dag C V (spec(M) = the cluster's
+ * eigenvalues) — aic_ucp_kraus_arb_int_cluster_basis. This is EXACT even when
+ * gap-clustering LUMPS two DISTINCT nonzero eigenvalues (gap < gap_thr) into one
+ * k>=2 cluster: the earlier lambda_c-for-all route gave silently-wrong Kraus
+ * (round-trip ~gap; measured 5.7e-7 at gap 5e-7, NOT in the certified ball; S8
+ * regression). For a SIMPLE eigenvalue (k=1) or a GENUINE degeneracy ((+)B(L) block
+ * multiplicities, all k equal) it reduces to the single sqrt(lambda_c). S4/S8
+ * round-trip-within-the-ball is the acceptance gate.
  *
  * CERTIFIED THREE-WAY DECISION (Rule 4; the aic_mat_certified_rank pattern). The
  * _tol PSD-cone variant (FINDINGS §C14): the almost-idempotent CP-ization Delta
@@ -128,40 +130,39 @@ void aic_ucp_choi_to_kraus_arb_tol(aic_ucp_kraus *phi, const acb_mat_t C,
 
     aic_ucp_kraus_init(phi, dim_K, dim_H, r);
 
-    /* PASS 2: per KEPT cluster, orthonormalise X then emit sqrt(lambda)-scaled
-     * conjugate-reshape Kraus ops (one per orthonormal column). */
-    acb_mat_t V;
-    arb_t scale;
-    arb_init(scale);
+    /* PASS 2: per KEPT cluster, recover the PER-EIGENVALUE orthonormal eigenbasis
+     * (finding-2 fix; aic_ucp_kraus_arb_int_cluster_basis resolves a lumped-distinct
+     * cluster) and emit sqrt(eigenvalue)-scaled conjugate-reshape Kraus ops, one per
+     * orthonormal column with that column's OWN eigenvalue scale. */
+    acb_mat_t VW;
     slong out_a = 0;
     for (slong c = 0; c < nc; c++) {
         acb_get_real(re, cl[c].lambda);
         if (!arb_gt(re, thr)) continue;       /* only the kept (certified-above) */
         slong k = cl[c].k;
-        acb_mat_init(V, n, k);
-        aic_ucp_kraus_arb_int_loewdin(V, cl[c].X, prec);
-        arb_set(scale, re);
-        arb_sqrt(scale, scale, prec);         /* sqrt(lambda_c) (re > thr > 0) */
+        acb_mat_init(VW, n, k);
+        arb_ptr scales = _arb_vec_init(k);
+        aic_ucp_kraus_arb_int_cluster_basis(VW, scales, cl[c].X, C, prec);
         for (slong m = 0; m < k; m++) {
-            /* K_{out_a}[i, ch] = sqrt(lambda_c) * conj(V[i*dim_H + ch, m]). */
+            /* K_{out_a}[i, ch] = sqrt(mu_m) * conj(VW[i*dim_H + ch, m]). */
             for (slong i = 0; i < dim_K; i++)
                 for (slong ch = 0; ch < dim_H; ch++) {
                     acb_t v;
                     acb_init(v);
-                    acb_conj(v, acb_mat_entry(V, i * dim_H + ch, m));
-                    acb_mul_arb(v, v, scale, prec);
+                    acb_conj(v, acb_mat_entry(VW, i * dim_H + ch, m));
+                    acb_mul_arb(v, v, &scales[m], prec);
                     acb_set(acb_mat_entry(phi->K[out_a], i, ch), v);
                     acb_clear(v);
                 }
             out_a++;
         }
-        acb_mat_clear(V);
+        _arb_vec_clear(scales, k);
+        acb_mat_clear(VW);
     }
     assert(out_a == r && "choi_to_kraus_arb: emitted count != kept rank");
 
     if (clipped_neg_out) *clipped_neg_out = clipped;
 
-    arb_clear(scale);
     arb_clear(re);
     aic_mat_eigcluster_free(cl, nc);
     arb_clear(negtol);
