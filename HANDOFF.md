@@ -1,5 +1,55 @@
 # HANDOFF.md — almost-idempotent-channels
 
+## ▶▶ LATEST (2026-06-01c, orchestrated, laptop): aic-4td CLOSED — the D5n degenerate-eig wall RESOLVED; full certified invariant-subspace + Choi→Kraus + carrier stack landed
+
+**State:** master FULLY GREEN — `ctest --test-dir build` **38/38** (was 36; +`test_eigvec`,
+`test_kraus_arb`); working tree clean; all committed AND pushed (origin/master @ the docs commit).
+bd: 91 issues (2 new this session). Session also had to RESTORE the bead DB — the SessionStart
+hook left an empty embedded-dolt + the bd-init auto-commit emptied `.beads/issues.jsonl`;
+reimported 88 from `cc2df58` (commit `5b09b8b`). **Env note:** this box started WITHOUT
+LAPACK/BLAS/LAPACKE — user installed `liblapacke-dev liblapack-dev libblas-dev` to unblock the
+build (FLINT 3.0.1, LAPACKE 3.12.0, Julia 1.12.5, GCC 13.3 now all present).
+
+**aic-4td (P1) CLOSED — increment 2 of aic-w4o.1, all 3 deliverables + the W3 hostile review:**
+- **D5n WALL RESOLVED (the headline).** Root cause was NOT seed conditioning (the §D5n
+  hypothesis, DISPROVEN) and NOT precision: FLINT's `acb_mat_eig_enclosure_rump` frozen-row
+  partition (`partition_X_sorted`) degenerates on a ROW-SPARSE invariant subspace. **The fix:
+  densify `A' = U H U†`** with a dense rational-Givens unitary `U` (`src/aic_mat_densify.c`),
+  spectrum conjugation-invariant. `aic_mat_eig_hermitian_multiple` now retries densified;
+  `diag(2,2,0,0)` / C^5{2,3} / all ⊕B(L_j)-shape carriers certify the correct rank (axis-aligned
+  AND off-axis). FINDINGS §D5n OPEN→RESOLVED.
+- **Certified invariant subspaces** (`aic_mat_eig_hermitian_subspaces`, `src/aic_mat_eigvec*.c`):
+  per-cluster Rump on `A'`, back-map `X_c=U†X'_c` with the same `J_c`; residual `‖H X_c−X_c J_c‖`
+  on the ORIGINAL H self-certified in production (~1e-31 at prec=128), cross-cluster disjointness
+  gate, the projector `Π=X(X†X)⁻¹X†`.
+- **Certified Choi→Kraus** (`aic_ucp_choi_to_kraus_arb`+`_tol`, `src/aic_ucp_kraus_arb*.c`):
+  Convention-A conjugate reshape (mirrors `_latd`), Löwdin orthonormalization of Rump's X
+  (`x0` from `aic_mat_opnorm`, dodging the §C5 interval-Gram false-fail), per-cluster `M=V†CV`
+  diagonalization (EXACT even for a lumped-distinct cluster), §C14 PSD-cone. Round-trip
+  enclosures contain 0; double-vs-arb `‖C_arb−C_latd‖~4.5e-16`; prec≥64 floor for rank-deficient
+  Choi (§D7).
+- **Certified carrier projector** (`aic_ucp_carrier_projector`, `src/aic_ucp_carrier_proj.c`):
+  `Π_M=Σ` cluster projectors above `thr=dim_K·2^-52·‖Q‖_F`, `Tr Π_M==`certified rank.
+- **W3 hostile review found + FIXED 2 MAJOR gaps** (commit `84154c2`): (F1) production
+  self-certifies the on-H residual (was test-only — an uncertified O(‖H‖·n²·2^-prec) conjugation
+  gap); (F2) a LUMPED-distinct cluster gave SILENT-WRONG Kraus (round-trip 5.7e-7, no abort) →
+  fixed by the per-cluster M-diagonalization (5.7e-7→3.3e-13). Both mutation-proven.
+
+**Orchestration shape (worked well; the standing autonomous mandate):** W1 parallel
+[Opus hostile-review-of-inc1 + Opus design] → serial Opus implementers C1(densifier+eig-layer) →
+C2(subspaces) → D(Choi→Kraus) → E(carrier) → W3 Opus hostile-review → Opus fix → Sonnet
+ALGORITHM.md. Each green increment reviewed by the orchestrator, committed atomically with
+`.tex`/§ provenance, and pushed. Subagents independently caught: a latent C1 n≥6 abort (C2),
+the densifier n⁴ tol growth (D→bead aic-wyo), and corrected the orchestrator's own unsound
+tolerance suggestion (W3-fix tied it to the enclosure radii, not prec).
+
+**▶ NEXT picks:** `aic-wyo` (P3, densifier n²→n³/loose-const tol — the only thing capping certified
+eig at n≥16; small), `aic-d6y` (P3, Löwdin V†V self-cert, defensive), then the broader backlog —
+Julia packaging (`aic-obc`/`aic-95g.2`, now that libaic.so builds clean), `aic-l5b` (P1, certified
+`aic_cbnorm_distance`), the `aic-dbo` adversarial-suite epic (`aic-dbo.2` in_progress). The new
+certified Choi→Kraus/carrier stack is now available to harden the factorize/idemp arb paths
+(they currently lean on the double `_latd` route). Design: `docs/research/eigvec_certified_design.md`.
+
 ## ▶▶ LATEST (2026-06-01b, orchestrated, laptop): aic-w4o.1 increment 1 LANDED — certified degenerate-Hermitian eig + rank
 
 **State:** master green, increment 1 committed + pushed. `ctest -L fast` 15/15 (~2.2s);

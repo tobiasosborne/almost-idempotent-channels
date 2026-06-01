@@ -1996,3 +1996,309 @@ checked per-instance + the canary, not yet swept over dim at O2 (O1's `a_cb_flat
 lower-bound analogue). `factorize` (`th_factorization`, bead aic-tff) is the final headline,
 now unblocked: O2 provides the certified `‖Δ̃‖_cb,‖Υ̃‖_cb ≤ 1+O(η)` upper bounds it needs
 (D4 BUILDABLE-MODULO, the composite `O(η)` constant per-instance + canary, FINDINGS §D4).
+
+---
+
+## Module `eigvec` — certified degenerate-eig, invariant subspaces, Choi→Kraus, carrier projector (bead aic-4td / aic-w4o.1 inc.2)
+
+Realizes the certified degenerate-eigenvalue and invariant-subspace infrastructure that
+`lem_carrier` (`.tex:1724`) and the certified Choi→Kraus extraction rest on.  It is the
+direct resolution of the §D5 deferred wall ("certified subspace/eigenvector extraction for
+degenerate clusters"), which blocked the `ucp` module's arb-path carrier rank and Choi→Kraus
+from the start of the project (FINDINGS §D5).
+
+Files: `src/aic_mat_densify.c`, `src/aic_mat_eig_multiple.c` (hardened),
+`src/aic_mat_eigvec.c`, `src/aic_mat_eigvec_seed.c`, `src/aic_mat_eigvec_resid.c`,
+`src/aic_mat_cluster_proj.c`, `src/aic_ucp_kraus_arb.c`, `src/aic_ucp_kraus_arb_orth.c`,
+`src/aic_ucp_carrier_proj.c`; headers `include/aic/aic_mat.h`, `include/aic/aic_ucp.h`;
+tests `tests/test_eigvec.c`, `tests/test_kraus_arb.c`.
+
+### The wall and its root cause (FINDINGS §D5 / §D5n)
+
+FLINT 3.0.1's certified eig family (`acb_mat_eig_multiple`, `acb_mat_eig_enclosure_rump`)
+needs eigenvalues to be distinct or to appear in a well-conditioned cluster.  The project's
+spectra are dominated by exact degeneracies: Choi matrices of idempotent channels have
+eigenvalues `{0,...,0, λ_1,...,λ_r}` with high-multiplicity zero clusters; carrier operators
+`Q = Σ K_a K_a†` carry both a large zero-eigenvalue cluster and blocks of equal nonzero
+values reflecting the `⊕B(L_j)` structure (`lem_carrier`, `.tex:1724`).
+
+`acb_mat_eig_multiple` (C1, the eigenvalue-only layer) returns `0` — and the module then
+fails loud (Rule 4) — on any input with two clusters each of multiplicity ≥ 2.  Increment 1
+(`aic_mat_eig_multiple.c`) built the certified-eigenvalue layer and exposed the wall.
+
+The §D5n hypothesis that the cause was **seed near-parallelism** turned out to be **FALSE**
+(FINDINGS §D5n RESOLUTION).  Measured probes (design §2.1) showed `acb_mat_eig_multiple`
+still returns `0` on the C^5 `{2,3}` killer case *with a clean orthonormal zheev seed*,
+*even at prec=1024*.  The true root cause is FLINT's **frozen-row partition**
+(`partition_X_sorted`): it picks `k` rows of the approximate invariant-subspace `X_approx`
+by magnitude, and when the cluster's invariant subspace is **row-sparse** (supported on few
+coordinates — an axis-aligned or disjoint-Givens projector leaves whole rows ≈0 across all
+`k` columns) no well-conditioned `k`-row frozen set exists, the Krawczyk preconditioner is
+singular, and the enclosure blows up to `[±∞]`.  A `k=n` cluster (every row active) or a
+subspace that is dense in all coordinates always certifies.
+
+### The densify-Rump fix (FINDINGS §D5n2 / design §1.2–§1.3)
+
+The fix is a single conjugation before the eig call: let `U` be the **dense rational-Givens
+unitary** `aic_mat_dense_unitary` (`src/aic_mat_densify.c`), the product over all planes
+`(a,b)`, `a < b`, of the exact-rational Givens rotation `cos = 3/5, sin = 4/5`.  Form
+`A' = U H U†` (two `acb_mat_mul`s), assert `‖U U† − I‖_F` certified-tiny (tolerance `n² ·
+2^-(prec-8)` — the Givens chain accumulates `~n(n-1)/2` operations so the certified radius
+grows roughly as `n² · 2^-prec`; the bare `2^-(prec-8)` floor is exceeded for `n ≥ 6` at
+prec=128, a latent C1 bug caught building C2, FINDINGS §D5n2), then run the eig on `A'`.
+
+Why `n² · 2^-(prec-8)` and not `n⁴`: the tolerance is deliberately generous (the certified
+`‖U U†−I‖_F` measured at prec=128 is `~3.5e-38` at n=2, `~1.8e-36` at n=7,
+`~3.4e-35` at n=12 — roughly doubling per n, so the true growth is closer to `n⁴ · 2^-prec`
+than `n² · 2^-prec`; the n=16 chained-Givens defect `3.68e-34` already exceeds the `n² · tol
+= 1.9e-34` guard at prec=128; see FINDINGS §D7 — a C2 follow-up bead records the correct
+`n³` or `n⁴` scaling for large n).  For the project's regime (n ≤ 9 in all tested carrier /
+Choi applications) the `n²` guard provides ample margin.
+
+The **spectrum is conjugation-invariant** (`spec(A') = spec(H)`) so the eigenvalue balls of
+`A'` are identical to those of `H` and are written back directly.  Densification spreads
+every eigenvector across all `n` rows, so Rump's partition is well-conditioned on `A'`.  This
+approach follows Law 3 ("Haar diagonal → explicit finite average"): `U` is a **fixed, explicit
+finite element** — reproducible, RNG-free, exact-rational, unitary to far below the working
+precision, and empirically sufficient for every project spectrum tested.
+
+`aic_mat_eig_hermitian_multiple` (the eigenvalue layer, C1) gained a densify-retry: on
+`acb_mat_eig_multiple(H) == 0` it asserts the `U` tolerance, forms `A'`, re-seeds and retries.
+Only if the densified retry also returns `0` does it fail loud ("genuine near-degeneracy at
+this prec; raise prec").
+
+### Certified invariant subspaces (C2): `aic_mat_eig_hermitian_subspaces`
+
+Building on the C1 eigenvalue layer, `aic_mat_eig_hermitian_subspaces`
+(`src/aic_mat_eigvec.c`) returns, per gap-separated cluster `c`, a certified pair
+`{λ_c (acb_t ball), X_c (n×k_c acb_mat_t), J_c (k_c×k_c)}` such that `A X_c − X_c J_c ∋ 0`
+entrywise (FLINT Rump's Krawczyk certificate, `/usr/include/flint/acb_mat.h:421`).
+
+The algorithm (design §1.2):
+
+1. Densify `A' = U H U†` (same `U` as C1).
+2. Double-path `zheev` on `mid(A')` → ascending seed eigenvalues `ev[]` and ORTHONORMAL
+   eigenvector columns `Vd`.  The seed is trusted only for the approximate values; Rump
+   provides the rigorous certificate.
+3. Partition `ev[]` into clusters by a gap threshold `gap_thr` (default: `1e-6 × spectral
+   spread`, with a floor of 1, so the zero cluster separates from the smallest nonzero
+   eigenvalue; FINDINGS §1.5).
+4. Per cluster `c = [s0_c, s0_c + k_c)`: pass `X'_approx = Vd[:, s0_c:s0_c+k_c]` (dense,
+   orthonormal) to `acb_mat_eig_enclosure_rump`; ASSERT the output is finite — else fail loud
+   "unresolved at this prec" (Rule 4).  Back-map `X_c = U† X'_c` (same `J_c`; the identity
+   `H X_c = U† A' X'_c = U† X'_c J_c = X_c J_c` follows from `A' = U H U†`).
+5. ASSERT `‖H X_c − X_c J_c‖_F < tol` on the **original H** per cluster — the
+   **self-certifying residual** (`src/aic_mat_eigvec_resid.c`); this is design §1.6(ii)'s
+   named certificate, and it must be asserted in production, not only in tests (the
+   inc-2 hostile-review finding-1; FINDINGS §D8).  The tolerance is radius-tied:
+   `tol = 64 · n · (1 + ‖H‖_F) · max(maxrad(X_c) + maxrad(J_c), 2^-(prec/2))` —
+   because the residual hits a conditioning floor ~1e-31 at prec=128 that is
+   prec-INDEPENDENT above 128 (a `2^-(prec/2)` tol would FALSE-FAIL at prec ≥ 192;
+   measured `resid/maxrad(X) ≈ 9.5..25.8` across the tested range).
+6. Cross-cluster lambda-ball DISJOINTNESS (`!acb_overlaps(λ_c, λ_c')` for all `c ≠ c'`);
+   assert `Σ k_c = n`.  Measured: Rump's certificate self-isolates — whenever both enclosures
+   are finite the balls are already disjoint, so this gate is defence in depth (FINDINGS
+   §D5n2(2)); the reachable fail-loud is the finite-enclosure guard (i), not the overlap gate.
+
+The **soundness argument** (design §1.6) rests on three certified facts.  (i) A finite Rump
+output is a Krawczyk fixed-point certificate: `λ_c` contains exactly `k_c` eigenvalues of
+`A'` and `X'_c` rigourously encloses the corresponding invariant subspace
+(`A' X'_c − X'_c J_c ∋ 0`).  (ii) Conjugation by the certified unitary `U` is
+spectrum- and subspace-preserving: the same `k_c × k_c` `J_c` satisfies `H X_c = X_c J_c`
+(independently verified on `H` by the per-cluster self-certifying residual ~1e-31 at
+prec=128).  (iii) Cross-cluster disjointness proves the clusters index distinct eigenvalues,
+so the certified invariant subspaces are mutually orthogonal and sum to `Cⁿ`.  The routine is
+**sound (never silently wrong) and complete on every project spectrum measured**.
+
+Measured headline numbers (prec=128, `tests/test_eigvec.c`): C^5 `{2,3}` residual
+`4.2e-31`; C^6 `{2,4}` `1.5e-31`; C^7 `{3,4}` `2.5e-29`; block `{0,0,2,2,5}`
+`1.3e-30`; block `{0³,4³,9}` `1.7e-27`.
+
+### Certified range projector from the (non-orthonormal) `X_c` (design §1.4)
+
+FLINT's `acb_mat_eig_enclosure_rump` does NOT orthonormalise its output (FLINT source
+`acb_mat/eig_enclosure_rump.c` — the partition freezes `k` rows and corrects the rest,
+with no normalisation step applied).  The orthogonal projector onto `range(X_c)` is
+`aic_mat_cluster_projector` (`src/aic_mat_cluster_proj.c`):
+
+```
+Π_c = X_c (X_c† X_c)⁻¹ X_c†        [G = X_c† X_c is k×k, certified-invertible]
+```
+
+`H` (and the carrier `Q`) are Hermitian/PSD, so left = right singular vectors and Rump's
+right-invariant-subspace `X_c` IS the range basis directly — no left/right hazard
+(FINDINGS §C4, which bites only for a non-Hermitian oblique idempotent, ruled out by the
+Hermiticity precondition).  `G` is certified well-conditioned because the columns of `X_c`
+derive from a near-orthonormal dense seed mapped through a unitary; `acb_mat_inv` succeeds
+and the defects `‖Π_c² − Π_c‖_ub = 1.5e-31`, `‖Π_c − Π_c†‖_ub = 1.0e-31` (measured,
+design §2.2, prec=128).  If `acb_mat_inv` returns 0 (rank-deficient enclosure) the routine
+fails loud (Rule 4).
+
+### Certified Choi→Kraus: `aic_ucp_choi_to_kraus_arb` (design §3.2)
+
+The certified arb counterpart of the double-path `aic_ucp_choi_to_kraus_latd`
+(`src/aic_ucp_latd.c`).  Same **Convention A conjugate reshape** (matching the header
+`aic_ucp.h:23-37`):
+
+```
+C[i·dim_H + a, j·dim_H + b] = Σ_x conj(K_x[i,a]) K_x[j,b]
+```
+
+so the extraction from the PSD eigendecomposition `C = Σ_a λ_a v_a v_a†` forces
+
+```
+K_a[i, c] = sqrt(λ_a) · conj(v_a[i · dim_H + c])    (the CONJUGATE reshape)
+```
+
+This is the same formula as the double path; the conjugation is load-bearing and must stay
+in lockstep with `kraus_to_choi`.
+
+**Löwdin orthonormalisation** (design §3.2 R2; FINDINGS §D7).  Rump's per-cluster `X_c` is
+NOT orthonormal.  A raw reshape of `X_c`'s columns would not rebuild `C` (mutation-proven
+RED in test S4).  Per kept cluster with `k_c` columns the orthonormal range basis is
+
+```
+V = X_c (X_c† X_c)^{-1/2}     (V† V = I_k)
+```
+
+via `aic_funcalc_xpow(alpha=-1/2)` at `x0 = ‖X_c‖_op²` (so `‖G/x0 − I‖_op = 1 −
+λ_min/λ_max < 1`, the `xpow` binomial-series domain, `.tex:511`).  `x0` is computed via
+`aic_mat_opnorm` (which Weyl-Hermitianises the interval Gram internally, FINDINGS §C5) — NOT
+`aic_mat_herm_max_eig(G)`, which aborts on the raw interval Gram `X†X` because the
+independent per-entry radii trip the tight Hermiticity assert (found during implementation).
+
+**Per-eigenvalue basis via M-compression** (FINDINGS §D8 finding-2; design §3.2 Option B).
+Gap-clustering can lump two DISTINCT nonzero eigenvalues (gap `< gap_thr = 1e-6 · spread`)
+into one cluster of size `k ≥ 2`.  Using the single `λ_c = mean` for all `k` columns gives
+silently-wrong Kraus: the round-trip `‖C_rebuilt − C‖ ≈ 1.56 · gap` (measured `5.7e-7` at
+gap `5e-7`, NOT contained in the certified ball, no abort).  The fix is exact even for
+lumped-distinct clusters: diagonalise the small dense compression
+`M = V† C V`  (`k × k`, midpoint-projected to exact-Hermitian, FINDINGS §C5)
+via a recursive call to `aic_mat_eig_hermitian_subspaces`, obtaining per-sub-eigenvalue
+scales `sqrt(μ_i)` and sub-bases `W` so each column of `V W` carries its OWN `sqrt(μ_i)`.
+The recursion's `gap_thr = 1e-10 · (1 + ‖M‖_F)` (above the ~1e-15 double-seed jitter that
+would spuriously split a genuine degeneracy into non-finite k=1 Rump calls, yet below the
+project's measured distinct separations; FINDINGS §D8).  For a GENUINE degeneracy (⊕B(L)
+multiplicity, all k equal) the recursion keeps them as one sub-cluster and reduces to the
+single-`sqrt(λ_c)` path.
+
+**Certified three-way decision per cluster** (FINDINGS §C14; design §3.2).  The `_tol`
+variant (`aic_ucp_choi_to_kraus_arb_tol`) implements the PSD-cone projection for the
+almost-idempotent `Δ'` whose per-block Choi is CP only to `O(η²)` (FINDINGS §C14):
+
+- `λ_c` certified `> keep_thr = (dim_K · dim_H) · 2^-52 · ‖C‖_F` → **KEEP** (k Kraus ops);
+- `λ_c` certified `∈ (−neg_tol, keep_thr]` → **DROP** (cone-defect/noise; accumulate
+  `k · |mid(λ_c)|` into the certified negative mass);
+- `λ_c` certified `< −neg_tol` → **FAIL LOUD** "not CP" (Rule 4);
+- `λ_c` ball STRADDLES `keep_thr` or `−neg_tol` → **FAIL LOUD** "straddle / rank
+  unresolved at this prec" (NDEBUG-immune `fprintf + abort`, mirroring
+  `aic_mat_certified_rank`).
+
+The strict `aic_ucp_choi_to_kraus_arb` delegates to `_tol` with `neg_tol = keep_thr`.
+
+**Prec floor** (FINDINGS §D7).  A rank-deficient Choi's zero cluster has a certified
+enclosure radius `~2e-14` at prec=53, which STRADDLES `keep_thr ~1e-15`.  The routine
+fail-loud-aborts at prec=53 (correct: the rank is genuinely unresolved).  The zero ball
+drops cleanly below `keep_thr` at **prec ≥ 64** (radius `~3.6e-17` at prec=64); run at
+prec=128 for headroom.  The double-vs-arb cross-check therefore compares the double path
+(prec=53) against the arb path at prec=128, comparing AS CHANNELS (rebuild Choi,
+`‖C_arb − C_latd‖_op`) rather than Kraus operator-by-operator (Kraus gauge freedom).
+
+### Certified carrier projector: `aic_ucp_carrier_projector` (design §3.3)
+
+`lem_carrier` (`.tex:1724`) characterises the carrier `M` of a UCP map `Φ` as the smallest
+subspace `M ⊆ K` with `M ⊗ F ⊇ Im V` (Stinespring).  In Kraus coordinates this is the
+range of `Q = Σ_a K_a K_a†` (see the `ucp` module section).  The **certified range projector**
+is (`src/aic_ucp_carrier_proj.c`):
+
+```
+Π_M = Σ_{c : λ_c > thr} Π_c      [lem_carrier, .tex:1724]
+```
+
+where the sum is over the clusters of `Q` with eigenvalue certified ABOVE
+`thr = dim_K · 2^-52 · ‖Q‖_F` (the same `DBL_EPSILON`-scaled threshold as
+`aic_ucp_carrier_rank_latd`, so `Tr(Π_M)` equals the certified rank exactly — test S6
+asserts `round(Tr Π_M) == aic_ucp_carrier_rank(Q) == aic_ucp_carrier_rank_latd(Q)`).
+
+`Q` is Hermitian/PSD with a large zero cluster and possibly-degenerate nonzero clusters;
+`aic_mat_eig_hermitian_subspaces` handles this natively.  A cluster eigenvalue ball that
+STRADDLES `thr` leaves the in-range/in-kernel decision undecided → fail loud (Rule 4)
+with the same NDEBUG-immune `fprintf + abort` as `aic_mat_certified_rank`.  The same prec
+≥ 64 floor applies (FINDINGS §D7); run at prec=128.
+
+### Measured numbers (Rule 12)
+
+All at prec=128 unless noted.
+
+**Invariant-subspace residual** `‖H X_c − X_c J_c‖_F` on the original `H`:
+- C^5 `{2,3}`: `4.2e-31`
+- C^6 `{2,4}`: `1.5e-31`
+- C^7 `{3,4}`: `2.5e-29`
+- block `{0,0,2,2,5}`: `1.3e-30`
+- block `{0³,4³,9}`: `1.7e-27`
+
+**Cluster projector defects** (prec=128, rank-2 range of a C^5 projector):
+`‖Π² − Π‖_ub = 1.5e-31`, `‖Π − Π†‖_ub = 1.0e-31`, `‖Π − Π_true‖_ub = 5.1e-32`.
+
+**Choi→Kraus double-vs-arb** `‖C_arb − C_latd‖_op` (arb at prec=128 vs LAPACK double):
+- complex-asymmetric C²: `4.6e-16`
+- compress-idemp C³: `7.3e-16`
+- depolarizing C³: `1.8e-16`
+
+**Round-trip** `‖C_rebuilt − C‖_op` enclosures (S4, S8):
+- distinct clusters lumped `→ [0, 1.4e-16]` after the M-compression fix (was `5.7e-7` before)
+- genuine degeneracy k=3: `[0, 7.3e-16]`
+- depolarizing k=9: `[0, 2.0e-17]`
+- All contain 0 (the exact-up-to-the-kept-tail expectation).
+
+**Densifier unitarity** `‖U U† − I‖_F` (prec=128): `1.3e-37` (n=2) … `3.4e-35` (n=12).
+
+**Löwdin self-cert** (deferred per FINDINGS §D8 finding-3): `‖V†V − I_k‖` is `1.3e-30` at
+n=5, prec-independent above 128; orthonormality is cross-checked downstream by the S4
+round-trip instead of a separate assert.
+
+### Cross-check ladder coverage (CLAUDE.md Rule 6)
+
+1. **Internal sanity (rung 1):** Hermiticity asserted on entry to all routines;
+   `Σ k_c = n` asserted; certified imaginary parts of λ_c contain 0 (Hermitian ⇒ real
+   spectrum).
+
+2. **Double-vs-arb@53 / double-vs-arb@128 (rung 2):**
+   - `aic_mat_eig_hermitian_subspaces` cross-checks eigenvalue balls from the densify-Rump
+     path against the LAPACK seed values (agreement within the ball radius, ~1e-31 at
+     prec=128).
+   - Choi→Kraus: `‖C_arb − C_latd‖_op ≤ 4.6e-16` (complex-asym C²), compared AS CHANNELS
+     not Kraus-by-Kraus.
+
+3. **η=0 / exact-projection oracle (rung 3):**
+   - Rank-r orthogonal projector `P`: the λ=1 cluster yields `‖Π_M − P‖_op < 1e-25`,
+     `Tr(Π_M) = r`; the kernel cluster projects to `I − P`.
+   - Depolarizing Choi `(1/dim)I_{dim²}`: single cluster `k = dim²`, `Π_M = I`,
+     `‖Π_M − I‖ = 7.0e-35`.
+   - `aic_ucp_carrier_projector` on a rank-r projector: `Tr(Π_M) = r`,
+     `‖Π_M Q − Q‖ = 0` (`Q` supported on `M`), `cor_carrier` annihilate-defect `= 0`.
+
+4. **Rebuild-Choi round-trip (rung 3/4):** `kraus_to_choi(choi_to_kraus_arb(C)) = C` within
+   the certified ball (S4/S8, `‖C_rebuilt − C‖_op` enclosures contain 0) on exact-rational
+   PSD inputs with distinct, degenerate, and near-lumped eigenvalues.
+
+5. **Fail-loud teeth (rung 1, Rule 4; fork+SIGALRM watchdog, tests S7):**
+   - Non-finite Rump enclosure → "UNRESOLVED at this prec" abort.
+   - Cross-cluster overlap gate → "OVERLAP at this prec" abort (defence in depth; the
+     reachable path is the finite-enclosure gate, but the overlap gate is mutation-proven:
+     removing guard (i) lets `[±∞]` balls flow to guard (iii), removing both gives
+     silent wrong output, FINDINGS §D5n2(2)).
+   - Threshold-straddle in Choi→Kraus → "STRADDLE / rank unresolved" abort.
+   - Genuine non-CP cluster (λ < −neg_tol) → "not CP" abort.
+
+### Deferred items (tracked in beads)
+
+- The `n²` densifier-unitary tolerance is known to underestimate the true `~n⁴` growth at
+  large `n`; a `n³` scaling (or higher prec) is needed for n ≥ 16 at prec=128 (FINDINGS
+  §D7; filed as a C2 follow-up).
+- The Löwdin `‖V†V − I_k‖` self-cert is deferred: the tolerance must be radius-tied (a
+  naive `2^-(prec/2)` false-fails at prec ≥ 256); downstream S4/S8 round-trip suffices for
+  now (FINDINGS §D8 finding-3).
+- The certified carrier projector blocked on aic-w4o.1 (degenerate eig) is now unblocked;
+  the double-path `aic_ucp_carrier_rank_latd` and the arb `aic_ucp_carrier_projector` are
+  both shipped and cross-checked (S6 above).
