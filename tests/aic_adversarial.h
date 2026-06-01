@@ -40,6 +40,7 @@
  *   chan_depol_boundary domain 2A, tex:516-525 : eta->1/4 theta(2Phi-1) basin edge
  *   chan_unital_defect  domain 1D, tex:432/672 : unital-but-barely Phi(I)=I+delta_u E
  *   chan_carrier_dropout domain 1C, tex:1724/1731 : near-degenerate carrier, rank near-drop
+ *   chan_blockalg       domain 3D, tex:484/1249 : eps~c/n dimension-blowup block algebra (+)_j M_d
  *
  * API SHAPE (reusable by tests AND benches). Each NLA generator takes a caller-managed
  * acb_mat_t `out` that the caller has init'd to the right shape (asserted), the
@@ -204,6 +205,35 @@ void aic_adv_chan_unital_defect(aic_ucp_kraus *out, slong d, double delta_u,
  * aic_ucp_kraus_init'd HERE (dim_K=dim_H=d, r=1; caller aic_ucp_kraus_clears it). */
 void aic_adv_chan_carrier_dropout(aic_ucp_kraus *out, slong d, double gap,
                                   slong prec);
+
+/* fam3D — dimension-blowup block algebra (domain.md:416-449; the eps~c/n regime
+ * tex:484, the explicit B-diagonal ||D||=1 vs naive Haar error ~ n, tex:1249). A
+ * UCP self-map on B(C^N), N = k*d, whose associated eps-C* algebra is
+ *   A = (+)_{j=1}^{k} M_d   (dim_A = k*d^2),
+ * eta-idempotent with eta TUNABLE by t (t=0 => EXACTLY idempotent). The k-block
+ * conditional expectation Phi0(X) = sum_j P_j X P_j (P_j = sum_{a<d} |jd+a><jd+a|,
+ * the k diagonal block projectors, sum_j P_j = I_N) has Kraus K_j = P_j (Hermitian),
+ * Img Phi0 = (+)_j M_d, and is EXACTLY idempotent + unital. Mixed with its DFT
+ * conjugate Ad_{V^dag} Phi0 Ad_V (V[a,b] = exp(2 pi i a b / N)/sqrt(N), the DFT —
+ * unitary, NON-block-diagonal so eta>0 for t>0): the output Kraus UNION is
+ *   { sqrt(1-t) P_j : j } U { sqrt(t) V^dag P_j V : j },   rank r = 2k.
+ * UNITAL for all t: sum_a K_a^dag K_a = (1-t) sum_j P_j + t V^dag(sum_j P_j)V =
+ * (1-t)I + t I = I (the make_mixconj pattern of test_idemp.h generalized to k equal
+ * blocks, built SELF-CONTAINED here). KNOB t in [0,1) (asserted; k>=1, d>=1,
+ * k*d>=2; Rule 4, fail loud). Use k>=2 for the blowup property: k=1 gives a single
+ * block P_0=I_N, so V^dag P_0 V = I_N = base and eta=0 for all t (degenerate, no
+ * t-dependence); k=1 is allowed only as a well-defined single M_d.
+ * Adversarial property (the dimension-blowup trap, tex:484): as the block count k
+ * grows, dim_A = k*d^2 grows; the th_main constant c_0 must stay DIMENSION-
+ * INDEPENDENT (the explicit generalized-Pauli B-diagonal route, ||D||=1; NOT the
+ * naive Haar route whose error ~ n). At t=0 the recovered structure is EXACTLY
+ * (+)_j M_d: aic_cstar_build gives B.num_blocks == k, every B.d[l] == d,
+ * B.dim_B == k*d^2 (the named structural pin; the block COUNT tracks k).
+ * t=0 REDUCTION (exact-idempotent oracle, cross-check ladder #3): out = Phi0, the
+ * k-block conditional expectation, EXACTLY idempotent, defect 0; bracket [0,0].
+ * `out` is aic_ucp_kraus_init'd HERE (dim_K=dim_H=N=k*d, r=2k; caller clears it). */
+void aic_adv_chan_blockalg(aic_ucp_kraus *out, slong k, slong d, double t,
+                           slong prec);
 
 #ifdef __cplusplus
 }

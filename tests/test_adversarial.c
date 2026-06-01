@@ -25,6 +25,10 @@
 #include "aic/aic_mat.h"
 #include "aic/aic_ucp.h"
 #include "aic/aic_cbnorm.h"
+#include "aic/aic_assoc.h"
+#include "aic/aic_cstar.h"
+#include "aic/aic_dhom.h"
+#include "aic/aic_ecstar.h"
 #include "aic_test.h"
 
 static const slong PREC = 256;
@@ -918,6 +922,181 @@ static void test_fam1c_carrier_dropout(void)
     arb_clear(mn);
 }
 
+/* ---- fam3D: dimension-blowup block algebra (domain.md:416-449, tex:484/1249).
+ * The FIFTH channel generator's self-test. The named property: a UCP self-map on
+ * B(C^N), N=k*d, whose associated eps-C* algebra is A = (+)_j M_d (dim_A = k*d^2),
+ * eta-idempotent with eta tunable by t (t=0 => EXACTLY idempotent). The block
+ * COUNT tracks k; this is the eps~c/n regime where the naive Haar-diagonal route
+ * (error ~ n) fails and the explicit generalized-Pauli B-diagonal (||D||=1) is
+ * needed (tex:484/1249).
+ *
+ * Teeth, in order of load-bearing weight:
+ *  (1) eta=0 ORACLE (the t=0 exact-idempotent reduction, cross-check ladder #3):
+ *      the certified eig-free cb bracket upper bound hi < 1e-9 at t=0 (out = Phi0,
+ *      the k-block conditional expectation, EXACTLY idempotent), tested at
+ *      (k=2,d=2) AND (k=3,d=2).
+ *  (2) THE NAMED STRUCTURAL PROPERTY (dim_A = k*d^2, k EQUAL blocks of M_d): at
+ *      t=0 build A via aic_assoc_ecstar_from_phi, then aic_cstar_build, and assert
+ *      B.num_blocks == k, every B.d[l] == d, B.dim_B == k*d^2 — tested at
+ *      (k=2,d=2)->dim_A=8 and (k=3,d=2)->dim_A=12 so the block COUNT demonstrably
+ *      TRACKS k (the dimension-blowup the family is built to drive). Mirrors the
+ *      build chain in test_cstar_build.c:196-238 (T1 oracle).
+ *  (3) KNOB -> eta MONOTONE (corpus-can't-go-toothless): the eig-free bracket
+ *      lower bound (midpoint) of ||Phi^2-Phi||_cb STRICTLY increases over
+ *      t in {0, 0.02, 0.08} (>= 2 nonzero values, mild < lethal), at (k=2,d=2).
+ *  (4) UNITAL at t>0: aic_ucp_unital_defect_kraus < 1e-12 (the mix is unital for
+ *      ALL t: sum_a K_a^dag K_a = (1-t)I + t V^dag I V = I).
+ *
+ * MUTATION (Rule 7): collapse the k-block partition — in the generator set every
+ * block projector to P_0 (i.e. `j * d + a` -> `0 * d + a` in the P_j index, so all
+ * k Kraus blocks become the SAME rank-d projector on [0,d) and the rest of C^N is
+ * UNTOUCHED, breaking sum_j P_j = I_N). This destroys both the unitality
+ * (sum_a K_a^dag K_a = (1-t)(k P_0) + t V^dag(k P_0)V != I_N) AND the (+)_j M_d
+ * structure. OBSERVED RED (the FIRST assertion to fire is the t=0 unital sanity
+ * check at the top of the case loop): "AIC_CHECK FAILED at test_adversarial.c:108:
+ * ball 1.000000e+00 not within 1.0e-12 of 0.000000e+00" — the unital defect
+ * collapses to ~1 because sum_j P_j = k P_0 != I_N. (The downstream T3
+ * num_blocks/dim_B pin would also fire, but the unital sanity guard catches the
+ * broken partition first.) Confirmed RED, restored byte-identical (git diff
+ * empty).
+ *
+ * MUTATION 2 (Rule 7 — the T3 block-structure tooth, ISOLATED; hostile review
+ * aic-cxo W3). The collapse-to-P_0 mutation above trips UNITALITY first, so it
+ * does not prove T3 (num_blocks/dim_B) has teeth on its own. A unitality-
+ * PRESERVING mutation does: re-partition (k=2,d=2) into contiguous block sizes
+ * {1,3} instead of {2,2} (still disjoint, still sum_j P_j = I_N, so T4 unital
+ * and T1 oracle STAY GREEN). OBSERVED RED at the dim_A pin (line ~1011):
+ * "fam3D t=0 (k=2,d=2): ecstar dim_A=10 != k*d^2=8" (1^2+3^2=10 != 2*2^2=8).
+ * This confirms T3 independently catches a wrong block-count/size even when the
+ * channel stays unital. Confirmed RED, restored byte-identical. */
+static void test_fam3d_blockalg(void)
+{
+    /* measured (prec=256): t=0 EXACT idemp, block structure + eta(t) monotone
+     *   (k=2,d=2) t=0: num_blocks=2 d=[2,2] dim_B=8  iso_def=0  (dim_A=8)
+     *   (k=3,d=2) t=0: num_blocks=3 d=[2,2,2] dim_B=12 iso_def=0 (dim_A=12)
+     *   (k=2,d=2) cb_lo(t): t=0 -> 0 ; t=0.02 -> 0.012002 ; t=0.08 -> 0.045071 */
+    const slong PREC3 = 256; /* arb working precision for the build chain */
+
+    /* (1)+(2) eta=0 ORACLE + block structure at t=0, at (k=2,d=2) and (k=3,d=2). */
+    struct { slong k, d; } cases[2] = {{2, 2}, {3, 2}};
+    for (int ci = 0; ci < 2; ci++) {
+        slong k = cases[ci].k, d = cases[ci].d;
+        slong N = k * d, dim_A_exp = k * d * d;
+
+        aic_ucp_kraus phi0;
+        aic_adv_chan_blockalg(&phi0, k, d, 0.0, PREC3);
+        AIC_CHECK_MSG(phi0.dim_K == N && phi0.dim_H == N && phi0.r == 2 * k,
+                      "fam3D (k=%ld,d=%ld): bad shape dim_K=%ld dim_H=%ld r=%ld",
+                      (long) k, (long) d, (long) phi0.dim_K, (long) phi0.dim_H,
+                      (long) phi0.r);
+
+        /* unital sanity (pins the OBSERVABLE convention; sum_j P_j = I_N) */
+        arb_t ud;
+        arb_init(ud);
+        aic_ucp_unital_defect_kraus(ud, &phi0, PREC3);
+        check_ball_eq(ud, 0.0, 1e-12);
+        arb_clear(ud);
+
+        /* (1) eta=0 oracle: t=0 => exactly idempotent => bracket upper < 1e-9. */
+        arb_t lo, hi;
+        arb_init(lo);
+        arb_init(hi);
+        aic_cbnorm_eigfree_ball(lo, hi, &phi0, PREC3);
+        arb_t tiny;
+        arb_init(tiny);
+        arb_set_d(tiny, 1e-9);
+        AIC_CHECK_MSG(arb_lt(hi, tiny),
+                      "fam3D t=0 (k=%ld,d=%ld): cb bracket upper=%.3e not < 1e-9 "
+                      "(exact-idempotent oracle: defect must be 0)", (long) k,
+                      (long) d, arf_get_d(arb_midref(hi), ARF_RND_NEAR));
+        arb_clear(tiny);
+        arb_clear(hi);
+        arb_clear(lo);
+
+        /* (2) STRUCTURAL: build A = Img Phi_tilde, then B = cstar_build, assert
+         *     B.num_blocks == k, every B.d[l] == d, B.dim_B == k*d^2. */
+        aic_assoc_ecstar ae;
+        aic_assoc_ecstar_from_phi(&ae, &phi0, PREC3);
+        AIC_CHECK_MSG(ae.A.dim_A == dim_A_exp,
+                      "fam3D t=0 (k=%ld,d=%ld): ecstar dim_A=%ld != k*d^2=%ld",
+                      (long) k, (long) d, (long) ae.A.dim_A, (long) dim_A_exp);
+
+        aic_dhom_B B;
+        aic_dhom_v v;
+        arb_t iso;
+        arb_init(iso);
+        aic_cstar_build(&B, &v, iso, &ae.A, 0.0, PREC3);
+
+        AIC_CHECK_MSG(B.num_blocks == k,
+                      "fam3D t=0 (k=%ld,d=%ld): num_blocks=%ld != k=%ld (block "
+                      "COUNT must track k — the dimension-blowup property)",
+                      (long) k, (long) d, (long) B.num_blocks, (long) k);
+        for (slong l = 0; l < B.num_blocks; l++)
+            AIC_CHECK_MSG(B.d[l] == d,
+                          "fam3D t=0 (k=%ld,d=%ld): block %ld has dim %ld != d=%ld "
+                          "(every block must be M_d)", (long) k, (long) d, (long) l,
+                          (long) B.d[l], (long) d);
+        AIC_CHECK_MSG(B.dim_B == dim_A_exp,
+                      "fam3D t=0 (k=%ld,d=%ld): dim_B=%ld != k*d^2=%ld", (long) k,
+                      (long) d, (long) B.dim_B, (long) dim_A_exp);
+        AIC_CHECK_MSG(arf_get_d(arb_midref(iso), ARF_RND_NEAR) < 1e-10,
+                      "fam3D t=0 (k=%ld,d=%ld): iso_def=%.3e not ~ 0 (eta=0 must be "
+                      "an exact isomorphism)", (long) k, (long) d,
+                      arf_get_d(arb_midref(iso), ARF_RND_NEAR));
+
+        printf("  fam3D blockalg (k=%ld,d=%ld): t=0 EXACT idemp; build B "
+               "num_blocks=%ld d[0]=%ld dim_B=%ld (= k*d^2=%ld) iso_def=%.2e\n",
+               (long) k, (long) d, (long) B.num_blocks, (long) B.d[0],
+               (long) B.dim_B, (long) dim_A_exp,
+               arf_get_d(arb_midref(iso), ARF_RND_NEAR));
+
+        arb_clear(iso);
+        aic_dhom_v_clear(&v);
+        aic_dhom_B_clear(&B);
+        aic_assoc_ecstar_clear(&ae);
+        aic_ucp_kraus_clear(&phi0);
+    }
+
+    /* (3) KNOB -> eta MONOTONE at (k=2,d=2): the cb lower bound strictly grows
+     *     over t in {0, 0.02, 0.08} (>= 2 nonzero values, mild < lethal). */
+    {
+        const slong k = 2, d = 2;
+        double ts[3] = {0.0, 0.02, 0.08};
+        double cb_lo[3];
+        for (int it = 0; it < 3; it++) {
+            aic_ucp_kraus phi;
+            aic_adv_chan_blockalg(&phi, k, d, ts[it], PREC3);
+            arb_t lo, hi;
+            arb_init(lo);
+            arb_init(hi);
+            aic_cbnorm_eigfree_ball(lo, hi, &phi, PREC3);
+            cb_lo[it] = arf_get_d(arb_midref(lo), ARF_RND_NEAR);
+            arb_clear(hi);
+            arb_clear(lo);
+            aic_ucp_kraus_clear(&phi);
+        }
+        AIC_CHECK_MSG(cb_lo[2] > cb_lo[1] && cb_lo[1] > cb_lo[0] && cb_lo[1] > 0.0,
+                      "fam3D: cb defect not strictly increasing with t (t=0 -> "
+                      "%.6f, t=0.02 -> %.6f, t=0.08 -> %.6f)", cb_lo[0], cb_lo[1],
+                      cb_lo[2]);
+        printf("  fam3D blockalg (k=2,d=2): eta(t) cb_lo: t=0 -> %.6f ; t=0.02 -> "
+               "%.6f ; t=0.08 -> %.6f (strictly up, knob has teeth)\n",
+               cb_lo[0], cb_lo[1], cb_lo[2]);
+    }
+
+    /* (4) UNITAL at t>0: sum_a K_a^dag K_a = I for all t. */
+    {
+        aic_ucp_kraus phi;
+        aic_adv_chan_blockalg(&phi, 2, 2, 0.08, PREC3);
+        arb_t ud;
+        arb_init(ud);
+        aic_ucp_unital_defect_kraus(ud, &phi, PREC3);
+        check_ball_eq(ud, 0.0, 1e-12);
+        arb_clear(ud);
+        aic_ucp_kraus_clear(&phi);
+    }
+}
+
 int main(void)
 {
     test_gen1_jordan();
@@ -931,6 +1110,7 @@ int main(void)
     test_fam2a_depol_boundary();
     test_fam1d_unital_defect();
     test_fam1c_carrier_dropout();
+    test_fam3d_blockalg();
 
     aic_test_report("test_adversarial");
     printf("OK test_adversarial\n");
