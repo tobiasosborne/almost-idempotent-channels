@@ -1,6 +1,75 @@
 # HANDOFF.md — almost-idempotent-channels
 
-## ▶▶ LATEST (2026-06-01d, orchestrated, laptop): aic-l5b CLOSED + the adversarial CHANNEL corpus opened (4 generators) — three beads landed, ~10 commits, all green+pushed
+## ▶▶ LATEST (2026-06-01e, orchestrated, laptop): the 3D eps~c/dim universality GENERATOR landed (aic-cxo HIGH); aic-dbo.3 de-risked → TWO walls found, both fail-loud, both filed
+
+**State:** master FULLY GREEN — `ctest -L fast` 18/18 (~28s); working tree clean, up to date with
+`origin/master` (HEAD `9e718d0`). bd: 95 issues (re-imported from JSONL at session start — the live
+Dolt DB was STALE vs git, the recurring SessionStart-hook desync; `bd import` fixed it). Commit this
+session: `2ebff91..9e718d0` (one feat commit + this handoff). Session bead state synced via
+`bd export > .beads/issues.jsonl` before commit.
+
+**Consequential thread pursued: the paper's central tex:484 dimension-independence claim**
+(`aic-dbo.3`, "THE highest-value correctness test"). Two-phase plan: (P1) build the missing 3D
+`(+)_j M_d` generator that grows dim_A; (P2) the dim-sweep regression that certifies the th_main
+constant c stays flat. P1 LANDED; P2 de-risked but blocked by two real walls (below).
+
+**LANDED — `aic-cxo` HIGH: the 3D eps~c/dim block-algebra generator** (commit `9e718d0`).
+`aic_adv_chan_blockalg(out, k, d, t, prec)` in NEW `tests/aic_adversarial_blockalg.c` (200 LOC):
+a UCP self-map on B(C^{k·d}) whose associated eps-C* algebra is `A = (+)_{j=1}^k M_d`
+(dim_A = k·d²), eta-idempotent with eta tunable by `t` (t=0 EXACTLY idempotent). Recipe = the
+k-block conditional expectation `Phi0(X)=Σ_j P_j X P_j` mixed at weight t with its DFT conjugate
+`Ad_{V†}Phi0 Ad_V` (make_mixconj generalized to k equal blocks; unital for all t). Self-test
+`test_fam3d_blockalg` (in `test_adversarial.c`): T1 eta=0 cb-bracket oracle, block-structure pin
+(num_blocks==k, d[l]==d, dim_B==k·d² at k=2,3), eta(t) monotone {0,0.012,0.045}, unital defect;
+TWO mutations (collapse-partition; unitality-preserving {1,3}-repartition that ISOLATES the T3
+block-count tooth). Hostile review SHIP-WITH-MINORS (math + every tooth independently mutation-
+verified, valgrind clean); 2 doc minors applied. `test_adversarial` green (0.5s), zero warnings.
+Also committed: `docs/research/dbo3_dimsweep_design.md` (the P2 blueprint — but see the eps-scale
+correction below; its point 3 is superseded).
+
+**DE-RISK of `aic-dbo.3` (P2) — the headline finding: TWO distinct fail-loud walls, neither a
+correctness bug, both gating the dim-sweep.** A probe built the family + ran the full
+`aic_assoc_ecstar_from_phi → aic_cstar_build` chain:
+1. **WALL 1 — the §C11 eps-scale trap (RESOLVED, route known). `aic-t5w` (P1).** `aic_cstar_build`
+   aborts in `aic_errreduce` when passed `eps = aic_ecstar_defect_assoc`, because these near-block-
+   diagonal fixtures have `eps_assoc ≪ eta` (measured ~124× at k=2; the defect/eps ratio grows as
+   t→0 since `eps_assoc ~ eta²`). This is EXACTLY FINDINGS §C11 (lines 481-484, documented for the
+   2-block `make_mixconj_blocks`): pass **`eta`** (the cb-idempotence defect), NOT the assoc defect,
+   as the build's `eps`. **Probe CONFIRMS:** (k=2,d=2,t=0.05) with `eps=eta` → `iso_def=1.55e-3`,
+   **c = iso_def/eta = 0.0327, BIJECTIVE** (σ_min=0.999). The dbo3 design's point 3 (eps=eps_assoc)
+   is the trap; the implementer must use eps=eta and measure c=iso_def/eta (matching T2b).
+2. **WALL 2 — `aic_projection` trivial-projection on the degenerate k≥4 algebra (OPEN, needs root-
+   cause). `aic-66n` (P1).** With the eps=eta fix, the build SUCCEEDS at k=2 but ABORTS at **k=4**
+   (dim_A=16) inside `aic_projection_nontrivial`: "TRIVIAL projection produced (||P||=0.0003 … the
+   interior gap m=6 of n=8 should have prevented this — investigate degenerate spectrum / mis-chosen
+   threshold)". Fail-loud, no garbage. The 4-identical-M_2-block algebra is maximally degenerate;
+   the Lefschetz-Hopf projection split (sec_projection, tex:931) mis-handles the repeated spectrum.
+   LIKELY a cousin of the §D5n degenerate-eig wall (the aic-4td `aic_mat_densify` fix) — try
+   densify-retry or a threshold fix in `src/aic_projection_find.c`.
+
+**Consequence for aic-dbo.3:** the dim-sweep cannot yet certify dimension-independence beyond k=2
+(a single point c=0.0327 is not a trend). It is BLOCKED on `aic-66n` (the k≥4 projection wall) and
+needs the `aic-t5w` eps=eta route encoded. Both walls are FAIL-LOUD (Rule 4), so no silent-wrong
+risk — this is a genuine constructive-coverage gap the new family exposed, exactly the adversarial-
+corpus mandate working as intended.
+
+**▶ NEXT picks (in dependency order for the tex:484 thread):**
+1. **`aic-66n` (P1) — root-cause the k≥4 projection wall.** Read `src/aic_projection_find.c` interior-
+   gap threshold + spectral split; reproduce with `aic_adv_chan_blockalg(4,2,0.05)`; try the
+   `aic_mat_densify` densify-retry (the §D5n/aic-4td pattern) or a threshold fix. This is the gating
+   blocker for the whole universality sweep.
+2. **`aic-dbo.3` (P1) — implement `tests/test_dbo3.c`** once aic-66n clears: eps=ETA (§C11), measure
+   c=iso_def/eta across Axis A (d=2, k∈{2,4,8}, dim_A∈{8,16,32}, N≤16) and Axis B (k=2, d∈{2,3}),
+   dual AND-gate predicate (T2b model, re-pinned), two-model mutation tooth, non-vacuity guard. THE
+   HEADLINE DECISION: if c stays bounded → tex:484 dimension-independence HOLDS (green); if c
+   genuinely grows after the eps=eta fix → real tex:484 STOP CONDITION, escalate (do NOT tune the
+   predicate to pass). Charter is in this session's launch (the agent was stopped at user request
+   before writing the test).
+3. Remaining `aic-cxo` (MED/LOW): non-comm calibrated eta→1/4, family 2B, `make_mixconj` corpus
+   unification (with `aic-f9u.1`). Also `aic-v5f` (densified carrier), `aic-jhe` (tight MOSEK
+   cb-distance), Julia packaging (`aic-obc`/`aic-95g.2`).
+
+
 
 **State:** master FULLY GREEN — full `ctest --test-dir build` **39/39** (re-run after aic-l5b;
 the channel-generator work only ADDS test code, no src path touched, so the `fast` gate +
