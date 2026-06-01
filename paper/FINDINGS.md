@@ -959,6 +959,45 @@ with the concrete evidence from where they bit.
     (none found), the densified retry would still return 0 and fail loud (never silently
     wrong) — see design §5 R3 for the second-angle fallback.
 
+### D5n2. Densifier-unitary tolerance must scale `n²`; Rump self-isolates (overlap gate is defence-in-depth) — `aic-4td` inc-2 C2
+- **Status:** RESOLVED in the C2 invariant-subspace layer (2026-06-01, `src/aic_mat_eigvec.c`,
+  `src/aic_mat_eigvec_seed.c`, `tests/test_eigvec.c`). Two measured facts surfaced building
+  `aic_mat_eig_hermitian_subspaces` (the certified invariant-subspace decomposition).
+- **(1) The densifier-unitary guard tolerance must scale with `n²` — a LATENT C1 BUG fixed.**
+  The C1 densify-retry (`aic_mat_eig_multiple.c`) asserted `‖U U†−I‖_F < 2^-(prec-8)` (the bare
+  `aic_mat_int_tol` floor). But `U = aic_mat_dense_unitary` CHAINS `n(n−1)/2` Givens products, so
+  arb's certified `‖U U†−I‖_F` radius ACCUMULATES `~ n²·2^-prec`. **Measured at prec=128:**
+  `3.5e-38` (n=2), `2.7e-37` (n=4), `9.6e-37` (n=6), `1.8e-36` (n=7), `3.4e-35` (n=12) — roughly
+  doubling per `n`. The bare floor `2^-(prec-8) = 7.5e-37` is EXCEEDED for **n≥6**, so the C1
+  guard would have aborted ("densifier U not certified unitary") on any legitimate `n≥6`
+  row-sparse input needing the retry (e.g. a C^6 block-algebra carrier) — a fail-loud on a CORRECT
+  input. **Fix:** scale the tolerance by `n²` (`arb_mul_si(utol, utol, n*n, prec)`) in BOTH the C1
+  retry guard and the C2 `aic_mat_int_assert_densify_unitary`. At n=12 the scaled tol is
+  `1.08e-34` vs the measured `3.4e-35` defect (~3× margin), and still ~4 orders below the certified
+  eigenvalue ball radii (~1e-31), so the conjugation genuinely preserves the spectrum; a broken `U`
+  (defect ~1) still fails loud. The C1 guard had never bitten because its retry only triggers on
+  the rare `eig_multiple(H)==0` path AND the existing C1 tests stay at n≤5.
+- **(2) Rump's certificate SELF-ISOLATES — the cross-cluster overlap gate (iii) is unreachable with
+  finite balls; the FINITE-enclosure guard (i) is the reachable fail-loud.** Probed exhaustively
+  (n=2,3,4 near-degenerate spectra `{…,1,1+2^e}`, `e∈[−22,−6]`, prec∈{24,30,40,53}, both simple
+  and forced-`k=2` clusters): **whenever both per-cluster Rump enclosures are FINITE the `λ` balls
+  are already DISJOINT, and whenever the balls would overlap at least one enclosure is NON-FINITE
+  (`[±∞]`).** The two regimes never co-occur — Rump's Krawczyk enclosure radius is tied to the same
+  eigenvector separability that determines isolability. **Consequence for the fail-loud teeth:** a
+  sub-`2^-prec` near-degeneracy fails loud via the FINITE-enclosure guard (i) ("UNRESOLVED"), NOT
+  the design's hypothesised overlap-gate path. The disjointness gate (iii) is **defence in depth**:
+  mutation-proven load-bearing — with guard (i) removed, the non-finite `[±∞]` balls flow downstream
+  and gate (iii) catches them ("OVERLAP"); with BOTH removed the routine returns a silently-wrong
+  decomposition (child exits 0). Both guards kept; `tests/test_eigvec.c` S7(c) tests the reachable
+  UNRESOLVED path, and the mutation chain (i)→(iii)→exit-0 documents the backstop. (The design §4
+  S7(b) "overlap-abort on sub-`2^-prec` gap" is realized as this UNRESOLVED-abort.)
+- **C2 headline numbers (prec=128, `tests/test_eigvec.c`):** the §D5n killers that C1's T5
+  asserted FAIL LOUD now CERTIFY invariant subspaces with residual `‖H X_c − X_c J_c‖_F`
+  recomputed on the ORIGINAL `H` (using the STORED Rump `J_c`, design §1.6(ii)): C^5`{2,3}`
+  `4.2e-31`, C^6`{2,4}` `1.5e-31`, C^7`{3,4}` `2.5e-29`, block`{0,0,2,2,5}` `1.3e-30`,
+  block`{0³,4³,9}` `1.7e-27`; η=0 oracle: rank-4 proj C^6 `‖Π₁−P‖=2.2e-29`, `‖Π₀−(I−P)‖=1.2e-30`,
+  `trace(Π₁)=4`; depolarizing `(1/3)I₉` one cluster k=9 `‖Π_M−I‖=7.0e-35`.
+
 ### D6. `factorize` F4.2 — the diamond-norm DUAL SDP stalls (SLOW_PROGRESS) at n≥6 in Convex.jl
 - **Status:** OPEN, DEFERRED to v0.2 (bead `aic-bag`). Surfaced 2026-05-31 building the
   F4.2 dimension-independence canary; the headline (`th_factorization`, `aic-tff`) is

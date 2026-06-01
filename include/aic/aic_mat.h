@@ -142,6 +142,55 @@ void aic_mat_eig_hermitian_multiple(acb_ptr E, const acb_mat_t H, slong prec);
  * aic_ucp_carrier_rank_latd (bead aic-w4o.1). */
 slong aic_mat_certified_rank(const acb_mat_t H, const arb_t thr, slong prec);
 
+/* One certified eigen-cluster of a Hermitian matrix: a real eigenvalue ball
+ * lambda, an n x k certified invariant-subspace enclosure X (A X subset of
+ * span(X)), the cluster multiplicity k, and the k x k interval matrix J from
+ * FLINT's Rump enclosure (acb_mat_eig_enclosure_rump). X is NOT orthonormal
+ * (Rump applies no normalization); use aic_mat_cluster_projector for the
+ * orthogonal range projector. J is stored because the residual certificate
+ * ||H X_c - X_c J_c|| on the ORIGINAL H is the soundness proof
+ * (docs/research/eigvec_certified_design.md §1.6(ii): the SAME J_c works for H
+ * via X_c = U^dag X'_c, since A' = U H U^dag and the eigenvalues of J_c are the
+ * cluster's). Storing J lets a caller recompute that residual on H directly
+ * without re-deriving J from a Rayleigh quotient. */
+typedef struct {
+    acb_t lambda;     /* certified eigenvalue ball (imag part asserted to contain 0) */
+    acb_mat_t X;      /* n x k certified invariant-subspace enclosure (A X subset span(X)) */
+    acb_mat_t J;      /* k x k Rump interval matrix; spec(J) = the cluster eigenvalues */
+    slong k;          /* multiplicity (cluster size) */
+} aic_mat_eigcluster;
+
+/* Certified eigenvalue + INVARIANT-SUBSPACE decomposition of a Hermitian H,
+ * degeneracy-robust via dense-unitary densification + per-cluster Rump
+ * (acb_mat_eig_enclosure_rump). Resolves the §D5n two-clusters-each->=2 wall
+ * (FINDINGS §D5n RESOLVED; design §1.2/§2). ALGORITHM: densify A' = U H U^dag
+ * (U = aic_mat_dense_unitary; assert ||U U^dag - I|| certified tiny); double-path
+ * zheev seed on midpoint(A') for ascending evals + orthonormal eigenvectors;
+ * gap-cluster the evals (gap_thr; pass <= 0 for the default, §1.5); per cluster
+ * run Rump on A' with the cluster's seed columns, back-map X_c = U^dag X'_c.
+ * *clusters is allocated HERE to *n_clusters entries (each lambda/X/J init'd),
+ * sorted ascending by eigenvalue; free with aic_mat_eigcluster_free. ASSERTS
+ * (Rule 4): Hermiticity; densifier certified unitary; every per-cluster Rump
+ * enclosure FINITE (else "clusters unresolved at prec" — raise prec); imag(lambda)
+ * contains 0; cross-cluster lambda balls DISJOINT (!acb_overlaps, else "clusters
+ * overlap at prec"); Sum k_c == n. */
+void aic_mat_eig_hermitian_subspaces(aic_mat_eigcluster **clusters,
+                                     slong *n_clusters, const acb_mat_t H,
+                                     double gap_thr, slong prec);
+
+/* Free a cluster array returned by aic_mat_eig_hermitian_subspaces (clears each
+ * lambda/X/J then frees the array). No-op on (NULL, 0). */
+void aic_mat_eigcluster_free(aic_mat_eigcluster *clusters, slong n_clusters);
+
+/* Orthogonal projector Pi = X (X^dag X)^-1 X^dag onto a certified invariant
+ * subspace (the cluster's range), design §1.4. `out` must be initialised
+ * n x n (n = nrows(cl->X)). ASSERTS (Rule 4) X^dag X is certified-invertible
+ * (acb_mat_inv != 0) — fail loud if the subspace enclosure is rank-deficient at
+ * this prec. The result is certified self-adjoint and idempotent to the ball
+ * radius (measured ||Pi^2-Pi||, ||Pi-Pi^dag|| ~ 1e-31 at prec=128, design §2.2). */
+void aic_mat_cluster_projector(acb_mat_t out, const aic_mat_eigcluster *cl,
+                               slong prec);
+
 /* Singular values of a general m x n matrix A, as sqrt of the eigenvalues of the
  * smaller Gram matrix (A^dag A if n<=m, else A A^dag), in DESCENDING order.
  *   svals : caller-allocated arb_t[min(m,n)], the singular values.

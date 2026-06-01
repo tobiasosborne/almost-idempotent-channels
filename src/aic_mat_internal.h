@@ -7,8 +7,12 @@
 #ifndef AIC_MAT_INTERNAL_H
 #define AIC_MAT_INTERNAL_H
 
+#include <complex.h>
+
 #include <flint/acb_mat.h>
 #include <flint/arb.h>
+
+#include "aic/aic_mat.h"      /* aic_mat_eigcluster (subspace helpers below) */
 
 /* prec-appropriate absolute tol = 2^-(prec - 8); the 8-bit guard leaves headroom
  * so a faithfully-rounded Hermitian input (radii ~2^-prec) is not rejected. */
@@ -44,5 +48,27 @@ void aic_mat_int_eig_certified(acb_ptr E, acb_mat_t R, const acb_mat_t A,
  * between aic_mat_eig_multiple.c (eigenvalue retry) and aic_mat_eigvec.c
  * (subspace densify, increment-2 step C2). */
 void aic_mat_dense_unitary(acb_mat_t U, slong n, slong prec);
+
+/* Subspace-layer fail-loud helpers shared between aic_mat_eigvec.c (the
+ * orchestration) and aic_mat_eigvec_seed.c (the primitives), design
+ * docs/research/eigvec_certified_design.md §1.2/§1.6. NOT public.
+ *
+ * aic_mat_int_assert_densify_unitary: ABORT (Rule 4) unless ||U U^dag - I||_F is
+ * certified < 2^-(prec-8); guards the densify conjugation A' = U H U^dag (a loose
+ * U silently moves the spectrum). */
+void aic_mat_int_assert_densify_unitary(const acb_mat_t U, const acb_mat_t Ud,
+                                        slong n, slong prec);
+
+/* aic_mat_int_certify_cluster: certify one cluster [s0, s0+k) on the densified A'.
+ * Builds the Rump seed Xa from the zheev eigenvector columns Vd (n x n row-major
+ * double, column index = eigenvalue index) for the cluster, lambda_approx =
+ * mean(ev[s0..s0+k)), runs acb_mat_eig_enclosure_rump on A1, ASSERTS a FINITE +
+ * REAL enclosure (else fail loud "UNRESOLVED"/"non-real"), and back-maps
+ * X_c = Ud X'_c. Writes lambda/X/J/k into *out (all init'd here; free via
+ * aic_mat_eigcluster_free). cidx is the cluster index (for the abort message). */
+void aic_mat_int_certify_cluster(aic_mat_eigcluster *out, const acb_mat_t A1,
+                                 const acb_mat_t Ud, const double _Complex *Vd,
+                                 const double *ev, slong n, slong s0, slong k,
+                                 slong cidx, slong prec);
 
 #endif /* AIC_MAT_INTERNAL_H */

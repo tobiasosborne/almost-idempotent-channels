@@ -108,13 +108,18 @@ void aic_mat_eig_hermitian_multiple(acb_ptr E, const acb_mat_t H, slong prec)
         acb_mat_frobenius_norm(uu, T, prec);
         arb_t utol;
         arb_init(utol);
-        aic_mat_int_tol(utol, prec);        /* 2^-(prec-8): a generous floor */
+        /* Tolerance n^2 * 2^-(prec-8): the densifier chains n(n-1)/2 Givens, so
+         * the certified ||U U†-I||_F radius accumulates ~ n^2 * 2^-prec and the
+         * bare floor is exceeded for n >= 6 (a latent fail-loud on legitimate
+         * inputs). FINDINGS §D5n2; mirrors aic_mat_eigvec_seed.c. */
+        aic_mat_int_tol(utol, prec);
+        arb_mul_si(utol, utol, n * n, prec);
         if (!arb_lt(uu, utol)) {
             char *uu_s = arb_get_str(uu, 8, 0);
             fprintf(stderr,
                     "aic_mat_eig_hermitian_multiple: densifier U not certified "
-                    "unitary (||U U†-I||_F=%s not < 2^-(prec-8)) at prec=%ld — "
-                    "the conjugation would not preserve the spectrum; bead "
+                    "unitary (||U U†-I||_F=%s not < n^2*2^-(prec-8)) at prec=%ld "
+                    "— the conjugation would not preserve the spectrum; bead "
                     "aic-4td\n",
                     uu_s ? uu_s : "?", (long) prec);
             flint_free(uu_s);
