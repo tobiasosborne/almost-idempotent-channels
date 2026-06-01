@@ -635,6 +635,15 @@ static void test_fam2a_depol_boundary(void)
         lo[it] = arf_get_d(arb_midref(lob), ARF_RND_NEAR);
         hi[it] = arf_get_d(arb_midref(hib), ARF_RND_NEAR);
         AIC_CHECK_MSG(lo[it] > 0.0, "fam2A p=%.2f: lo=%.3e not > 0", ps[it], lo[it]);
+        /* (2) ABSOLUTE-COEFFICIENT pin: lo = ||J||_F/d with ||J||_F =
+         * p(1-p)*||Choi(C)||_F and ||Choi(C)||_F = sqrt(d^2-1) (C self-adjoint,
+         * superoperator spectrum {0, -1 (x)(d^2-1)} => HS norm sqrt(d^2-1)), so
+         * lo = p(1-p)*sqrt(d^2-1)/d EXACTLY (= p(1-p)*sqrt(3)/2 at d=2). Pins the
+         * SCALE ||Choi(C)||_F, not just the ratio: a wrong defect family
+         * id-p(1-p)C' with a different C' passes the ratio/symmetry checks (d=4
+         * would give coeff sqrt(15)/4=0.968, not 0.866) but fails THIS one. */
+        double coeff = sqrt((double) (d * d - 1)) / (double) d;
+        check_ball_eq(lob, ps[it] * (1.0 - ps[it]) * coeff, 1e-9);
         aic_ucp_kraus_clear(&phi);
     }
 
