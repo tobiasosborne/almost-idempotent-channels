@@ -17,6 +17,22 @@
  *     projector == P (||Pi_M - P||_op < 1e-25), trace(Pi_M)=r, the lambda~0
  *     cluster projector = I - P; the depolarizing Choi (1/d)I_{d^2} -> ONE
  *     cluster, k=d^2, Pi_M = I.
+ *  S6 (rung 2/3, the carrier cross-checks) for the certified carrier RANGE
+ *     projector aic_ucp_carrier_projector (bead aic-4td inc.2 step E,
+ *     .tex:1724 lem_carrier): build Q = rank-r orthogonal projector in C^dimK
+ *     (degenerate r, dimK-r split). Assert round(Tr Pi_M) ==
+ *     aic_ucp_carrier_rank(Q) == aic_ucp_carrier_rank_latd(Q) == r (the
+ *     certified projector trace equals the certified rank equals the double
+ *     rank); ||Pi_M Q - Q||_op < 1e-20 (Q supported on its range M); and the
+ *     cor_carrier annihilate defect ||(I - Pi_M) Q||_op == 0 (Ker(I-Pi_M) ⊇ M).
+ *     eta=0 oracle: for an orthogonal projector Q, Pi_M == Q (||Pi_M - Q||_op <
+ *     1e-25); for a full-rank Q=I, Pi_M = I. The STRADDLE fail-loud tooth lives
+ *     in S6b under the watchdog: a rank-deficient Q at prec=53 has a zero
+ *     cluster of radius ~5e-14 that straddles thr ~3e-15 (FINDINGS §D7) ->
+ *     aic_ucp_carrier_projector aborts ("STRADDLES"). Mutations (mutation-proven
+ *     during impl): (i) sum the clusters BELOW thr instead of above -> trace !=
+ *     r (RED); (ii) drop the straddle abort -> the prec=53 straddle silently
+ *     returns a wrong projector instead of aborting (RED).
  *  S7 (Rule 4, fork watchdog) the fail-loud teeth. MEASURED REALITY (probes,
  *     this session; FINDINGS §D5n2): for a near-degenerate spectrum, Rump's
  *     certificate SELF-ISOLATES — whenever both per-cluster enclosures are
@@ -54,6 +70,7 @@
 #include <flint/arb.h>
 
 #include "aic/aic_mat.h"
+#include "aic/aic_ucp.h"
 #include "aic_test.h"
 
 #define EV_PREC 128
@@ -368,6 +385,111 @@ static void test_s2_oracle(void)
     acb_mat_clear(C);
 }
 
+/* --- S6: certified carrier RANGE projector cross-checks --------------------- */
+/* ||A||_op as a double upper bound (a plain norm, for the annihilate defect). */
+static double s6_opnorm(const acb_mat_t A)
+{
+    arb_t nr;
+    arb_init(nr);
+    aic_mat_opnorm(nr, A, EV_PREC);
+    double ub = arf_get_d(arb_midref(nr), ARF_RND_UP) + mag_get_d(arb_radref(nr));
+    arb_clear(nr);
+    return ub;
+}
+
+/* trace(Pi)'s real part as a double upper bound on |Tr - round(Tr)|. */
+static slong s6_round_trace(const acb_mat_t Pi)
+{
+    acb_t tr;
+    acb_init(tr);
+    acb_mat_trace(tr, Pi, EV_PREC);
+    arb_t re;
+    arb_init(re);
+    acb_get_real(re, tr);
+    double mid = arf_get_d(arb_midref(re), ARF_RND_NEAR);
+    arb_clear(re);
+    acb_clear(tr);
+    return (slong) llround(mid);
+}
+
+static void test_s6_carrier_projector(void)
+{
+    printf("S6: certified carrier RANGE projector (lem_carrier .tex:1724)\n");
+
+    /* (a) rank-r projector carrier Q in C^dimK with a DEGENERATE r,dimK-r split.
+     * round(Tr Pi_M) == certified rank == double rank == r; ||Pi_M Q - Q||==0;
+     * the cor_carrier annihilate defect with X = I - Pi_M is 0. */
+    const slong dimK = 6, r = 4;       /* degenerate {0 mult 2, 1 mult 4} */
+    acb_mat_t Q, Pi;
+    acb_mat_init(Q, dimK, dimK);
+    acb_mat_init(Pi, dimK, dimK);
+    build_projector(Q, dimK, r, EV_PREC);
+    aic_ucp_carrier_projector(Pi, Q, dimK, EV_PREC);
+
+    slong tr = s6_round_trace(Pi);
+    slong rk_cert = aic_ucp_carrier_rank(Q, dimK, EV_PREC);
+    slong rk_dbl = aic_ucp_carrier_rank_latd(Q, dimK);
+    AIC_CHECK_MSG(tr == r, "(a) round(Tr Pi_M)=%ld != r=%ld", (long) tr, (long) r);
+    AIC_CHECK_MSG(rk_cert == r, "(a) certified rank %ld != r=%ld",
+                  (long) rk_cert, (long) r);
+    AIC_CHECK_MSG(rk_dbl == r, "(a) double rank %ld != r=%ld",
+                  (long) rk_dbl, (long) r);
+    AIC_CHECK_MSG(tr == rk_cert && rk_cert == rk_dbl,
+                  "(a) trace/certified/double disagree: %ld %ld %ld",
+                  (long) tr, (long) rk_cert, (long) rk_dbl);
+
+    /* ||Pi_M Q - Q||_op: Q supported on range M, so Pi_M acts as identity. */
+    acb_mat_t PiQ;
+    acb_mat_init(PiQ, dimK, dimK);
+    acb_mat_mul(PiQ, Pi, Q, EV_PREC);
+    double pq = s2_opdiff(PiQ, Q);
+    AIC_CHECK_MSG(pq < 1e-20, "(a) ||Pi_M Q - Q||_op = %.3e not < 1e-20", pq);
+
+    /* cor_carrier annihilate defect with X = I - Pi_M: ||(I-Pi_M) Q||_op == 0
+     * (Ker(I-Pi_M) = range(Pi_M) ⊇ M = range(Q)). */
+    acb_mat_t ImPi, ImQ;
+    acb_mat_init(ImPi, dimK, dimK);
+    acb_mat_init(ImQ, dimK, dimK);
+    acb_mat_one(ImPi);
+    acb_mat_sub(ImPi, ImPi, Pi, EV_PREC);   /* I - Pi_M */
+    acb_mat_mul(ImQ, ImPi, Q, EV_PREC);     /* (I - Pi_M) Q */
+    double ann = s6_opnorm(ImQ);
+    AIC_CHECK_MSG(ann < 1e-20, "(a) ||(I-Pi_M) Q||_op = %.3e not < 1e-20", ann);
+
+    /* eta=0 oracle: Q is itself an orthogonal projector, so Pi_M == Q exactly. */
+    double oracle = s2_opdiff(Pi, Q);
+    AIC_CHECK_MSG(oracle < 1e-25, "(a) eta=0: ||Pi_M - Q||_op = %.3e not < 1e-25",
+                  oracle);
+    printf("  (a) rank-%ld proj C^%ld: Tr=%ld cert=%ld dbl=%ld ||Pi_M Q-Q||=%.3e "
+           "||(I-Pi_M)Q||=%.3e ||Pi_M-Q||=%.3e\n",
+           (long) r, (long) dimK, (long) tr, (long) rk_cert, (long) rk_dbl,
+           pq, ann, oracle);
+
+    acb_mat_clear(ImQ);
+    acb_mat_clear(ImPi);
+    acb_mat_clear(PiQ);
+    acb_mat_clear(Pi);
+    acb_mat_clear(Q);
+
+    /* (b) full-rank Q = I -> Pi_M = I (every cluster above thr). */
+    const slong d = 4;
+    acb_mat_t Id, PiI;
+    acb_mat_init(Id, d, d);
+    acb_mat_init(PiI, d, d);
+    acb_mat_one(Id);
+    aic_ucp_carrier_projector(PiI, Id, d, EV_PREC);
+    double di = s2_opdiff(PiI, Id);
+    AIC_CHECK_MSG(di < 1e-25, "(b) full-rank Q=I: ||Pi_M - I||_op = %.3e not < 1e-25",
+                  di);
+    slong trI = s6_round_trace(PiI);
+    AIC_CHECK_MSG(trI == d, "(b) full-rank Q=I: Tr Pi_M = %ld != %ld",
+                  (long) trI, (long) d);
+    printf("  (b) full-rank Q=I_%ld: ||Pi_M - I||=%.3e Tr=%ld\n",
+           (long) d, di, (long) trI);
+    acb_mat_clear(PiI);
+    acb_mat_clear(Id);
+}
+
 /* --- the fork+SIGALRM watchdog (pattern from test_eigmult.c) ---------------- */
 #define EV_WATCH_S 20
 typedef void (*ev_child_fn)(void);
@@ -482,10 +604,42 @@ static void test_s7c_unresolved_failloud(void)
                        "UNRESOLVED");
 }
 
+/* --- S6b: the carrier-projector STRADDLE tooth must FAIL LOUD --------------- */
+/* A rank-deficient projector carrier Q at prec=53: the densify+Rump zero cluster
+ * has certified radius ~5e-14 (FINDINGS §D7, the same conditioning as the
+ * certified Choi->Kraus), which STRADDLES thr = dimK*2^-52*||Q||_F ~3e-15. The
+ * in-range/in-kernel decision is undecided -> aic_ucp_carrier_projector aborts
+ * ("STRADDLES"), mirroring aic_mat_certified_rank's straddle. This is the natural
+ * prec floor, not a synthetic eigenvalue-on-thr fixture. Mutation (during impl):
+ * dropping the straddle abort makes this prec=53 case silently return a wrong
+ * projector instead of aborting (child exit 0 -> RED). */
+#define S6B_PREC 53
+static void child_carrier_straddle(void)
+{
+    const slong dimK = 6, r = 4;
+    acb_mat_t Q, Pi;
+    acb_mat_init(Q, dimK, dimK);
+    acb_mat_init(Pi, dimK, dimK);
+    build_projector(Q, dimK, r, S6B_PREC);
+    aic_ucp_carrier_projector(Pi, Q, dimK, S6B_PREC);   /* must abort */
+    acb_mat_clear(Pi);
+    acb_mat_clear(Q);
+}
+
+static void test_s6b_straddle_failloud(void)
+{
+    printf("S6b: a rank-deficient carrier at prec=53 (zero cluster straddles thr, "
+           "FINDINGS §D7) must FAIL LOUD\n");
+    ev_assert_failloud(child_carrier_straddle,
+                       "aic_ucp_carrier_projector(straddle@prec=53)", "STRADDLES");
+}
+
 int main(void)
 {
     test_s1_residual();
     test_s2_oracle();
+    test_s6_carrier_projector();
+    test_s6b_straddle_failloud();
     test_s7c_unresolved_failloud();
     aic_test_report("test_eigvec");
     printf("OK test_eigvec\n");

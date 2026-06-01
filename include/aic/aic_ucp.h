@@ -297,6 +297,27 @@ void aic_ucp_choi_to_kraus_arb_tol(aic_ucp_kraus *phi, const acb_mat_t C,
  * gap is unresolved at `prec` (a carrier eigenvalue ball straddles thr). */
 slong aic_ucp_carrier_rank(const acb_mat_t Q, slong dim_K, slong prec);
 
+/* Certified RANGE (support) projector Pi_M of the Hermitian PSD carrier
+ * Q = sum_a K_a K_a^dag (lem_carrier, .tex:1724; design
+ * docs/research/eigvec_certified_design.md §3.3): the orthogonal projector onto
+ * range(Q) = the carrier M. ROUTE: aic_mat_eig_hermitian_subspaces gives the
+ * certified eigen-clusters of Q; Pi_M is the SUM of the cluster projectors
+ * (aic_mat_cluster_projector) over the clusters whose eigenvalue is certified
+ * ABOVE thr = dim_K * 2^-52 * ||Q||_F — the SAME arb-ball threshold as
+ * aic_ucp_carrier_rank, so trace(Pi_M) == aic_ucp_carrier_rank(Q) (a test
+ * asserts it). The certified counterpart of the double-path rank
+ * (aic_ucp_carrier_rank_latd): it gives the PROJECTOR, not just the dimension.
+ * `out` must be initialised dim_K x dim_K. ASSERTS (Rule 4): no Q-eigenvalue
+ * cluster STRADDLES thr (each cluster certified-above OR certified-below; a
+ * straddle means the range is unresolved at `prec` -> abort, mirroring
+ * aic_mat_certified_rank). Cross-checks (test_eigvec S6): trace(Pi_M) == the
+ * certified rank == the double rank; Pi_M Q == Q (Q supported on M); (I - Pi_M)
+ * annihilates the carrier (||(I - Pi_M) Q||_op == 0). NOTE: the rank-deficient
+ * carrier's ZERO cluster needs prec >= 64 to clear thr (FINDINGS §D7); run at
+ * prec=128 for headroom. */
+void aic_ucp_carrier_projector(acb_mat_t out, const acb_mat_t Q, slong dim_K,
+                               slong prec);
+
 #ifdef __cplusplus
 }
 #endif

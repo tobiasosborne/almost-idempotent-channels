@@ -26,8 +26,11 @@
  *    This routine returns ||Phi(X) - Phi(Pi_M X Pi_M)||_op (0 up to rounding).
  *
  * Precision: Q and the defects are O(1) differences; prec=53 resolves them to
- * ~1e-15. The certified carrier RANK is gap-dependent (bead aic-w4o.1) and is
- * NOT attempted here.
+ * ~1e-15. The certified carrier RANK (aic_ucp_carrier_rank, bead aic-w4o.1) is
+ * gap-dependent: the rank-deficient carrier's ZERO cluster needs prec >= 64 to
+ * clear thr (FINDINGS §D7); run at prec=128. The certified RANGE PROJECTOR Pi_M
+ * (aic_ucp_carrier_projector, bead aic-4td inc.2 step E) is the sibling
+ * aic_ucp_carrier_proj.c (Rule 10, ~200 LOC/file).
  */
 #include <assert.h>
 
