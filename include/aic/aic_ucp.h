@@ -242,6 +242,14 @@ void aic_ucp_choi_to_kraus_latd_tol(aic_ucp_kraus *phi, const acb_mat_t C,
  * dim_K x dim_K carrier operator from aic_ucp_carrier_Q. */
 slong aic_ucp_carrier_rank_latd(const acb_mat_t Q, slong dim_K);
 
+/* Certified carrier rank: rank of the Hermitian PSD carrier Q = sum_a K_a K_a^dag
+ * via aic_mat_certified_rank with thr = dim_K * eps_mach * ||Q||_F (an arb ball,
+ * matching the double-path aic_ucp_carrier_rank_latd threshold; eps_mach =
+ * DBL_EPSILON = 2^-52). The certified counterpart that retires the aic-w4o.1 /
+ * FINDINGS §D5 deferral for the carrier dimension. ABORTS (Rule 4) if the rank
+ * gap is unresolved at `prec` (a carrier eigenvalue ball straddles thr). */
+slong aic_ucp_carrier_rank(const acb_mat_t Q, slong dim_K, slong prec);
+
 #ifdef __cplusplus
 }
 #endif

@@ -121,3 +121,31 @@ void aic_ucp_phiX_M_defect(arb_t out, const aic_ucp_kraus *phi,
     acb_mat_clear(comp);
     acb_mat_clear(PiX);
 }
+
+/* Certified carrier rank (bead aic-w4o.1, FINDINGS §D5): the rank of the
+ * Hermitian PSD carrier Q = sum_a K_a K_a^dag, via aic_mat_certified_rank with
+ * threshold thr = dim_K * eps_mach * ||Q||_F (an arb ball), MATCHING the
+ * double-path aic_ucp_carrier_rank_latd gate so the two agree. eps_mach =
+ * DBL_EPSILON = 2^-52. The certified counterpart that retires the §D5 deferral
+ * for the carrier dimension. ABORTS (Rule 4, inside aic_mat_certified_rank) if a
+ * carrier eigenvalue straddles thr (the rank gap is unresolved at `prec`). */
+slong aic_ucp_carrier_rank(const acb_mat_t Q, slong dim_K, slong prec)
+{
+    assert(acb_mat_nrows(Q) == dim_K && acb_mat_ncols(Q) == dim_K &&
+           "aic_ucp_carrier_rank: Q must be dim_K x dim_K");
+
+    /* thr = dim_K * 2^-52 * ||Q||_F as an arb ball (honest radius from the
+     * certified Frobenius norm; the dim_K * 2^-52 factor is exact dyadic). */
+    arb_t fro, thr;
+    arb_init(fro);
+    arb_init(thr);
+    aic_mat_frobenius_norm(fro, Q, prec);     /* certified ||Q||_F */
+    arb_mul_si(thr, fro, dim_K, prec);        /* dim_K * ||Q||_F */
+    arb_mul_2exp_si(thr, thr, -52);           /* * 2^-52 = DBL_EPSILON */
+
+    slong rank = aic_mat_certified_rank(Q, thr, prec);
+
+    arb_clear(thr);
+    arb_clear(fro);
+    return rank;
+}

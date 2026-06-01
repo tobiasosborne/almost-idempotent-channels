@@ -114,6 +114,28 @@ void aic_mat_opnorm(arb_t out, const acb_mat_t A, slong prec);
 void aic_mat_eig_hermitian(arb_ptr evals, acb_mat_t evecs,
                            const acb_mat_t H, slong prec);
 
+/* Certified eigenvalue enclosures for a HERMITIAN matrix with a possibly
+ * DEGENERATE spectrum. Degeneracy-robust counterpart to aic_mat_eig_hermitian
+ * (which REQUIRES a simple spectrum and aborts on any repeat). Route (bead
+ * aic-w4o.1, FINDINGS §D5): acb_mat_approx_eig_qr seed -> acb_mat_eig_multiple
+ * (Rump cluster enclosures, degeneracy-native). E (caller-allocated acb_ptr of
+ * length n = nrows(H)) receives n certified eigenvalue balls, GROUPED: a run of
+ * k identical balls is a certified k-cluster (could not be split at this prec
+ * but is isolated from the other n-k eigenvalues). ABORTS (Rule 4) if
+ * acb_mat_eig_multiple returns 0 (clusters unresolved -> message to raise prec).
+ * Asserts each ball's imaginary part encloses 0 (Hermitian => real spectrum). */
+void aic_mat_eig_hermitian_multiple(acb_ptr E, const acb_mat_t H, slong prec);
+
+/* Certified numerical rank of a Hermitian matrix H relative to threshold thr
+ * (an arb ball): the count of eigenvalues certified ABOVE thr. Every eigenvalue
+ * ball must be certified-above (arb_gt) or certified-below (arb_lt) thr; if any
+ * ball STRADDLES thr the rank is unresolved at this prec and the routine ABORTS
+ * (Rule 4) with a clear message (raise prec / move thr out of the cluster).
+ * Degeneracy-robust: delegates to aic_mat_eig_hermitian_multiple. This is the
+ * certified counterpart to the LAPACK double-path count in
+ * aic_ucp_carrier_rank_latd (bead aic-w4o.1). */
+slong aic_mat_certified_rank(const acb_mat_t H, const arb_t thr, slong prec);
+
 /* Singular values of a general m x n matrix A, as sqrt of the eigenvalues of the
  * smaller Gram matrix (A^dag A if n<=m, else A A^dag), in DESCENDING order.
  *   svals : caller-allocated arb_t[min(m,n)], the singular values.

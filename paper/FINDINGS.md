@@ -874,12 +874,46 @@ with the concrete evidence from where they bit.
   is a LOWER bound).
 
 ### D5. The certified degenerate-eigenvalue wall (`aic-w4o.1`)
-- **Status:** OPEN (the recurring deferral). FLINT's certified eig needs a *simple*
-  spectrum; the project's spectra are degenerate (projections 0/1, `⊕B(L_j)`). So
-  certified **rank/subspace extraction** (corner `dim S`, idemp/assoc subspaces,
-  projection gap *enclosure*) uses the LAPACK double path now and defers
-  certification to aic-w4o.1 (Rump cluster enclosures / eig-free Cholesky). The
-  *defects* that avoid full eig are already arb-certified.
+- **Status:** PARTIALLY RETIRED (aic-w4o.1 increment 1, 2026-06-01). FLINT's certified
+  *simple-spectrum* eig (`acb_mat_eig_simple`) needs distinct eigenvalues; the project's
+  spectra are degenerate (projections 0/1, `⊕B(L_j)`). The degeneracy-robust
+  **eigenvalue + numerical-rank layer** now exists on the certified arb path:
+  `aic_mat_eig_hermitian_multiple` (seed `acb_mat_approx_eig_qr` → `acb_mat_eig_multiple`
+  Rump cluster enclosures) and `aic_mat_certified_rank` / `aic_ucp_carrier_rank`
+  (`src/aic_mat_eig_multiple.c`, `src/aic_ucp_carrier.c`; `tests/test_eigmult.c`). The
+  **certified carrier dimension** is therefore no longer double-path-only. STILL OPEN:
+  certified *subspace/eigenvector* extraction for degenerate clusters (corner `dim S`,
+  idemp/assoc invariant subspaces) — increment 2 (`aic-w4o.2`). Eig-free Cholesky (Route 2)
+  is a FLINT-3.x dead end (no `acb_mat_cho`; `arb_mat_cho/ldl` need strict PD, return 0 on
+  the semidefinite Choi); Route 1 (Rump) is the only degeneracy-native route with all
+  primitives present.
+
+### D5n. `acb_mat_eig_multiple` is SEED-CONDITIONING-limited on multi-cluster degeneracy (`aic-w4o.1`)
+- **Status:** OPEN limitation, documented + guarded (fail-loud). Surfaced building the
+  `aic_mat_eig_hermitian_multiple` cross-checks (2026-06-01).
+- **What:** FLINT's `acb_mat_eig_multiple` (Rump invariant-subspace enclosures) certifies a
+  degenerate Hermitian spectrum only when the `acb_mat_approx_eig_qr` SEED gives
+  well-separated cluster eigenvectors. It **returns 0** — and we then fail loud (Rule 4) —
+  when **two clusters each have multiplicity ≥ 2** AND the seed's per-eigenvector
+  approximations within a cluster are near-parallel. Measured on exact projectors
+  `P = Q diag(1_r,0) Q†` at prec=128: an **axis-aligned** degenerate diagonal fails outright
+  (any repeat); a **dense Givens-CHAIN** conjugation of `{2,2}`/`{3,2}`/… fails *even at
+  prec=256* (NOT a precision limit — a conditioning limit); **DISJOINT** Givens (one 1-axis
+  paired with one 0-axis per plane) keeps the cluster eigenbases clean and the same spectra
+  certify at prec=128. Single-cluster fully-degenerate inputs (e.g. depolarizing `(1/d)I_{d²}`)
+  always certify (Rump handles the whole space). A `{n−1,1}`/`{1,n−1}` split also certifies
+  (the multiplicity-1 cluster anchors). The remaining failures: disjoint pairing still leaves
+  an unpaired aligned axis in the LARGER cluster when `r < n−r` and `n` is odd-ish
+  (e.g. C^5 r=2 `{2,3}`, C^6 r=2 `{2,4}` → 0), which is exactly the §D5n boundary.
+- **Where it bites the tests:** `tests/test_eigmult.c` uses DISJOINT-Givens projectors and a
+  4×4 `{2,2}`/`{3,1}` rank sweep + the depolarizing single cluster (all certify); `T5`
+  deliberately feeds the C^5 `{2,3}` boundary fixture and asserts the routine FAILS LOUD with
+  "clusters unresolved" (NOT a silent miscount). The abort message names the seed-conditioning
+  cause and warns that raising prec may not help.
+- **Route forward (increment 2 / `aic-w4o.2`):** improve the seed before Rump (re-orthonormalise
+  the per-cluster approximate eigenvectors; or a gap-based deflation that hands Rump a clean
+  invariant-subspace basis), or a projector-deflation route. Until then the layer is sound
+  (fail-loud, never wrong) and covers the well-conditioned degenerate inputs the project hits.
 
 ### D6. `factorize` F4.2 — the diamond-norm DUAL SDP stalls (SLOW_PROGRESS) at n≥6 in Convex.jl
 - **Status:** OPEN, DEFERRED to v0.2 (bead `aic-bag`). Surfaced 2026-05-31 building the

@@ -1,5 +1,41 @@
 # HANDOFF.md — almost-idempotent-channels
 
+## ▶▶ LATEST (2026-06-01b, orchestrated, laptop): aic-w4o.1 increment 1 LANDED — certified degenerate-Hermitian eig + rank
+
+**State:** master green, increment 1 committed + pushed. `ctest -L fast` 15/15 (~2.2s);
+`test_eigmult` new (`fast`, 0.55s, 21 checks). Session was wound up by user directive AFTER
+increment 1 (a clean self-contained stopping point), BEFORE the full Rule-9 hostile review.
+
+**What landed (the certified-arb path's foundational degenerate-eig wall, FINDINGS §D5):**
+- `src/aic_mat_eig_multiple.c` (NEW, 151 LOC): `aic_mat_eig_hermitian_multiple` (certified
+  eigenvalue balls for a DEGENERATE Hermitian spectrum — the degeneracy-robust counterpart to
+  the simple-spectrum `aic_mat_eig_hermitian`) + `aic_mat_certified_rank` (count-above-thr with
+  a CERTIFIED gap; `arb_gt`/`arb_lt`, fail-loud straddle).
+- `aic_ucp_carrier_rank` (NEW, in `src/aic_ucp_carrier.c`): the certified counterpart to the
+  double-path `aic_ucp_carrier_rank_latd` (thr = `dim_K·2^-52·‖Q‖_F` as an arb ball). **Retires
+  the most-cited §D5 deferral (carrier dimension is now certified).**
+- `tests/test_eigmult.c` (NEW): T1 double-vs-arb (worst ball radius 2.9e-37 @prec=128), T2 η=0
+  oracle (projector ranks exact; depolarizing `(1/d)I_{d²}` single cluster), T3 certified-vs-double
+  carrier rank, T4/T5 fail-loud teeth under the fork+SIGALRM watchdog. 3 mutations RED→GREEN.
+
+**THE AUDITION RESULT (Law 4, record it):** Route 1 (Rump cluster enclosures via
+`acb_mat_approx_eig_qr`→`acb_mat_eig_multiple`) CHOSEN. **Route 2 (eig-free pivoted Cholesky) is a
+FLINT-3.x DEAD END** — no `acb_mat_cho`; `arb_mat_cho`/`arb_mat_ldl` are SPD-only (return 0 on the
+semidefinite Choi/carrier). Route 3 (inertia) needs the same primitive, no better.
+
+**⚠ KEY LIMITATION (FINDINGS §D5n, guarded fail-loud):** `acb_mat_eig_multiple` is
+SEED-CONDITIONING-limited, NOT precision-limited: when TWO clusters EACH have multiplicity ≥2 and
+the QR seed gives near-parallel cluster eigenvectors, it returns 0 (fails) EVEN at prec=256. The
+routine is sound (never wrong — certifies or fails loud), but the project's `⊕B(L_j)` block
+algebras hit exactly this boundary, so increment 2 MUST fix the seed (per-cluster
+re-orthonormalise / gap-deflation) before certified Kraus extraction works on all real inputs.
+
+**▶ NEXT = `aic-4td` (P1):** (1) the DEFERRED full Rule-9 hostile review of increment 1; (2)
+increment 2 proper — certified invariant-subspace via `acb_mat_eig_enclosure_rump` per cluster →
+certified `aic_ucp_choi_to_kraus_arb` + carrier subspace split; (3) the §D5n seed fix. Slow suite
+(arb/MOSEK ~8min) NOT re-run this session — increment 1 only ADDS code (no existing path changed),
+fast gate + clean build is the evidence; re-run full `ctest` next session to reconfirm.
+
 ## ▶▶ NEXT AGENT — START HERE (2026-06-01)
 
 **State:** master is FULLY GREEN — `ctest --test-dir build` (32 fast/slow tests) all pass;
