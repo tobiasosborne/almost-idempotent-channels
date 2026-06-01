@@ -80,6 +80,53 @@ void aic_latd_to_acb_mat(acb_mat_t out, const double _Complex *in,
 void aic_latd_eig_hermitian(double *evals, double _Complex *evecs,
                             const double _Complex *H_arr, slong n);
 
+/* --- general (non-Hermitian) eigendecomposition via LAPACKE_zgeev --- */
+
+/* Eigenvalues (and optionally right eigenvectors) of a GENERAL n x n complex
+ * matrix A, double path. UNCERTIFIED and ILL-CONDITIONED for non-normal A:
+ * unlike the Hermitian zheev path, a non-normal spectrum is perturbation-
+ * sensitive (CLAUDE.md "Spectra are perturbation-sensitive" callout; the
+ * paper's tex:540 t^{1/3} example), so for a non-normal A the returned
+ * eigenvalues can lose many digits. This is the FAST/uncertified double path;
+ * certified eigenvalue ENCLOSURES are a separate concern (bead aic-w4o.1, the
+ * arb acb_mat_eig_* path). Use this only where the spectrum is well conditioned
+ * (Hermitian/normal A) or where a fast uncertified estimate is acceptable.
+ *   A_arr : row-major n*n input. NOT destroyed (a local copy is made).
+ *   evals : caller-allocated double _Complex[n], the n eigenvalues in zgeev's
+ *           NATIVE order — UNSORTED, and (for repeated/clustered eigenvalues) in
+ *           no guaranteed relation to evecs' columns beyond the index pairing
+ *           below. Compare as a SET (sort), never by position.
+ *   evecs : if non-NULL, caller-allocated row-major n*n; column k
+ *           (evecs[i*n + k]) is a right eigenvector for evals[k]:
+ *           A v_k = evals[k] v_k. Each column is normalized to Euclidean norm 1
+ *           with its largest component real (LAPACK's zgeev convention). If
+ *           NULL, jobvr='N' (eigenvalues only, faster).
+ * Asserts n >= 1 and the LAPACKE info == 0 (fail loud). */
+void aic_latd_eig_general(double _Complex *evals, double _Complex *evecs,
+                          const double _Complex *A_arr, slong n);
+
+/* --- spectral-gap helpers (for the projection split / sgn distance) --- */
+
+/* Distance from a point z to the spectrum {evals[i]}: min_i |evals[i] - z|.
+ * This is the quantity the funcalc/projection routes care about: sgn(X) is the
+ * functional calculus of the sign on the spectrum, undefined (ill-conditioned)
+ * when an eigenvalue sits on the imaginary axis, so the distance of the spectrum
+ * from a sign SPLIT POINT z (e.g. z = the projection threshold t, or z = 0 for
+ * sgn) measures how far inside the basin the construction sits. A LARGE gap to z
+ * is a well-separated split; a gap near 0 means an eigenvalue is essentially ON
+ * the split point and the projector/sign is ill-defined there. evals as returned
+ * by aic_latd_eig_general (n entries, n >= 1). */
+double aic_latd_spectral_gap(const double _Complex *evals, slong n,
+                             double _Complex z);
+
+/* Minimum pairwise separation of the spectrum: min_{i<j} |evals[i] - evals[j]|
+ * (returns +infinity for n < 2 — no pair). This is the DEGENERACY detector: a
+ * value at/near 0 means a repeated (or numerically coalesced) eigenvalue, which
+ * is exactly the regime where the certified arb SIMPLE-eig path aborts (bead
+ * aic-w4o.1) and the LAPACK path is needed. It also gauges the conditioning of
+ * an eigenvector basis (tight clusters => ill-conditioned). O(n^2). */
+double aic_latd_spectral_separation(const double _Complex *evals, slong n);
+
 /* --- operator norm / SVD via LAPACKE_zgesvd --- */
 
 /* Operator norm = largest singular value of an m x n matrix A (row-major),
