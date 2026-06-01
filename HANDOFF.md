@@ -39,14 +39,17 @@ MOSEK dual fixture — legitimate: the F3 ucp fix changed v's Kraus representati
 η=0 oracle safeguards confirm v is sound), `aic-54y` (robustified the th_main `.tex:484`
 universality canary to an AND-gate = ratio>1.25 AND slope>0.28 — the m=3 1.2622 was a LONE n=10
 geometry outlier, slope 0.08 ≪ 0.36, so **th_main dimension-independence HOLDS**). **BOTH
-pre-existing master slow-suite reds are now CLEARED** (a full `ctest` confirmation was the last
-step). New beads filed: `aic-w9f` (visibility deferral), `aic-rcm` (test_errreduce 115s cost),
-the laptop clock-skew bug.
+pre-existing master slow-suite reds are now CLEARED — full `ctest` is 32/32 green.** Also
+shipped `aic-7hg` (NEW public physical-channel constructor library — dephasing/depolarizing/
+pauli/mix_unitaries/group_twirl/cond_expectation over `aic_ucp_kraus`, exported in libaic,
+include/aic/aic_channels.h; hostile-reviewed, which closed a dag-order test-blindness gap via
+a non-Hermitian-U cross-check). New beads filed: `aic-w9f` (visibility deferral), `aic-rcm`
+(test_errreduce 115s cost), the laptop clock-skew bug.
 
 **▶ NEXT (autonomous wave plan, laptop-tractable first):** Wave B capability modules
-(`aic-7hg` channel constructors — high value, also supplies diverse/out-of-regime fixtures the
-codebase currently lacks; `aic-xxk` ucp_power/compress, `aic-pvs` non-Herm eig zgeev, `aic-w4o.2`
-acb SVD) → Wave C consume the package (`aic-obc` Julia ccall now that CMake builds libaic.so,
+(`aic-xxk` ucp_power/compress, `aic-pvs` non-Herm eig zgeev, `aic-w4o.2` acb SVD; `aic-7hg`
+channel constructors DONE — the new `aic_channel_*` also supply the diverse/out-of-regime
+fixtures the codebase lacked) → Wave C consume the package (`aic-obc` Julia ccall now that CMake builds libaic.so,
 then `aic-95g.2` JLL / `.3` Python) → Wave D robustness/test-teeth → Wave E heavy-but-smart
 (`aic-bag` F4.2 on SMALL dims n=2-5 + dual reformulation) → Wave F research escalations
 (`aic-1bc` analytic c0, `aic-3qv` Ω(1)-gap, `aic-ynu` Artin-Wedderburn). Build/test:
