@@ -65,6 +65,7 @@
 #include <flint/arb.h>
 
 #include "aic_adversarial.h"
+#include "aic/aic_channels.h"
 #include "aic/aic_ucp.h"
 
 /* fam1B — cb-norm vs operator-norm gap (domain.md:75-123, tex:366-388). The
@@ -102,4 +103,61 @@ void aic_adv_chan_cb_op_gap(aic_ucp_kraus *out, slong d, double eta, slong prec)
      * gamma_1 = P_1, the rest pad with zero-defect idempotent blocks). */
     for (slong j = 1; j < d; j++)
         acb_set_si(acb_mat_entry(out->K[j], j, j), 1);
+}
+
+/* fam2A — depolarizing eta->1/4 regularization boundary (domain.md:196-245,
+ * "family 2A", tex:516-525 the theta(2Phi-1) basin rho(Phi^2-Phi) < 1/4). The
+ * cleanest tunable instance sitting AT the regularization basin edge: the
+ * standard depolarizing channel, whose eta-idempotence defect has an EXACTLY
+ * computable structure.
+ *
+ * THE EXACT DEFECT (the value the self-test pins; cite this). The unital
+ * depolarizing map (aic_channels.h) is
+ *   Phi_p(X) = (1-p) X + p (tr X / d) 1_d,    p in [0,1].
+ * Its square is Phi_p^2 = Phi_{p(2-p)} (aic_channels.h docstring), so the
+ * idempotence defect is
+ *   Phi_p^2 - Phi_p = (Phi_{p(2-p)} - Phi_p) = (p(2-p) - p) C0 = p(1-p) C,
+ *   where  C(X) = (tr X / d) 1_d - X     (i.e. Phi_q = id - q C, so
+ *   Phi_q - Phi_p = -(q-p) C, and q - p = p(2-p) - p = p(1-p)).
+ * C is the trace-orthogonal projector defect: as a SUPEROPERATOR it has
+ * eigenvalue 0 on X = 1_d (tr/d = 1, so C(1)=0) and eigenvalue -1 on each of the
+ * d^2-1 TRACELESS directions (tr X = 0 => C(X) = -X). Hence
+ *   - SPECTRAL RADIUS  rho(Phi_p^2 - Phi_p) = p(1-p),  d-INDEPENDENT,
+ *     maximized = 1/4 at p = 1/2  (EXACTLY the theta(2Phi-1) basin edge rho<1/4).
+ *   - cb-norm DEFECT  ||Phi_p^2 - Phi_p||_cb = p(1-p) ||C||_cb, ||C||_cb a fixed
+ *     constant of d only, so the defect scales EXACTLY LINEARLY in p(1-p). The
+ *     eig-free bracket inherits this exactly: ||J||_F = p(1-p) ||Choi(C)||_F,
+ *     so lo = ||J||_F / n = (||Choi(C)||_F / n) p(1-p)  (measured at d=2:
+ *     lo = (sqrt(3)/2) p(1-p) = 0.8660254 p(1-p), constant lo/[p(1-p)]).
+ *
+ * KNOB p in [0,1]; the basin boundary is approached as p -> 1/2 (rho = p(1-p)
+ * -> 1/4). The catalogue 2A sweep targets eta near 1/4: at d=2, p=0.789 gives
+ * rho ~= 0.167; p=1/2 gives rho = 1/4 the exact edge.
+ *
+ * eta=0 REDUCTION (exact-idempotent oracle, CLAUDE.md cross-check ladder #3).
+ * p=0 is the identity (Phi^2=Phi trivially); p=1 is the trace-replace
+ * conditional expectation onto C*1 (Phi_1^2 = Phi_{1*(2-1)} = Phi_1, exactly
+ * idempotent). Both give defect 0; the bracket collapses to [0, ~3e-16].
+ *
+ * Determinism: closed form inside aic_channel_depolarizing (sqrt of doubles). No
+ * RNG. `out` is aic_ucp_kraus_init'd by aic_channel_depolarizing (caller clears
+ * with aic_ucp_kraus_clear); this generator's VALUE is the named 2A instance +
+ * its certified defect properties, so it DELEGATES rather than reimplementing.
+ *
+ * Measured anchors (prec=256, d=2), asserted by tests/test_adversarial.c:
+ *   p=0.1: p(1-p)=0.09, bracket [0.077942, 0.311769]  (lo/q = 0.866025)
+ *   p=0.5: p(1-p)=0.25, bracket [0.216506, 0.866025]  (lo/q = 0.866025, MAX)
+ *   p=0.9: p(1-p)=0.09, bracket [0.077942, 0.311769]  (= p=0.1, symmetric)
+ *   p=0 and p=1: bracket [0, ~3e-16]  (exact idempotent)
+ */
+void aic_adv_chan_depol_boundary(aic_ucp_kraus *out, slong d, double p,
+                                 slong prec)
+{
+    assert(d >= 2 && "aic_adv_chan_depol_boundary: need d >= 2");
+    assert(p >= 0.0 && p <= 1.0 &&
+           "aic_adv_chan_depol_boundary: need 0 <= p <= 1");
+
+    /* The named 2A instance IS the standard depolarizing channel; delegate
+     * (it self-inits out, caller clears). Do not reimplement (aic_channels.h). */
+    aic_channel_depolarizing(out, d, p, prec);
 }

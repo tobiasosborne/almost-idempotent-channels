@@ -131,6 +131,25 @@ void aic_adv_propP_delta(acb_mat_t out, slong n, double delta, slong prec);
  * `out` is aic_ucp_kraus_init'd HERE (caller aic_ucp_kraus_clears it). */
 void aic_adv_chan_cb_op_gap(aic_ucp_kraus *out, slong d, double eta, slong prec);
 
+/* fam2A — depolarizing eta->1/4 regularization boundary (domain.md:196-245; the
+ * theta(2Phi-1) basin edge rho(Phi^2-Phi) < 1/4, tex:516-525). The standard
+ * unital depolarizing self-map on B(C^d), d>=2:
+ *   Phi_p(X) = (1-p) X + p (tr X / d) 1_d,    p in [0,1]   (the named 2A instance;
+ * delegates to aic_channel_depolarizing). Its defect is EXACTLY
+ *   Phi_p^2 - Phi_p = p(1-p) C,   C(X) = (tr X / d) 1_d - X,
+ * with C having superoperator eigenvalues {0 on 1_d, -1 on the d^2-1 traceless
+ * directions}. KNOB p in [0,1] (asserted 0<=p<=1, d>=2; Rule 4, fail loud).
+ * Adversarial property (the rho->1/4 basin edge): the certified defect scales
+ * EXACTLY LINEARLY in p(1-p) — rho(Phi_p^2-Phi_p) = p(1-p) (d-INDEPENDENT,
+ * maximized = 1/4 at p=1/2, the theta(2Phi-1) basin boundary), and the eig-free
+ * bracket lo = (||Choi(C)||_F/n) p(1-p) inherits the exact linearity. The 2A
+ * sweep targets eta near 1/4 (e.g. d=2, p=0.789 gives rho~=0.167; p=1/2 gives the
+ * exact edge rho=1/4). eta=0 REDUCTION: p=0 (identity) and p=1 (trace-replace
+ * conditional expectation, Phi_1^2=Phi_1) are EXACTLY idempotent (defect 0).
+ * `out` is aic_ucp_kraus_init'd HERE (caller aic_ucp_kraus_clears it). */
+void aic_adv_chan_depol_boundary(aic_ucp_kraus *out, slong d, double p,
+                                 slong prec);
+
 #ifdef __cplusplus
 }
 #endif

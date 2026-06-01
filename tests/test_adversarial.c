@@ -575,6 +575,143 @@ static void test_fam1b_cb_op_gap(void)
     arb_clear(cf);
 }
 
+/* ---- fam2A: depolarizing eta->1/4 regularization boundary (domain.md:196-245,
+ * tex:516-525). The SECOND channel generator's self-test. The named property:
+ * the depolarizing defect Phi_p^2 - Phi_p = p(1-p) C is EXACTLY linear in
+ * p(1-p), with rho = p(1-p) maximized = 1/4 at p=1/2 (the theta(2Phi-1) basin
+ * edge). Since the eig-free bracket lo = ||J||_F/n and ||J||_F = p(1-p)
+ * ||Choi(C)||_F EXACTLY, lo(p) = (||Choi(C)||_F/n) p(1-p), a pure linear scaling.
+ *
+ * Teeth, in order of load-bearing weight:
+ *  (1) EXACT LINEARITY IN p(1-p) (the aic-l5b distance-linearity-oracle analogue,
+ *      the robust pin): over a 4-point sweep {0.1,0.3,0.5,0.7} the bracket
+ *      endpoints lo AND hi scale EXACTLY linearly in q=p(1-p): the ratio
+ *      lo(p)/lo(0.1) equals q(p)/q(0.1) to ~1e-12 (>= 3 distinct ratios confirm a
+ *      LINE, not a single coincidental match). A defect that is NOT p(1-p) C
+ *      breaks this. (2) eta=0 ORACLE: at p=0 (identity) and p=1 (trace-replace
+ *      conditional expectation) the bracket collapses to [0,0] (hi < 1e-9).
+ *      (3) MAX-AT-p=1/2 BASIN EDGE: lo(0.5) > lo(0.1) and lo(0.5) > lo(0.9),
+ *      demonstrating p=1/2 is the rho = 1/4 maximum (and lo(0.1) == lo(0.9), the
+ *      p<->1-p symmetry of p(1-p)).
+ *
+ * Certified rho NOT asserted (no easy existing routine: aic_funcalc_int_gelfand_
+ * rho needs the materialized superoperator matrix of Phi^2-Phi, more than this
+ * self-test warrants; no hand-rolled fragile eig — task guidance). The exact
+ * linearity + max-at-1/2 + eta=0 oracle pin the construction robustly.
+ *
+ * MUTATION: drop the knob — call aic_channel_depolarizing with a FIXED p=0.3
+ * regardless of the requested p (so the defect is constant, breaking the p(1-p)
+ * scaling) => the exact-linearity check (lo(0.5)/lo(0.1) == q(0.5)/q(0.1)) goes
+ * RED, AND the eta=0 oracle goes RED (p=0 no longer gives [0,0]). Confirmed RED,
+ * restored byte-identical (git diff empty). */
+static void test_fam2a_depol_boundary(void)
+{
+    /* measured (prec=256, d=2): bracket [lo,hi], lo/q with q=p(1-p)
+     *   p=0.1: q=0.09 [0.077942,0.311769] lo/q=0.866025
+     *   p=0.5: q=0.25 [0.216506,0.866025] lo/q=0.866025 (MAX)
+     *   p=0.9: q=0.09 [0.077942,0.311769] (= p=0.1, p<->1-p symmetric)
+     *   p=0,1: [0, ~3e-16] (exact idempotent) */
+    const slong d = 2;
+    /* >= 3 p-values to confirm a LINE in q=p(1-p), not a coincidental ratio. */
+    double ps[4] = {0.1, 0.3, 0.5, 0.7};
+    double lo[4], hi[4];
+
+    arb_t lob, hib;
+    arb_init(lob);
+    arb_init(hib);
+
+    for (int it = 0; it < 4; it++) {
+        aic_ucp_kraus phi;
+        aic_adv_chan_depol_boundary(&phi, d, ps[it], PREC);
+
+        /* unital sanity: sum_a K_a^dag K_a = I (the depolarizing Kraus set) */
+        arb_t ud;
+        arb_init(ud);
+        aic_ucp_unital_defect_kraus(ud, &phi, PREC);
+        check_ball_eq(ud, 0.0, 1e-12);
+        arb_clear(ud);
+
+        aic_cbnorm_eigfree_ball(lob, hib, &phi, PREC);
+        lo[it] = arf_get_d(arb_midref(lob), ARF_RND_NEAR);
+        hi[it] = arf_get_d(arb_midref(hib), ARF_RND_NEAR);
+        AIC_CHECK_MSG(lo[it] > 0.0, "fam2A p=%.2f: lo=%.3e not > 0", ps[it], lo[it]);
+        aic_ucp_kraus_clear(&phi);
+    }
+
+    /* (1) EXACT LINEARITY: lo(p)/lo(0.1) == q(p)/q(0.1) and hi(p)/hi(0.1) ==
+     * q(p)/q(0.1) to ~1e-12, over all >= 3 non-base p (a LINE through origin in
+     * q). q(0.1)=0.09. If the defect were not p(1-p) C this fails (a real
+     * finding, per the task: STOP and report). */
+    double q0 = ps[0] * (1.0 - ps[0]); /* 0.09 */
+    for (int it = 1; it < 4; it++) {
+        double q = ps[it] * (1.0 - ps[it]);
+        double qr = q / q0;
+        double lor = lo[it] / lo[0];
+        double hir = hi[it] / hi[0];
+        AIC_CHECK_MSG(fabs(lor - qr) < 1e-12 * (1.0 + qr),
+                      "fam2A p=%.2f: lo ratio %.14f != q ratio %.14f (defect not "
+                      "EXACTLY linear in p(1-p) — depolarizing defect is NOT "
+                      "p(1-p)*C; STOP, real finding)", ps[it], lor, qr);
+        AIC_CHECK_MSG(fabs(hir - qr) < 1e-12 * (1.0 + qr),
+                      "fam2A p=%.2f: hi ratio %.14f != q ratio %.14f (defect not "
+                      "EXACTLY linear in p(1-p))", ps[it], hir, qr);
+    }
+
+    /* (3) MAX-AT-p=1/2 BASIN EDGE: lo(0.5) is the maximum of the sweep. p=0.5 is
+     * index 2; p=0.1 index 0; p=0.3 index 1; p=0.7 index 3 (= p=0.3 mirror). */
+    AIC_CHECK_MSG(lo[2] > lo[0] && lo[2] > lo[1] && lo[2] > lo[3],
+                  "fam2A: lo not maximized at p=1/2 (lo: %.6f,%.6f,%.6f,%.6f for "
+                  "p=0.1,0.3,0.5,0.7) — p=1/2 is the rho=1/4 basin edge",
+                  lo[0], lo[1], lo[2], lo[3]);
+
+    /* p<->1-p symmetry of p(1-p): lo(0.3)==lo(0.7) (q identical), a fingerprint
+     * of the p(1-p) structure. */
+    AIC_CHECK_MSG(fabs(lo[1] - lo[3]) < 1e-12 * (1.0 + lo[1]),
+                  "fam2A: lo(0.3)=%.12f != lo(0.7)=%.12f (p<->1-p symmetry of "
+                  "p(1-p) broken)", lo[1], lo[3]);
+
+    /* boundary at p=0.9 too: build it and confirm lo(0.5) > lo(0.9) (the task's
+     * explicit max-at-1/2 vs the 0.9 end). */
+    aic_ucp_kraus phi9;
+    aic_adv_chan_depol_boundary(&phi9, d, 0.9, PREC);
+    aic_cbnorm_eigfree_ball(lob, hib, &phi9, PREC);
+    double lo9 = arf_get_d(arb_midref(lob), ARF_RND_NEAR);
+    AIC_CHECK_MSG(lo[2] > lo9, "fam2A: lo(0.5)=%.6f not > lo(0.9)=%.6f (basin edge "
+                  "at 1/2)", lo[2], lo9);
+    /* p<->1-p: lo(0.9) == lo(0.1) (both q=0.09) */
+    AIC_CHECK_MSG(fabs(lo9 - lo[0]) < 1e-12 * (1.0 + lo[0]),
+                  "fam2A: lo(0.9)=%.12f != lo(0.1)=%.12f (p<->1-p symmetry)",
+                  lo9, lo[0]);
+    aic_ucp_kraus_clear(&phi9);
+
+    /* (2) eta=0 ORACLE: p=0 (identity) and p=1 (trace-replace conditional
+     * expectation, Phi_1^2=Phi_1) are EXACTLY idempotent => bracket [0,0]. */
+    double oracle_p[2] = {0.0, 1.0};
+    for (int it = 0; it < 2; it++) {
+        aic_ucp_kraus phi0;
+        aic_adv_chan_depol_boundary(&phi0, d, oracle_p[it], PREC);
+        aic_cbnorm_eigfree_ball(lob, hib, &phi0, PREC);
+        arb_t tiny;
+        arb_init(tiny);
+        arb_set_d(tiny, 1e-9);
+        AIC_CHECK_MSG(arb_lt(hib, tiny),
+                      "fam2A p=%.0f: bracket upper=%.3e not < 1e-9 (exact-"
+                      "idempotent oracle: %s defect must be 0)", oracle_p[it],
+                      arf_get_d(arb_midref(hib), ARF_RND_NEAR),
+                      it == 0 ? "identity" : "trace-replace cond. exp.");
+        arb_clear(tiny);
+        aic_ucp_kraus_clear(&phi0);
+    }
+
+    printf("  fam2A depol-boundary: p=0.1 lo=%.6f ; p=0.3 lo=%.6f ; p=0.5 lo=%.6f "
+           "(MAX, rho=p(1-p)=1/4 edge) ; p=0.7 lo=%.6f ; p=0.9 lo=%.6f. lo EXACTLY "
+           "linear in p(1-p) (ratios to ~1e-12); p=0,1 => bracket [0,0]\n",
+           lo[0], lo[1], lo[2], lo[3], lo9);
+
+    arb_clear(hib);
+    arb_clear(lob);
+}
+
 int main(void)
 {
     test_gen1_jordan();
@@ -585,6 +722,7 @@ int main(void)
     test_gen6_boundary();
     test_gen7_propP();
     test_fam1b_cb_op_gap();
+    test_fam2a_depol_boundary();
 
     aic_test_report("test_adversarial");
     printf("OK test_adversarial\n");
