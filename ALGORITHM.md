@@ -376,6 +376,108 @@ arb (the "verified-SDP" route). This eig-free bracket is the always-valid
 fallback the tight certifier dispatches to near `eta=0` and when the MOSEK points
 cannot be restored.
 
+### cbnorm (eig-free distance) — certified bracket on ||Phi - Psi||_cb (bead aic-l5b, incr. A)
+
+An EIG-FREE, certified, two-sided bracket on the GENERAL cb/diamond distance
+`||Phi - Psi||_cb` between two UCP self-maps on the SAME space (`dim_K == dim_H
+== n` for both) (`.tex:347-354`). This is pure glue over the primitives already
+certified in the eig-free-ball rung above: no new bound, no new numerics.
+Files: `include/aic/aic_cbnorm.h`, `src/aic_cbnorm_distance.c` (72 LOC, arb/acb
+path only, no LAPACK), `tests/test_cbnorm_distance.c` (84 checks, ~0.02 s, label
+`fast`).
+
+**The math (why it is pure glue).** `Lambda = Phi - Psi` is Hermiticity-preserving
+(difference of two Hermiticity-preserving UCP maps), exactly as `Phi^2 - Phi` is.
+So the Watrous 2012 ampliation truncation `N = n` (rigorous for Hermiticity-
+preserving maps) and the certified bracket derived in `aic_cbnorm.c`
+
+    ||Phi - Psi||_cb  in  [ ||J||_F / n ,  2 * ||J||_F ]       (ratio hi/lo = 2n)
+
+apply verbatim, with `J = Choi(Phi) - Choi(Psi) = Choi(Lambda)` (linearity of
+the Choi map, built by `aic_ucp_choi_diff`). Provenance: `approximate_algebras.tex:347-354`.
+
+Scope: SQUARE self-maps (all four dims equal n). Fail-loud (Rule 4) if `phi->dim_K
+!= phi->dim_H`, `psi->dim_K != psi->dim_H`, or `phi->dim_H != psi->dim_H`; the
+rectangular case is out of scope for this increment. The `Phi == Psi` case (J = 0)
+gives `[0,0]` exactly and is the cleanest oracle.
+
+**API.** `aic_cbnorm_eigfree_distance(lo, hi, phi, psi, prec)`: builds J via
+`aic_ucp_choi_diff(J, phi, psi, prec)`, then defers to
+`aic_cbnorm_eigfree_ball_choi(lo, hi, J, n, prec)`. No state, no allocation
+beyond the temporary `n^2 x n^2` Choi matrix.
+
+**Closed-form cross-check (the load-bearing oracle).** For the identity channel
+`Phi_I` vs the unitary channel `Phi_W`, `W = diag(1, e^{i theta})` on a qubit
+(`n = 2`), the EXACT cb/diamond distance is
+
+    ||Phi_I - Phi_W||_cb = 2 sin(theta/2),    theta in [0, pi].
+
+Derivation: `spec(W) = {1, e^{i theta}}`; distance from 0 to `conv(spec(W))` is
+`nu = cos(theta/2)`; diamond distance `= 2 sqrt(1 - nu^2) = 2 sin(theta/2)`. The
+hostile review rederived this independently and confirmed it correct.
+
+For `n = 2`, `||J||_F = 2 sqrt(2) sin(theta/2)`, so the bracket endpoints are
+`lo = sqrt(2) sin(theta/2)` and `hi = 4 sqrt(2) sin(theta/2)`, giving margins
+`lo / true = 1/sqrt(2) ~ 0.707` and `hi / true = 2 sqrt(2) ~ 2.828`. At
+`theta = 1.0`: `true = 2 sin(0.5) ~ 0.9589`, `lo ~ 0.6780`, `hi ~ 2.712`.
+
+### Cross-check ladder coverage (Rule 6)
+
+- (A) SELF-DISTANCE / blind sanity: `Phi == Psi` -> `J = 0` -> bracket `[0,0]`;
+  `arb_upper(hi) < 1e-9` for both a depolarizing self-map and a unitary-channel
+  self-map. A wildly wrong J assembly would give nonzero here, but this family is
+  blind to constant errors.
+- (B) SYMMETRY: `||Phi - Psi||_cb == ||Psi - Phi||_cb` (J -> -J leaves
+  `||J||_F` invariant). The `lo > 1e-6` guard is the first non-vacuity tripwire
+  — confirms this is not testing the zero case.
+- (C) LINEARITY (LOAD-BEARING — pins J assembly): for depolarizing `D_p - D_q =
+  (q - p) C` where `C(X) = X - (tr X / d) I` is a fixed Hermiticity-preserving
+  map, so both endpoints scale linearly in `|q - p|`. Ratios `hi[|q-p|=0.6] /
+  hi[|q-p|=0.3] = 2.0` (tol `1e-12`), `hi[0.45] / hi[0.3] = 1.5` (tol `1e-12`),
+  and same for `lo`. Wrong J assembly (sign flip, wrong prefactor) breaks the
+  ratios. Measured ratios exactly 2.0 and 1.5 on both endpoints.
+- (D) CLOSED-FORM CONTAINMENT + ENDPOINT PINS (THE correctness check): family-D
+  asserts `lo_lb <= 2 sin(theta/2) <= hi_ub` (containment), then independently
+  asserts `lo_mid == sqrt(2) sin(theta/2)` (tol `1e-9`) and `hi_mid ==
+  4 sqrt(2) sin(theta/2)` (tol `1e-9`) — the endpoint pins that catch wrong-`n`
+  or wrong-constant mutations that mere containment misses. Run at 5 angles
+  `theta in {0.2, 0.5, 1.0, 1.5, 2.0}`.
+- (E) PRECISION LADDER: family-D repeated at `prec=256`; `lo53 vs lo256` and
+  `hi53 vs hi256` agree to `< 1e-12` across all 5 angles (the bracket is
+  determined by `||J||_F`, which is precision-stable with no near-singular
+  inversions).
+- (F) FAIL-LOUD: `phi` on `d=2` vs `psi` on `d=3` -> the dim-guard `assert`
+  aborts the process; verified via `fork` + `SIGALRM` watchdog, confirmed
+  `SIGABRT` (not exit 0, not timeout).
+
+### Mutation proofs (Rule 7)
+
+Two independent mutations, each confirmed RED, then restored byte-identical:
+
+1. `aic_ucp_choi_diff(J, phi, psi, prec)` -> `aic_ucp_choi_diff(J, phi, phi,
+   prec)` (J = 0 always): families B, C, D each independently RED. Family B
+   fires because `lo > 1e-6` is not satisfied; family C fires on the ratio
+   check; family D fires on containment (lo = hi = 0, true > 0).
+2. `hi *= 0.7` (30% underscale — still satisfies containment for some inputs):
+   caught RED by family-D endpoint pin (`hi_mid != 4 sqrt(2) sin(theta/2)`).
+   Mere containment does NOT catch this (the scaled `hi` can still exceed `true`
+   at moderate angles), which is exactly why the endpoint pins exist.
+
+No mutation passed all families.
+
+### Files + numbers
+
+- `include/aic/aic_cbnorm.h` (declaration of `aic_cbnorm_eigfree_distance`)
+- `src/aic_cbnorm_distance.c` (72 LOC)
+- `tests/test_cbnorm_distance.c` (84 checks; ~0.02 s; CTest label `fast`)
+- Number path: arb/acb ONLY. No LAPACK, no eigendecomposition.
+
+**Deferred.** The TIGHT MOSEK-feasible-point bracket (ratio -> 1, sharper than
+the 2n-wide eig-free ball) for the DISTANCE function, and the Julia
+end-to-end wrapper (`aic_cbnorm_eigfree_d` analog for `phi,psi`), are follow-up
+work (relates to bead aic-ssu). The rectangular (`dim_K != dim_H`) case is out
+of scope for this increment.
+
 ### cbnorm tight certifier — MOSEK feasible points + arb restoration (bead aic-m24, incr. 3b)
 
 The TIGHT certified two-sided ball `[lo,hi]` on `eta = ||Phi^2-Phi||_cb`

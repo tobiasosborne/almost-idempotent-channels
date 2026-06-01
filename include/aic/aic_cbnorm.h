@@ -50,6 +50,24 @@ void aic_cbnorm_eigfree_ball_choi(arb_t lo, arb_t hi, const acb_mat_t J,
 void aic_cbnorm_eigfree_ball(arb_t lo, arb_t hi, const aic_ucp_kraus *phi,
                              slong prec);
 
+/* Eig-free certified two-sided bracket on the GENERAL cb-norm / diamond distance
+ * ||Phi - Psi||_cb between two UCP SELF-maps (dim_K == dim_H == n for BOTH, all
+ * four dims equal, asserted). Lambda = Phi - Psi is Hermiticity-preserving (a
+ * difference of two Hermiticity-preserving UCP maps) — exactly the property that
+ * makes the eta-idempotence defect Phi^2 - Phi tractable in aic_cbnorm_eigfree_-
+ * ball_choi — so the cb-norm equals the diamond norm (.tex:347-352) and the
+ * Watrous ampliation truncation N = n is rigorous. With J = Choi(Phi) - Choi(Psi)
+ * = Choi(Lambda) (linearity of Choi; built by aic_ucp_choi_diff), the SAME
+ * derivation recorded in aic_cbnorm.c's docstring gives the certified bracket
+ *   ||Phi - Psi||_cb  in  [ ||J||_F / n ,  2 * ||J||_F ],
+ * so this defers to aic_cbnorm_eigfree_ball_choi(lo, hi, J, n, prec). On return
+ *   arb_lower(lo) <= ||Phi - Psi||_cb <= arb_upper(hi).
+ * Never aborts on the numerics; Phi == Psi (J = 0) gives [0,0]. The equal-dims
+ * precondition is asserted (fail loud on caller error — Rule 4). `lo`, `hi` are
+ * caller-initialised arb_t. */
+void aic_cbnorm_eigfree_distance(arb_t lo, arb_t hi, const aic_ucp_kraus *phi,
+                                 const aic_ucp_kraus *psi, slong prec);
+
 /* TIGHT certified two-sided bracket on eta = ||Phi^2-Phi||_cb (bead aic-m24,
  * increment 3b). Inputs: J = Choi(Phi^2 - Phi) (n^2 x n^2, Convention A) and TWO
  * SDP feasible points produced by the Julia+MOSEK solves of step 3a, each
