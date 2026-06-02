@@ -22,15 +22,10 @@
  *   (E) Precision ladder: family (D) at prec=256 still contains, and the 53 vs
  *       256 endpoints agree (the bracket is determined by ||J||_F, prec-stable).
  *   (F) Fail-loud teeth (Rule 4): different-n maps -> the dim-guard assert ABORTS
- *       (fork+SIGALRM watchdog; asserts are live, build strips -DNDEBUG).
+ *       (shared aic_watchdog, bead aic-8de; asserts are live, build strips -DNDEBUG).
  */
-#define _POSIX_C_SOURCE 200809L
 #include <math.h>
-#include <signal.h>
 #include <stdio.h>
-#include <stdlib.h>
-#include <unistd.h>
-#include <sys/wait.h>
 
 #include <flint/acb.h>
 #include <flint/acb_mat.h>
@@ -41,6 +36,7 @@
 #include "aic/aic_channels.h"
 #include "aic/aic_ucp.h"
 #include "aic_test.h"
+#include "aic_watchdog.h"
 
 #define PREC 53
 
@@ -264,60 +260,32 @@ static void test_precision_ladder(void)
 }
 
 /* --- (F) fail-loud teeth: different n -> the dim guard ABORTS -------------- */
-static volatile pid_t f_watch_pid = 0;
-static volatile sig_atomic_t f_timed_out = 0;
-static void f_alarm(int sig)
+
+/* child: build phi(d=2), psi(d=3); the dim-guard assert must fire. No args (the
+ * shared aic_watchdog child signature is void(void)). */
+static void cbd_child_dim_guard(void)
 {
-    (void) sig;
-    f_timed_out = 1;
-    if (f_watch_pid > 0) kill(f_watch_pid, SIGKILL);
+    aic_ucp_kraus phi, psi;
+    aic_channel_depolarizing(&phi, 2, 0.3, PREC);
+    aic_channel_depolarizing(&psi, 3, 0.3, PREC);
+    arb_t lo, hi;
+    arb_init(lo); arb_init(hi);
+    aic_cbnorm_eigfree_distance(lo, hi, &phi, &psi, PREC); /* must abort */
+    arb_clear(hi); arb_clear(lo);
+    aic_ucp_kraus_clear(&psi);
+    aic_ucp_kraus_clear(&phi);
 }
 
 static void test_dim_guard_failloud(void)
 {
     printf("(F) different-n maps must FAIL LOUD (assert in dim guard, not hang)\n");
-    fflush(NULL);
-    pid_t pid = fork();
-    AIC_CHECK_MSG(pid >= 0, "(F) fork failed");
-    if (pid == 0) {
-        /* child: build phi(d=2), psi(d=3); the dim-guard assert must fire */
-        aic_ucp_kraus phi, psi;
-        aic_channel_depolarizing(&phi, 2, 0.3, PREC);
-        aic_channel_depolarizing(&psi, 3, 0.3, PREC);
-        arb_t lo, hi;
-        arb_init(lo); arb_init(hi);
-        aic_cbnorm_eigfree_distance(lo, hi, &phi, &psi, PREC); /* must abort */
-        arb_clear(hi); arb_clear(lo);
-        aic_ucp_kraus_clear(&psi);
-        aic_ucp_kraus_clear(&phi);
-        _exit(0);   /* reached only if the guard did NOT fire */
-    }
-
-    f_watch_pid = pid;
-    f_timed_out = 0;
-    struct sigaction sa = {0}, old;
-    sa.sa_handler = f_alarm;
-    sigaction(SIGALRM, &sa, &old);
-    alarm(15);
-    int st = 0;
-    pid_t w;
-    do { w = waitpid(pid, &st, 0); } while (w < 0 && !f_timed_out);
-    alarm(0);
-    sigaction(SIGALRM, &old, NULL);
-    if (w < 0) waitpid(pid, &st, 0);
-
-    AIC_CHECK_MSG(!f_timed_out,
-                  "(F) aic_cbnorm_eigfree_distance HUNG on different-n input "
-                  "(watchdog killed it) — dim guard has no teeth");
-    int aborted = WIFSIGNALED(st) && WTERMSIG(st) == SIGABRT;
-    int silent_ok = WIFEXITED(st) && WEXITSTATUS(st) == 0;
-    AIC_CHECK_MSG(!silent_ok,
-                  "(F) child exited 0 — the dim mismatch was NOT caught (silent)");
-    AIC_CHECK_MSG(aborted,
-                  "(F) expected SIGABRT on dim mismatch (signaled=%d sig=%d "
-                  "exited=%d code=%d)", WIFSIGNALED(st),
-                  WIFSIGNALED(st) ? WTERMSIG(st) : -1, WIFEXITED(st),
-                  WIFEXITED(st) ? WEXITSTATUS(st) : -1);
+    /* Strengthening over the old NULL-needle copy (Rule 5): the dim guard is the
+     * live assert(phi->dim_H == psi->dim_H), whose stringized expression appears
+     * in the glibc abort message. assert_failloud asserts: not a hang, not a
+     * silent exit-0, SIGABRT, and that the abort names this specific guard. */
+    aic_watchdog_assert_failloud(cbd_child_dim_guard, 20,
+                                 "cbnorm_distance/dim-guard",
+                                 "phi->dim_H == psi->dim_H");
     printf("    child SIGABRT on dim mismatch (guard has teeth)\n");
 }
 

@@ -27,10 +27,7 @@
 #include <assert.h>
 #include <complex.h>
 #include <math.h>
-#include <signal.h>
 #include <stdlib.h>
-#include <sys/wait.h>
-#include <unistd.h>
 
 #include <flint/acb.h>
 #include <flint/acb_mat.h>
@@ -40,6 +37,7 @@
 #include "aic/aic_mat.h"
 #include "aic/aic_ucp.h"
 #include "aic_test.h"
+#include "aic_watchdog.h"
 #include "test_idemp.h"
 
 static void test_oracle_channels(void)
@@ -104,40 +102,38 @@ static void test_prec_consistency(void)
     arb_clear(tol);
 }
 
-/* Mutation teeth: a non-idempotent UCP map must ABORT at the entry guard, and a
- * non-self-map must abort. Both are fail-loud (Rule 4); we exercise them in a
- * forked child so the suite continues. */
+/* Mutation teeth child: a UCP map that is NOT idempotent: a simple non-idempotent
+ * unital map Phi(X) = 0.5 X + 0.5 diag(X) (a partial dephasing). Kraus:
+ * K_0 = sqrt(0.5) 1_2, K_a = sqrt(0.5)|e_a><e_a|. Then Phi^2 != Phi, so the entry
+ * guard must flint_abort(). No args (the shared aic_watchdog child is void(void)). */
+static void idemp_child_non_idempotent(void)
+{
+    aic_ucp_kraus phi;
+    aic_ucp_kraus_init(&phi, 2, 2, 3);
+    double s = sqrt(0.5);
+    acb_set_d(acb_mat_entry(phi.K[0], 0, 0), s);
+    acb_set_d(acb_mat_entry(phi.K[0], 1, 1), s);   /* sqrt(0.5) 1_2 */
+    acb_set_d(acb_mat_entry(phi.K[1], 0, 0), s);   /* sqrt(0.5)|0><0| */
+    acb_set_d(acb_mat_entry(phi.K[2], 1, 1), s);   /* sqrt(0.5)|1><1| */
+    aic_idemp_decomp d;
+    aic_idemp_decompose(&d, &phi, PREC);           /* must flint_abort() */
+}
+
+/* Mutation teeth: a non-idempotent UCP map must ABORT at the entry guard. This is
+ * fail-loud (Rule 4); we run it under the shared aic_watchdog (bead aic-8de),
+ * which ADDS a SIGALRM hang-backstop the old bare fork LACKED (it could hang the
+ * gate forever). assert_failloud keeps the SIGABRT requirement (not a SEGV/OOM
+ * masquerade) and adds the silent-exit-0 check.
+ *
+ * needle = NULL: aic_idemp_decompose aborts via flint_printf + flint_abort, and
+ * flint_printf writes to STDOUT (verified), which assert_failloud (capture_stdout=0)
+ * does not capture — a stdout-bound message can never match a stderr needle. The
+ * "NOT exactly idempotent" string therefore lands on the console, not the captured
+ * buffer; NULL avoids a spurious miss. */
 static void test_entry_guard(void)
 {
-    /* a UCP map that is NOT idempotent: amplitude-damping-like on C^2,
-     * K_0 = diag(1, sqrt(0.5)), K_1 = sqrt(0.5)|e_1><e_1|? Use a simple
-     * non-idempotent unital map: Phi(X) = 0.5 X + 0.5 diag(X) (a partial
-     * dephasing). Kraus: K_0 = sqrt(0.5) 1_2, K_a = sqrt(0.5)|e_a><e_a|. Then
-     * Phi^2 != Phi. We verify the guard aborts via fork. */
-    pid_t pid = fork();
-    if (pid == 0) {
-        /* child: build the non-idempotent map and call decompose (should abort) */
-        aic_ucp_kraus phi;
-        aic_ucp_kraus_init(&phi, 2, 2, 3);
-        double s = sqrt(0.5);
-        acb_set_d(acb_mat_entry(phi.K[0], 0, 0), s);
-        acb_set_d(acb_mat_entry(phi.K[0], 1, 1), s);   /* sqrt(0.5) 1_2 */
-        acb_set_d(acb_mat_entry(phi.K[1], 0, 0), s);   /* sqrt(0.5)|0><0| */
-        acb_set_d(acb_mat_entry(phi.K[2], 1, 1), s);   /* sqrt(0.5)|1><1| */
-        aic_idemp_decomp d;
-        aic_idemp_decompose(&d, &phi, PREC);           /* must flint_abort() */
-        _exit(0);                                      /* reached only if NOT aborted */
-    }
-    int status = 0;
-    waitpid(pid, &status, 0);
-    /* Tighten the teeth: require the child to have died via SIGABRT (flint_abort
-     * -> abort() raises SIGABRT). A bare "didn't exit 0" would also pass on a
-     * SEGV/OOM, which would let a crashing-for-the-wrong-reason guard masquerade
-     * as the guard firing. We demand the SPECIFIC abort signal. */
-    AIC_CHECK_MSG(WIFSIGNALED(status) && WTERMSIG(status) == SIGABRT,
-                  "entry guard: non-idempotent Phi did not abort via SIGABRT "
-                  "(WIFSIGNALED=%d, WTERMSIG=%d)",
-                  WIFSIGNALED(status), WIFSIGNALED(status) ? WTERMSIG(status) : -1);
+    aic_watchdog_assert_failloud(idemp_child_non_idempotent, 20,
+                                 "idemp/entry-guard", "NOT exactly idempotent");
 }
 
 int main(void)

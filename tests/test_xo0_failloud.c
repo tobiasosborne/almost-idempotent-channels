@@ -41,21 +41,17 @@
  *       make_mix(compress_idemp(4,1), dephasing(4), t=0.30): measured ||S^2-S||_op
  *       = 0.420 >= 1/4 yet rho(S^2-S) = 0.210 < 1/4 (Gelfand certifies at k=6).
  *
- * THE WATCHDOG. The parent forks; the child redirects stderr to a temp file and runs
- * the pipeline call. The parent waits with a SIGALRM-bounded waitpid (AIC_XO0_WATCH_S
- * seconds): if the child has not terminated by then it is SIGKILLed and the test
- * FAILS (a hang IS a failure, Rule 4). On a clean termination the parent reads the
- * status + the captured stderr and asserts via the NDEBUG-immune AIC_CHECK harness.
+ * THE WATCHDOG. The shared aic_watchdog (bead aic-8de) forks; the child redirects
+ * stderr to a temp file and runs the pipeline call. The parent waits with a
+ * SIGALRM-bounded waitpid (AIC_XO0_WATCH_S seconds): if the child has not
+ * terminated by then it is SIGKILLed and the test FAILS (a hang IS a failure,
+ * Rule 4). The shared helper's child signature is void(void); this driver needs a
+ * UCP self-map per child, so a module-static `xo0_ctx` pointer is set immediately
+ * before each call and the void(void) wrapper `child_regularize` reads it.
  */
-#define _POSIX_C_SOURCE 200809L
-#include <fcntl.h>
 #include <math.h>
-#include <signal.h>
 #include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <unistd.h>
-#include <sys/wait.h>
+#include <sys/wait.h>            /* WIFEXITED/WEXITSTATUS for the clean-run checks */
 
 #include <flint/acb_mat.h>
 #include <flint/arb.h>
@@ -64,80 +60,22 @@
 #include "aic/aic_funcalc.h"
 #include "aic/aic_ucp.h"
 #include "aic_test.h"
+#include "aic_watchdog.h"
 #include "test_idemp.h"            /* make_compress_idemp, make_dephasing, PREC */
 
 #define XO0_PREC 256
 #define AIC_XO0_WATCH_S 20         /* watchdog: a child alive past this is a HANG */
 
-/* ---- the subprocess watchdog (reusable for any Rule-4 abort guard) -------- */
+/* ---- the child payload (ctx-bridge to the void(void) shared watchdog) ------ */
 
-typedef void (*xo0_child_fn)(void *ctx);
+/* The shared aic_watchdog child takes NO args; this driver needs a per-call UCP
+ * self-map. Bridge via a module-static pointer set immediately before each run. */
+static const aic_ucp_kraus *xo0_ctx = NULL;
 
-/* SIGALRM handler target: which child to kill if the watchdog fires. */
-static volatile pid_t xo0_watch_pid = 0;
-static volatile sig_atomic_t xo0_timed_out = 0;
-
-static void xo0_alarm(int sig)
+/* xo0_ctx = a UCP self-map; the child regularizes it (the pipeline entry). */
+static void child_regularize(void)
 {
-    (void) sig;
-    xo0_timed_out = 1;
-    if (xo0_watch_pid > 0) kill(xo0_watch_pid, SIGKILL);
-}
-
-/* Run `fn(ctx)` in a forked child with a bounded watchdog. Captures the child's
- * stderr into `err` (caller buffer of `errsz`, NUL-terminated). Writes the raw
- * wait status into *status. Returns 1 if the child terminated within the watchdog,
- * 0 if it was killed for hanging (caller asserts on this). */
-static int xo0_run_child(xo0_child_fn fn, void *ctx, int *status,
-                         char *err, size_t errsz)
-{
-    char tmpl[] = "/tmp/aic_xo0_err_XXXXXX";
-    int efd = mkstemp(tmpl);
-    AIC_CHECK_MSG(efd >= 0, "xo0_run_child: mkstemp failed");
-    fflush(NULL);
-
-    pid_t pid = fork();
-    AIC_CHECK_MSG(pid >= 0, "xo0_run_child: fork failed");
-    if (pid == 0) {
-        /* child: stderr -> temp file, run the pipeline call (may abort/hang). */
-        dup2(efd, STDERR_FILENO);
-        close(efd);
-        fn(ctx);
-        _exit(0);              /* reached only if fn did NOT abort */
-    }
-
-    /* parent: bounded waitpid via SIGALRM. */
-    xo0_watch_pid = pid;
-    xo0_timed_out = 0;
-    struct sigaction sa = {0}, old;
-    sa.sa_handler = xo0_alarm;
-    sigaction(SIGALRM, &sa, &old);
-    alarm(AIC_XO0_WATCH_S);
-
-    int st = 0;
-    pid_t w;
-    do { w = waitpid(pid, &st, 0); } while (w < 0 && !xo0_timed_out);
-    alarm(0);
-    sigaction(SIGALRM, &old, NULL);
-    if (w < 0) waitpid(pid, &st, 0);   /* reap the SIGKILLed child */
-
-    /* read captured stderr */
-    lseek(efd, 0, SEEK_SET);
-    ssize_t r = read(efd, err, errsz - 1);
-    err[(r > 0) ? (size_t) r : 0] = '\0';
-    close(efd);
-    unlink(tmpl);
-
-    *status = st;
-    return xo0_timed_out ? 0 : 1;
-}
-
-/* ---- the child payloads --------------------------------------------------- */
-
-/* ctx = a UCP self-map; the child regularizes it (the pipeline entry). */
-static void child_regularize(void *ctx)
-{
-    aic_ucp_kraus *phi = (aic_ucp_kraus *) ctx;
+    const aic_ucp_kraus *phi = xo0_ctx;
     slong n = phi->dim_H;
     acb_mat_t St;
     acb_mat_init(St, n * n, n * n);
@@ -191,33 +129,16 @@ static void test_oob_failloud(void)
     aic_ucp_kraus phi;
     make_zconj(&phi, 2);
 
-    char err[4096];
-    int status = 0;
-    int finished = xo0_run_child(child_regularize, &phi, &status, err, sizeof err);
-
-    /* (1) not a hang */
-    AIC_CHECK_MSG(finished,
-                  "aic_assoc_regularize HUNG on an out-of-regime channel "
-                  "(watchdog killed it after %d s) — Rule 4 fail-loud gap", AIC_XO0_WATCH_S);
-    /* (2) it aborted (SIGABRT) or at least exited non-zero — NOT a silent success */
-    int aborted = WIFSIGNALED(status) && WTERMSIG(status) == SIGABRT;
-    int nonzero_exit = WIFEXITED(status) && WEXITSTATUS(status) != 0;
-    AIC_CHECK_MSG(aborted || nonzero_exit,
-                  "aic_assoc_regularize did NOT fail loud on an out-of-regime channel "
-                  "(child exited 0 — it silently regularized a non-convergent series)");
-    AIC_CHECK_MSG(aborted,
-                  "aic_assoc_regularize terminated non-abort on out-of-regime input "
-                  "(expected SIGABRT; signaled=%d sig=%d exited=%d code=%d)",
-                  WIFSIGNALED(status), WIFSIGNALED(status) ? WTERMSIG(status) : -1,
-                  WIFEXITED(status), WIFEXITED(status) ? WEXITSTATUS(status) : -1);
-    /* (3) the entry message names the regularization basin / eta<1/4 + provenance.
-     * RED before the fix (the deep prop_P message lacks both). */
-    AIC_CHECK_MSG(strstr(err, "aic_assoc_regularize") != NULL,
-                  "abort message does not attribute the failure to "
-                  "aic_assoc_regularize (the API-boundary entry guard). Got:\n%s", err);
-    AIC_CHECK_MSG(strstr(err, "eta < 1/4") != NULL || strstr(err, "eta<1/4") != NULL,
-                  "abort message does not name the eta < 1/4 almost-idempotent "
-                  "precondition (.tex:2168/2176). Got:\n%s", err);
+    /* assert_failloud asserts: finished (not a hang), NOT a clean exit-0 (no
+     * silent regularization of a non-convergent series), died by SIGABRT, and the
+     * captured stderr names the eta<1/4 almost-idempotent precondition. The needle
+     * "eta < 1/4" is the load-bearing entry-guard string (.tex:2168/2176); the
+     * same flint_printf also names "aic_assoc_regularize" (the API-boundary
+     * provenance), so a single needle keeps both teeth. RED before the fix (the
+     * deep prop_P message names neither). */
+    xo0_ctx = &phi;
+    aic_watchdog_assert_failloud(child_regularize, AIC_XO0_WATCH_S,
+                                 "aic_assoc_regularize/out-of-basin", "eta < 1/4");
     printf("  child SIGABRT, message names the eta<1/4 entry precondition (OK)\n");
 
     aic_ucp_kraus_clear(&phi);
@@ -231,17 +152,20 @@ static void test_in_regime_passes(void)
 {
     printf("POS: in-regime channels must pass without aborting\n");
 
-    /* (a) eta=0 exact idempotent. */
+    /* (a) eta=0 exact idempotent. A clean-exit case: aic_watchdog_run + inline
+     * "finished && exit 0" check (assert_failloud is for the abort cases only). */
     {
         aic_ucp_kraus phi;
         make_compress_idemp(&phi, 4, 2);
         char err[4096];
-        int status = 0;
-        int finished = xo0_run_child(child_regularize, &phi, &status, err, sizeof err);
+        int st = 0;
+        xo0_ctx = &phi;
+        int finished = aic_watchdog_run(child_regularize, AIC_XO0_WATCH_S, 0,
+                                        &st, err, sizeof err);
         AIC_CHECK_MSG(finished, "eta=0 compress_idemp(4,2) HUNG in regularize");
-        AIC_CHECK_MSG(WIFEXITED(status) && WEXITSTATUS(status) == 0,
-                      "eta=0 compress_idemp(4,2) FALSE-rejected by the entry guard "
-                      "(child did not exit 0). stderr:\n%s", err);
+        AIC_CHECK_MSG(WIFEXITED(st) && WEXITSTATUS(st) == 0,
+                      "eta=0 compress_idemp(4,2): expected a clean in-regime run, "
+                      "got FALSE-rejection by the entry guard. stderr:\n%s", err);
         printf("  (a) eta=0 compress_idemp(4,2): passed (exit 0)\n");
         aic_ucp_kraus_clear(&phi);
     }
@@ -254,13 +178,16 @@ static void test_in_regime_passes(void)
         make_dephasing(&dep, 4);
         make_mix(&phi, &base, &dep, 0.30, XO0_PREC);
         char err[4096];
-        int status = 0;
-        int finished = xo0_run_child(child_regularize, &phi, &status, err, sizeof err);
+        int st = 0;
+        xo0_ctx = &phi;
+        int finished = aic_watchdog_run(child_regularize, AIC_XO0_WATCH_S, 0,
+                                        &st, err, sizeof err);
         AIC_CHECK_MSG(finished, "spectral-relaxation mix(4,1)+deph(4) HUNG in regularize");
-        AIC_CHECK_MSG(WIFEXITED(status) && WEXITSTATUS(status) == 0,
-                      "spectral-relaxation channel (||S^2-S||_op>=1/4 but rho<1/4) "
-                      "FALSE-rejected by an over-aggressive (op-norm) entry guard — "
-                      "the guard must use the SPECTRAL rho (aic-8hz). stderr:\n%s", err);
+        AIC_CHECK_MSG(WIFEXITED(st) && WEXITSTATUS(st) == 0,
+                      "spectral-relaxation channel (||S^2-S||_op>=1/4 but rho<1/4): "
+                      "expected a clean in-regime run, got FALSE-rejection by an "
+                      "over-aggressive (op-norm) entry guard — the guard must use "
+                      "the SPECTRAL rho (aic-8hz). stderr:\n%s", err);
         printf("  (b) spectral-relaxation mix(compress(4,1),deph(4),0.30): passed (exit 0)\n");
         aic_ucp_kraus_clear(&phi);
         aic_ucp_kraus_clear(&dep);

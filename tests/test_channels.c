@@ -6,18 +6,11 @@
  * oracles (make_dephasing / make_block_cond_exp) at the Choi level.
  *
  * The fail-loud input validation (non-unitary U, unnormalised probs) is exercised
- * via the fork+watchdog subprocess pattern from test_xo0_failloud.c so a Rule-4
- * abort is testable without crashing the test binary.
+ * via the shared aic_watchdog (bead aic-8de) so a Rule-4 abort is testable
+ * without crashing the test binary.
  */
-#define _POSIX_C_SOURCE 200809L
-#include <fcntl.h>
 #include <math.h>
-#include <signal.h>
 #include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <unistd.h>
-#include <sys/wait.h>
 
 #include <flint/acb.h>
 #include <flint/acb_mat.h>
@@ -27,6 +20,7 @@
 #include "aic/aic_mat.h"
 #include "aic/aic_ucp.h"
 #include "aic_test.h"
+#include "aic_watchdog.h"
 #include "test_idemp.h"   /* make_dephasing, make_block_cond_exp, PREC, set_tol */
 
 /* ---- shared invariant checks --------------------------------------------- */
@@ -315,45 +309,9 @@ static void test_mix_and_twirl(void)
     for (int k = 0; k < 4; k++) acb_mat_clear(U[k]);
 }
 
-/* ---- fail-loud validation teeth (fork+watchdog, from test_xo0_failloud.c) -- */
+/* ---- fail-loud validation teeth (shared aic_watchdog, bead aic-8de) ------- */
 
-#define CHAN_WATCH_S 15
-static volatile pid_t chan_watch_pid = 0;
-static volatile sig_atomic_t chan_timed_out = 0;
-static void chan_alarm(int sig)
-{
-    (void) sig;
-    chan_timed_out = 1;
-    if (chan_watch_pid > 0) kill(chan_watch_pid, SIGKILL);
-}
-
-typedef void (*chan_child_fn)(void);
-static int chan_run_child(chan_child_fn fn, int *status)
-{
-    fflush(NULL);
-    pid_t pid = fork();
-    AIC_CHECK_MSG(pid >= 0, "chan_run_child: fork failed");
-    if (pid == 0) {
-        int devnull = open("/dev/null", O_WRONLY);
-        if (devnull >= 0) { dup2(devnull, STDERR_FILENO); close(devnull); }
-        fn();
-        _exit(0);
-    }
-    chan_watch_pid = pid;
-    chan_timed_out = 0;
-    struct sigaction sa = {0}, old;
-    sa.sa_handler = chan_alarm;
-    sigaction(SIGALRM, &sa, &old);
-    alarm(CHAN_WATCH_S);
-    int st = 0;
-    pid_t w;
-    do { w = waitpid(pid, &st, 0); } while (w < 0 && !chan_timed_out);
-    alarm(0);
-    sigaction(SIGALRM, &old, NULL);
-    if (w < 0) waitpid(pid, &st, 0);
-    *status = st;
-    return chan_timed_out ? 0 : 1;
-}
+#define CHAN_WATCH_S 20         /* a child alive past this is a HANG (Rule 4) */
 
 /* child: probabilities that do NOT sum to 1 -> must abort. */
 static void child_bad_probs(void)
@@ -384,20 +342,16 @@ static void test_validation_failloud(void)
 {
     printf("validation: bad-probs and non-unitary inputs must fail loud "
            "(SIGABRT, not hang)\n");
-    int status = 0;
-    int finished = chan_run_child(child_bad_probs, &status);
-    AIC_CHECK_MSG(finished, "bad-probs validation HUNG (watchdog killed it)");
-    AIC_CHECK_MSG(WIFSIGNALED(status) && WTERMSIG(status) == SIGABRT,
-                  "bad-probs did NOT fail loud (expected SIGABRT; signaled=%d "
-                  "exited=%d code=%d)", WIFSIGNALED(status), WIFEXITED(status),
-                  WIFEXITED(status) ? WEXITSTATUS(status) : -1);
-
-    finished = chan_run_child(child_non_unitary, &status);
-    AIC_CHECK_MSG(finished, "non-unitary validation HUNG (watchdog killed it)");
-    AIC_CHECK_MSG(WIFSIGNALED(status) && WTERMSIG(status) == SIGABRT,
-                  "non-unitary did NOT fail loud (expected SIGABRT; signaled=%d "
-                  "exited=%d code=%d)", WIFSIGNALED(status), WIFEXITED(status),
-                  WIFEXITED(status) ? WEXITSTATUS(status) : -1);
+    /* The validators abort via flint_printf + flint_abort, and flint_printf writes
+     * the message to STDOUT, not stderr (verified). The shared assert_failloud
+     * captures BOTH streams precisely for this FLINT convention, so these needles
+     * ARE grepped: a real needle pins the abort REASON, not merely that some abort
+     * happened. It also adds the SIGALRM hang-backstop and the silent-exit-0 check
+     * the old /dev/null bare-fork copy lacked. */
+    aic_watchdog_assert_failloud(child_bad_probs, CHAN_WATCH_S,
+                                 "channel/bad-probs", "probabilities sum to");
+    aic_watchdog_assert_failloud(child_non_unitary, CHAN_WATCH_S,
+                                 "channel/non-unitary", "not unitary");
     printf("  both invalid inputs SIGABRT (OK)\n");
 }
 

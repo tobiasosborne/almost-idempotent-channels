@@ -119,7 +119,11 @@ void aic_watchdog_assert_failloud(aic_watchdog_fn fn, int timeout_s,
     int status = 0;
     char err[4096];
     if (who == NULL) who = "(unnamed)";
-    int finished = aic_watchdog_run(fn, timeout_s, 0, &status, err, sizeof err);
+    /* Capture BOTH streams: FLINT aborts via flint_printf, which writes the
+     * fail-loud message to STDOUT, not stderr. A stderr-only capture would miss
+     * every flint_abort()/flint_printf needle (the project's primary abort path),
+     * so a fail-loud message check must read both. */
+    int finished = aic_watchdog_run(fn, timeout_s, 1, &status, err, sizeof err);
 
     AIC_CHECK_MSG(finished, "%s: call HUNG past %ds watchdog "
                   "(expected a fast Rule-4 abort, not a hang)", who, timeout_s);

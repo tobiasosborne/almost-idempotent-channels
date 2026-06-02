@@ -36,7 +36,9 @@ int aic_watchdog_run(aic_watchdog_fn fn, int timeout_s, int capture_stdout,
 
 /* Assert fn() FAILS LOUD: finishes within timeout_s, did NOT exit cleanly
  * (exit 0 == silent success == wrong), died by SIGABRT, and — if needle != NULL
- * — its captured stderr contains needle. `who` is a label for diagnostics. */
+ * — its captured output contains needle. Captures BOTH stdout and stderr, since
+ * FLINT aborts via flint_printf (which writes to stdout); a stderr-only check
+ * would miss every flint_abort message. `who` is a label for diagnostics. */
 void aic_watchdog_assert_failloud(aic_watchdog_fn fn, int timeout_s,
                                   const char *who, const char *needle);
 
