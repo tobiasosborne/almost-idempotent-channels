@@ -34,15 +34,10 @@
  *
  * Concrete numbers (Rule 12) printed.
  */
-#define _POSIX_C_SOURCE 200809L
-#include <fcntl.h>
 #include <math.h>
-#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
-#include <sys/wait.h>
 
 #include <flint/acb.h>
 #include <flint/acb_mat.h>
@@ -51,6 +46,7 @@
 #include "aic/aic_mat.h"
 #include "aic/aic_ucp.h"
 #include "aic_test.h"
+#include "aic_watchdog.h"
 
 /* The DOUBLE-path reference (aic_ucp_choi_to_kraus_latd) is implicitly ~53-bit.
  * The CERTIFIED arb path needs a higher prec than 53 to cleanly resolve the
@@ -408,74 +404,6 @@ static void test_s5_psd_cone(void)
     }
 }
 
-/* ---- the fork+SIGALRM watchdog (pattern from test_eigvec.c) --------------- */
-#define KA_WATCH_S 30
-typedef void (*ka_child_fn)(void);
-static volatile pid_t ka_watch_pid = 0;
-static volatile sig_atomic_t ka_timed_out = 0;
-static void ka_alarm(int sig)
-{
-    (void) sig;
-    ka_timed_out = 1;
-    if (ka_watch_pid > 0) kill(ka_watch_pid, SIGKILL);
-}
-static int ka_run_child(ka_child_fn fn, int *status, char *err, size_t errsz)
-{
-    char tmpl[] = "/tmp/aic_kraus_err_XXXXXX";
-    int efd = mkstemp(tmpl);
-    AIC_CHECK_MSG(efd >= 0, "mkstemp failed");
-    fflush(NULL);
-    pid_t pid = fork();
-    AIC_CHECK_MSG(pid >= 0, "fork failed");
-    if (pid == 0) {
-        dup2(efd, STDERR_FILENO);
-        dup2(efd, STDOUT_FILENO);
-        close(efd);
-        fn();
-        _exit(0);
-    }
-    ka_watch_pid = pid;
-    ka_timed_out = 0;
-    struct sigaction sa, old;
-    memset(&sa, 0, sizeof sa);
-    sa.sa_handler = ka_alarm;
-    sigaction(SIGALRM, &sa, &old);
-    alarm(KA_WATCH_S);
-    int st = 0;
-    pid_t w;
-    do { w = waitpid(pid, &st, 0); } while (w < 0 && !ka_timed_out);
-    alarm(0);
-    sigaction(SIGALRM, &old, NULL);
-    if (w < 0) waitpid(pid, &st, 0);
-    lseek(efd, 0, SEEK_SET);
-    ssize_t rd = read(efd, err, errsz - 1);
-    err[(rd > 0) ? (size_t) rd : 0] = '\0';
-    close(efd);
-    unlink(tmpl);
-    *status = st;
-    return ka_timed_out ? 0 : 1;
-}
-static void ka_assert_failloud(ka_child_fn fn, const char *what,
-                               const char *needle)
-{
-    char err[4096];
-    int st = 0;
-    int finished = ka_run_child(fn, &st, err, sizeof err);
-    AIC_CHECK_MSG(finished, "%s HUNG (watchdog killed it after %d s)",
-                  what, KA_WATCH_S);
-    AIC_CHECK_MSG(WIFEXITED(st) ? WEXITSTATUS(st) != 0 : 1,
-                  "%s exited 0 — it silently returned instead of failing loud",
-                  what);
-    AIC_CHECK_MSG(WIFSIGNALED(st) && WTERMSIG(st) == SIGABRT,
-                  "%s: expected SIGABRT (signaled=%d sig=%d exited=%d code=%d)",
-                  what, WIFSIGNALED(st), WIFSIGNALED(st) ? WTERMSIG(st) : -1,
-                  WIFEXITED(st), WIFEXITED(st) ? WEXITSTATUS(st) : -1);
-    AIC_CHECK_MSG(strstr(err, needle) != NULL,
-                  "%s: abort message does not name '%s'. Got:\n%s",
-                  what, needle, err);
-    printf("  child SIGABRT; message names '%s' (OK)\n", needle);
-}
-
 /* S5 fail-loud part + mutation tooth: an O(1)-negative Choi must FAIL LOUD in the
  * strict choi_to_kraus_arb (neg_tol = keep_thr, so -0.3 <= -keep_thr). */
 static void child_o1_negative(void)
@@ -522,11 +450,11 @@ static void test_s7_failloud(void)
 {
     printf("S7: fail-loud teeth (fork watchdog)\n");
     printf(" (d) O(1)-negative Choi -> strict choi_to_kraus_arb aborts (not CP)\n");
-    ka_assert_failloud(child_o1_negative,
-                       "aic_ucp_choi_to_kraus_arb(O(1) negative)", "CP");
+    aic_watchdog_assert_failloud(child_o1_negative, 30,
+                                 "aic_ucp_choi_to_kraus_arb(O(1) negative)", "CP");
     printf(" (a) smallest kept cluster ON keep_thr -> STRADDLE abort\n");
-    ka_assert_failloud(child_straddle,
-                       "aic_ucp_choi_to_kraus_arb(straddle)", "STRADDLE");
+    aic_watchdog_assert_failloud(child_straddle, 30,
+                                 "aic_ucp_choi_to_kraus_arb(straddle)", "STRADDLE");
 }
 
 int main(void)

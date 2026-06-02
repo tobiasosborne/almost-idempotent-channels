@@ -41,15 +41,10 @@
  * is at prec=24 (the genuine near-degeneracy floor). Concrete numbers (radii,
  * ranks, abort message) printed, Rule 12.
  */
-#define _POSIX_C_SOURCE 200809L
-#include <fcntl.h>
 #include <math.h>
-#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
-#include <sys/wait.h>
 
 #include <flint/acb.h>
 #include <flint/acb_mat.h>
@@ -59,6 +54,7 @@
 #include "aic/aic_mat.h"
 #include "aic/aic_ucp.h"
 #include "aic_test.h"
+#include "aic_watchdog.h"
 
 #define EM_PREC 128
 
@@ -384,86 +380,6 @@ static void test_t3_carrier_rank(void)
     acb_mat_clear(Q);
 }
 
-/* --- the fork+SIGALRM watchdog (reusable; pattern from test_xo0_failloud.c) --- */
-/* The parent forks; the child redirects stderr to a temp file and runs `fn`
- * (which is expected to ABORT). The parent waits with a SIGALRM-bounded waitpid:
- * a child alive past the watchdog is a HANG (also a failure). Captures the
- * child's stderr into `err` and the raw wait status into *status; returns 1 if
- * the child terminated within the watchdog, 0 if it was killed for hanging. */
-#define EM_WATCH_S 20
-typedef void (*em_child_fn)(void);
-static volatile pid_t em_watch_pid = 0;
-static volatile sig_atomic_t em_timed_out = 0;
-static void em_alarm(int sig)
-{
-    (void) sig;
-    em_timed_out = 1;
-    if (em_watch_pid > 0) kill(em_watch_pid, SIGKILL);
-}
-
-static int em_run_child(em_child_fn fn, int *status, char *err, size_t errsz)
-{
-    char tmpl[] = "/tmp/aic_eigmult_err_XXXXXX";
-    int efd = mkstemp(tmpl);
-    AIC_CHECK_MSG(efd >= 0, "mkstemp failed");
-    fflush(NULL);
-
-    pid_t pid = fork();
-    AIC_CHECK_MSG(pid >= 0, "fork failed");
-    if (pid == 0) {
-        dup2(efd, STDERR_FILENO);
-        close(efd);
-        fn();
-        _exit(0);    /* reached only if fn did NOT abort (the bug we guard) */
-    }
-
-    em_watch_pid = pid;
-    em_timed_out = 0;
-    struct sigaction sa, old;
-    memset(&sa, 0, sizeof sa);
-    sa.sa_handler = em_alarm;
-    sigaction(SIGALRM, &sa, &old);
-    alarm(EM_WATCH_S);
-    int st = 0;
-    pid_t w;
-    do { w = waitpid(pid, &st, 0); } while (w < 0 && !em_timed_out);
-    alarm(0);
-    sigaction(SIGALRM, &old, NULL);
-    if (w < 0) waitpid(pid, &st, 0);
-
-    lseek(efd, 0, SEEK_SET);
-    ssize_t rd = read(efd, err, errsz - 1);
-    err[(rd > 0) ? (size_t) rd : 0] = '\0';
-    close(efd);
-    unlink(tmpl);
-
-    *status = st;
-    return em_timed_out ? 0 : 1;
-}
-
-/* assert a child that should ABORT (SIGABRT) and whose stderr names `needle`. */
-static void em_assert_failloud(em_child_fn fn, const char *what,
-                               const char *needle)
-{
-    char err[4096];
-    int st = 0;
-    int finished = em_run_child(fn, &st, err, sizeof err);
-    AIC_CHECK_MSG(finished, "%s HUNG (watchdog killed it after %d s)",
-                  what, EM_WATCH_S);
-    AIC_CHECK_MSG(WIFEXITED(st) ? WEXITSTATUS(st) != 0 : 1,
-                  "%s exited 0 — it silently returned instead of failing loud",
-                  what);
-    AIC_CHECK_MSG(WIFSIGNALED(st) && WTERMSIG(st) == SIGABRT,
-                  "%s: expected SIGABRT (signaled=%d sig=%d exited=%d code=%d)",
-                  what, WIFSIGNALED(st), WIFSIGNALED(st) ? WTERMSIG(st) : -1,
-                  WIFEXITED(st), WIFEXITED(st) ? WEXITSTATUS(st) : -1);
-    AIC_CHECK_MSG(strstr(err, needle) != NULL,
-                  "%s: abort message does not name '%s'. Got:\n%s",
-                  what, needle, err);
-    printf("  child SIGABRT; message names '%s' (OK)\n", needle);
-    printf("  abort message: %.200s\n", err);
-}
-
 /* --- T4: FAIL-LOUD straddle tooth --- */
 /* H = 2P - I, spectrum {-1,-1,1,1}. Threshold thr = 1 sits EXACTLY on the +1
  * cluster, so those eigenvalue balls straddle thr -> rank unresolved -> abort. */
@@ -483,8 +399,8 @@ static void child_straddle(void)
 static void test_t4_straddle_failloud(void)
 {
     printf("T4: straddling threshold must FAIL LOUD (SIGABRT), not silently count\n");
-    em_assert_failloud(child_straddle, "aic_mat_certified_rank(straddle)",
-                       "STRADDLES");
+    aic_watchdog_assert_failloud(child_straddle, 20,
+                                 "aic_mat_certified_rank(straddle)", "STRADDLES");
 }
 
 /* --- T4b: arb_gt vs arb_ge — an exact eigenvalue ON a zero-radius threshold --- */
@@ -518,8 +434,8 @@ static void test_t4b_exact_on_thr(void)
 {
     printf("T4b: exact eigenvalue ON a zero-radius threshold must STRADDLE-abort "
            "(pins arb_gt over arb_ge)\n");
-    em_assert_failloud(child_exact_on_thr,
-                       "aic_mat_certified_rank(exact-on-thr)", "STRADDLES");
+    aic_watchdog_assert_failloud(child_exact_on_thr, 20,
+                                 "aic_mat_certified_rank(exact-on-thr)", "STRADDLES");
 }
 
 /* --- T5: DENSIFY-RETRY acceptance — the cases that USED to FAIL LOUD now CERTIFY --- */
@@ -642,9 +558,9 @@ static void test_t6_genuine_failloud(void)
 {
     printf("T6: a near-degeneracy unresolvable at prec=24 must FAIL LOUD even "
            "after densification\n");
-    em_assert_failloud(child_genuine_unresolved,
-                       "aic_mat_eig_hermitian_multiple(genuine-unresolved)",
-                       "even after dense-unitary densification");
+    aic_watchdog_assert_failloud(child_genuine_unresolved, 20,
+                                 "aic_mat_eig_hermitian_multiple(genuine-unresolved)",
+                                 "even after dense-unitary densification");
 }
 
 int main(void)

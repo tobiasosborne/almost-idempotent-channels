@@ -21,7 +21,7 @@
  *     (aic_adversarial.h) is drawn and, per instance, the relevant ucp ROUTINE
  *     is asserted to EITHER hold a certified bound OR fail loud. BOUND-HOLDS is
  *     asserted INLINE (certified arb balls); FAIL-LOUD is asserted via a
- *     fork+SIGALRM watchdog (ucp_assert_failloud) that confirms SIGABRT + a
+ *     fork+SIGALRM watchdog (aic_watchdog_assert_failloud) that confirms SIGABRT + a
  *     message-needle. The cleanest ucp fail-loud is the carrier-rank STRADDLE
  *     (aic_ucp_carrier_rank on the densified 1C carrier at prec=53); the
  *     non-CP-Choi rejection (aic_ucp_is_cp_choi verdict 0) is the second.
@@ -32,16 +32,11 @@
  * Convention reminders: Kraus K_a are dim_K x dim_H, Phi(X)=sum K_a^dag X K_a
  * (Heisenberg); Choi Convention A, K factor LEFT. See include/aic_ucp.h.
  */
-#define _POSIX_C_SOURCE 200809L
 #include <assert.h>
 #include <complex.h>
-#include <fcntl.h>
 #include <math.h>
-#include <signal.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
-#include <sys/wait.h>
 
 #include <flint/acb.h>
 #include <flint/acb_mat.h>
@@ -54,6 +49,7 @@
 #include "aic/aic_ucp.h"
 #include "aic_adversarial.h"
 #include "aic_test.h"
+#include "aic_watchdog.h"
 
 #define PREC 53
 static void set_tol(arb_t tol, double t) { arb_set_d(tol, t); }
@@ -752,76 +748,6 @@ static void test_mutation_teeth(void)
  * the arb path directly.                                                  */
 #define UCP_RETRO_PREC 128       /* arb prec for the bound-holds asserts */
 
-/* ---- the fork+SIGALRM watchdog (verbatim pattern; each .c carries its own *
- * static copy per test_funcalc.c:480-486 / test_kraus_arb.c). Lets a Rule-4 *
- * abort() be asserted without crashing this binary. Prefix ucp_, unique     *
- * tmpl string, to avoid symbol/tempfile clashes. ---- */
-#define UCP_WATCH_S 20           /* child alive past this -> HANG */
-typedef void (*ucp_child_fn)(void);
-static volatile pid_t ucp_watch_pid = 0;
-static volatile sig_atomic_t ucp_timed_out = 0;
-static void ucp_alarm(int sig)
-{
-    (void) sig;
-    ucp_timed_out = 1;
-    if (ucp_watch_pid > 0) kill(ucp_watch_pid, SIGKILL);
-}
-static int ucp_run_child(ucp_child_fn fn, int *status, char *err, size_t errsz)
-{
-    char tmpl[] = "/tmp/aic_ucp_retro_err_XXXXXX";
-    int efd = mkstemp(tmpl);
-    AIC_CHECK_MSG(efd >= 0, "ucp_run_child: mkstemp failed");
-    fflush(NULL);
-    pid_t pid = fork();
-    AIC_CHECK_MSG(pid >= 0, "ucp_run_child: fork failed");
-    if (pid == 0) {
-        dup2(efd, STDERR_FILENO);
-        close(efd);
-        fn();
-        _exit(0);                 /* reached only if fn did NOT abort */
-    }
-    ucp_watch_pid = pid;
-    ucp_timed_out = 0;
-    struct sigaction sa, old;
-    memset(&sa, 0, sizeof sa);
-    sa.sa_handler = ucp_alarm;
-    sigaction(SIGALRM, &sa, &old);
-    alarm(UCP_WATCH_S);
-    int st = 0;
-    pid_t w;
-    do { w = waitpid(pid, &st, 0); } while (w < 0 && !ucp_timed_out);
-    alarm(0);
-    sigaction(SIGALRM, &old, NULL);
-    if (w < 0) waitpid(pid, &st, 0);
-    lseek(efd, 0, SEEK_SET);
-    ssize_t rd = read(efd, err, errsz - 1);
-    err[(rd > 0) ? (size_t) rd : 0] = '\0';
-    close(efd);
-    unlink(tmpl);
-    *status = st;
-    return ucp_timed_out ? 0 : 1;
-}
-static void ucp_assert_failloud(ucp_child_fn fn, const char *what,
-                                const char *needle)
-{
-    char err[4096];
-    int st = 0;
-    int finished = ucp_run_child(fn, &st, err, sizeof err);
-    AIC_CHECK_MSG(finished, "%s: HUNG past %ds watchdog", what, UCP_WATCH_S);
-    AIC_CHECK_MSG(WIFEXITED(st) ? WEXITSTATUS(st) != 0 : 1,
-                  "%s exited 0 — it silently returned instead of failing loud",
-                  what);
-    AIC_CHECK_MSG(WIFSIGNALED(st) && WTERMSIG(st) == SIGABRT,
-                  "%s: expected SIGABRT (signaled=%d sig=%d exited=%d code=%d). "
-                  "stderr:\n%s",
-                  what, WIFSIGNALED(st), WIFSIGNALED(st) ? WTERMSIG(st) : -1,
-                  WIFEXITED(st), WIFEXITED(st) ? WEXITSTATUS(st) : -1, err);
-    AIC_CHECK_MSG(strstr(err, needle) != NULL,
-                  "%s: aborted but WITHOUT '%s' (silent/wrong-reason abort?). "
-                  "stderr:\n%s", what, needle, err);
-    printf("  child SIGABRT; message names '%s' (OK)\n", needle);
-}
-
 /* ---- shared bound-holds helpers ---- */
 
 /* ||C_rebuilt - C||_op upper bound (double), C round-tripped through the LATD
@@ -1003,9 +929,9 @@ static void test_adversarial_corpus(void)
         aic_ucp_kraus_clear(&phi);
 
         printf("  1C-dense carrier_rank FAIL-LOUD (straddle prec=53):\n");
-        ucp_assert_failloud(ucp_child_carrier_straddle,
-                            "aic_ucp_carrier_rank(1C-dense gap=1e-16 prec=53)",
-                            "STRADDLES");
+        aic_watchdog_assert_failloud(ucp_child_carrier_straddle, 20,
+                                     "aic_ucp_carrier_rank(1C-dense gap=1e-16 prec=53)",
+                                     "STRADDLES");
     }
 
     /* === fam1B cb!=op gap: cb-bracket contains eta*sqrt(1-eta) + CP + unital *
@@ -1210,8 +1136,8 @@ static void test_adversarial_corpus(void)
     /* === FAIL-LOUD (FL-2): certified Choi->Kraus on a genuinely non-CP Choi *
      * must abort, not return junk Kraus (the silent-non-CP trap, Rule 4).    */
     printf("  certified Choi->Kraus FAIL-LOUD (O(1)-negative Choi):\n");
-    ucp_assert_failloud(ucp_child_noncp_extract,
-                        "aic_ucp_choi_to_kraus_arb(non-CP Choi)", "CP");
+    aic_watchdog_assert_failloud(ucp_child_noncp_extract, 20,
+                                 "aic_ucp_choi_to_kraus_arb(non-CP Choi)", "CP");
 }
 
 int main(void)

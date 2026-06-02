@@ -61,15 +61,10 @@
  * Concrete numbers (worst residual, projector defects, abort messages) printed,
  * Rule 12.
  */
-#define _POSIX_C_SOURCE 200809L
-#include <fcntl.h>
 #include <math.h>
-#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
-#include <sys/wait.h>
 
 #include <flint/acb.h>
 #include <flint/acb_mat.h>
@@ -78,6 +73,7 @@
 #include "aic/aic_mat.h"
 #include "aic/aic_ucp.h"
 #include "aic_test.h"
+#include "aic_watchdog.h"
 
 /* Internal (non-public) self-certifying residual assert exercised by the S1b
  * mutation tooth (finding-1 fix; aic_mat_eigvec_resid.c). */
@@ -502,76 +498,6 @@ static void test_s6_carrier_projector(void)
     acb_mat_clear(Id);
 }
 
-/* --- the fork+SIGALRM watchdog (pattern from test_eigmult.c) ---------------- */
-#define EV_WATCH_S 20
-typedef void (*ev_child_fn)(void);
-static volatile pid_t ev_watch_pid = 0;
-static volatile sig_atomic_t ev_timed_out = 0;
-static void ev_alarm(int sig)
-{
-    (void) sig;
-    ev_timed_out = 1;
-    if (ev_watch_pid > 0) kill(ev_watch_pid, SIGKILL);
-}
-
-static int ev_run_child(ev_child_fn fn, int *status, char *err, size_t errsz)
-{
-    char tmpl[] = "/tmp/aic_eigvec_err_XXXXXX";
-    int efd = mkstemp(tmpl);
-    AIC_CHECK_MSG(efd >= 0, "mkstemp failed");
-    fflush(NULL);
-    pid_t pid = fork();
-    AIC_CHECK_MSG(pid >= 0, "fork failed");
-    if (pid == 0) {
-        dup2(efd, STDERR_FILENO);
-        close(efd);
-        fn();
-        _exit(0);    /* reached only if fn did NOT abort (the bug we guard) */
-    }
-    ev_watch_pid = pid;
-    ev_timed_out = 0;
-    struct sigaction sa, old;
-    memset(&sa, 0, sizeof sa);
-    sa.sa_handler = ev_alarm;
-    sigaction(SIGALRM, &sa, &old);
-    alarm(EV_WATCH_S);
-    int st = 0;
-    pid_t w;
-    do { w = waitpid(pid, &st, 0); } while (w < 0 && !ev_timed_out);
-    alarm(0);
-    sigaction(SIGALRM, &old, NULL);
-    if (w < 0) waitpid(pid, &st, 0);
-    lseek(efd, 0, SEEK_SET);
-    ssize_t rd = read(efd, err, errsz - 1);
-    err[(rd > 0) ? (size_t) rd : 0] = '\0';
-    close(efd);
-    unlink(tmpl);
-    *status = st;
-    return ev_timed_out ? 0 : 1;
-}
-
-static void ev_assert_failloud(ev_child_fn fn, const char *what,
-                               const char *needle)
-{
-    char err[4096];
-    int st = 0;
-    int finished = ev_run_child(fn, &st, err, sizeof err);
-    AIC_CHECK_MSG(finished, "%s HUNG (watchdog killed it after %d s)",
-                  what, EV_WATCH_S);
-    AIC_CHECK_MSG(WIFEXITED(st) ? WEXITSTATUS(st) != 0 : 1,
-                  "%s exited 0 — it silently returned instead of failing loud",
-                  what);
-    AIC_CHECK_MSG(WIFSIGNALED(st) && WTERMSIG(st) == SIGABRT,
-                  "%s: expected SIGABRT (signaled=%d sig=%d exited=%d code=%d)",
-                  what, WIFSIGNALED(st), WIFSIGNALED(st) ? WTERMSIG(st) : -1,
-                  WIFEXITED(st), WIFEXITED(st) ? WEXITSTATUS(st) : -1);
-    AIC_CHECK_MSG(strstr(err, needle) != NULL,
-                  "%s: abort message does not name '%s'. Got:\n%s",
-                  what, needle, err);
-    printf("  child SIGABRT; message names '%s' (OK)\n", needle);
-    printf("  abort message: %.200s\n", err);
-}
-
 /* --- S7(c): a sub-resolution near-degeneracy must FAIL LOUD (NON-FINITE) ---- */
 /* Eigenvalues 1 and 1+2^-40, FORCED into two clusters by a tiny gap_thr, at
  * prec=24: the tiny-gap cluster's seed eigenvectors are near-parallel, so the
@@ -611,9 +537,9 @@ static void test_s7c_unresolved_failloud(void)
 {
     printf("S7(c): a sub-2^-prec near-degeneracy must FAIL LOUD (Rump enclosure "
            "NON-FINITE -> UNRESOLVED)\n");
-    ev_assert_failloud(child_unresolved,
-                       "aic_mat_eig_hermitian_subspaces(unresolved)",
-                       "UNRESOLVED");
+    aic_watchdog_assert_failloud(child_unresolved, 20,
+                                 "aic_mat_eig_hermitian_subspaces(unresolved)",
+                                 "UNRESOLVED");
 }
 
 /* --- S1b: the finding-1 self-certifying residual tooth must FAIL LOUD --------- */
@@ -645,9 +571,9 @@ static void test_s1b_resid_failloud(void)
 {
     printf("S1b: a corrupted invariant subspace must FAIL the self-certifying "
            "residual on the ORIGINAL H (finding-1 fix)\n");
-    ev_assert_failloud(child_resid_corrupt,
-                       "aic_mat_int_assert_subspace_residual(corrupt X_c)",
-                       "NOT a certified invariant subspace");
+    aic_watchdog_assert_failloud(child_resid_corrupt, 20,
+                                 "aic_mat_int_assert_subspace_residual(corrupt X_c)",
+                                 "NOT a certified invariant subspace");
 }
 
 /* --- S6b: the carrier-projector STRADDLE tooth must FAIL LOUD --------------- */
@@ -676,8 +602,9 @@ static void test_s6b_straddle_failloud(void)
 {
     printf("S6b: a rank-deficient carrier at prec=53 (zero cluster straddles thr, "
            "FINDINGS §D7) must FAIL LOUD\n");
-    ev_assert_failloud(child_carrier_straddle,
-                       "aic_ucp_carrier_projector(straddle@prec=53)", "STRADDLES");
+    aic_watchdog_assert_failloud(child_carrier_straddle, 20,
+                                 "aic_ucp_carrier_projector(straddle@prec=53)",
+                                 "STRADDLES");
 }
 
 int main(void)
