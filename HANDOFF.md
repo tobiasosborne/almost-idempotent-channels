@@ -1,6 +1,6 @@
 # HANDOFF.md — almost-idempotent-channels
 
-## ▶▶ LATEST (2026-06-02b, orchestrated, laptop): aic-8de watchdog unification COMPLETE+CLOSED; the dbo.4 corpus-payoff retrofit COMPLETE across ALL 5 modules; FINDINGS §C19; aic-ynu researched+planned
+## ▶▶ LATEST (2026-06-02b, orchestrated, laptop): aic-8de watchdog unification COMPLETE+CLOSED; dbo.4 retrofit COMPLETE (all 5 modules); aic-ynu (Artin-Wedderburn/prop_Gamma) COMPLETE+CLOSED (I1-I4); nla-5b Kahan gen; 4-way PARALLEL batch demonstrated; FINDINGS §C19/C20/C21
 
 **State:** master FULLY GREEN, clean, pushed (HEAD `059005e`, up to date with origin). `ctest -L fast` 19/19
 (~8s). Full `ctest` includes the heavier slow drivers (test_cstar_build now ~247s with the new blockalg
@@ -45,14 +45,24 @@ fail-louds, Rule 4). Hostile review round 1 BLOCKED a deterministic-H_W kernel c
 (dim_M>=12); REPAIRED (random H_W + re-draw budget + the production w-recon cert), mutation-proven BOTH ways
 (L<->E swap aborts in production; cos-seed revert -> M_6(+)M_6 RED), ASan-clean, full suite 42/42.
 **Insight: the I1/I2 degenerate-equal-size boundary DISSOLVED** — a random H_W separates equal-size blocks
-a.s.; no genuine I2 degenerate eta=0 case remains. **Remaining: I3** (the explicit prop_Gamma `Tr_{E_j}`
-Kraus form, verify == d.Gamma) + **I4** (the Delta Kraus reps, verify == d.Lambda + UCP). Full plan in
-`bd show aic-ynu`. THE MANDATE; pure C, NO MOSEK/Julia risk.
+a.s.; no genuine I2 degenerate eta=0 case remains. **I3 + I4 then LANDED and aic-ynu is CLOSED:** I3 =
+`aic_idemp_gamma_kraus` (the explicit prop_Gamma `Tr_{E_j}` Kraus form; gamma_j extracted by a DATA-DRIVEN
+least-squares from d.Gamma — general, the `make_ns_weighted` oracle gives a non-uniform
+`gamma_0=diag(0.2,0.8)`; production-certified match-d.Gamma; FINDINGS §C20 corrected from an over-claim by
+the parallel hostile review). I4 = `aic_idemp_delta_kraus` (the Delta Kraus reps; production-certified
+match-d.Delta + the round-trip Delta∘Gamma=Phi). Every increment hostile-reviewed (I1 caught+repaired a
+BLOCKER) + mutation-proven + ASan-clean; all FAST tests (test_wedderburn/gamma_kraus/delta_kraus).
+**prop_Gamma (tex:2106) + Delta/Gamma Kraus reps DELIVERED — THE MANDATE, pure C.**
 
-**NEXT (orchestrated):** (1) **finish aic-ynu I3-I4** (I1 = the block decomposition + W is DONE; I3 = the
-explicit prop_Gamma `Tr_{E_j}` Kraus form built from the W_j + the gamma_j density matrices, verified
-against the stored `d.Gamma`; I4 = the Delta Kraus reps verified against `d.Lambda` + UCP; plan in the
-bead). (2) the **Julia deliverable** (aic-ssu/aic-jhe/aic-obc — SERIAL Julia;
+**PARALLELISM demonstrated (user asked "can additional work be parallelised"):** ran a 4-way concurrent
+batch — I4 + the **nla-5b Kahan generator** (FINDINGS §C21: nla.md's 5b formula is the wrong, toothless
+convention; the cos-graded gallery form is the pathological one) + the I3 hostile review + the
+non-uniform-γ oracle — via git-worktree isolation (per-agent source+build dir → no `cmake` races),
+integrated by `git cherry-pick` of `wip-*` branches, ZERO conflicts. The build/test gating is the
+laptop-CPU bottleneck, so concurrency is capped ~3-4 (coding/review parallelizes Anthropic-side, gating
+does not); NO parallel Julia (standing directive). See [[feedback_autonomous_orchestration]].
+
+**NEXT (orchestrated):** (aic-ynu I1-I4 is DONE.) (1) the **Julia deliverable** (aic-ssu/aic-jhe/aic-obc — SERIAL Julia;
 MOSEK risk: the eig-free `aic-ssu` bracket avoids MOSEK, the tight `aic-jhe` needs it — gate carefully,
 a MOSEK hang is the one escalation risk). (3) the remaining **~16 nla matrix gens** (Kahan 5b
 catastrophic-cancellation is the classic arb-justifier) + **`aic-dbo.5`** near-boundary fail-loud stress
