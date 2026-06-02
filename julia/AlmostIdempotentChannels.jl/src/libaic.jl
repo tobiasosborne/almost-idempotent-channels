@@ -91,7 +91,7 @@ const _ALL_SYMS = (
 # after this file), so reference it lazily inside the hint closure.
 function _mosek_error_hint(io, exc, argtypes, kwargs)
     fn = exc.f
-    gated = (idempotency_defect, _diamond_value_impl,
+    gated = (idempotency_defect, _diamond_value_impl, _tight_bracket_impl,
              diamond_norm_watrous, diamond_norm_watrous_primal, diamond_norm_dual)
     if any(g -> fn === g, gated)
         print(io, "\n", _MOSEK_HINT)

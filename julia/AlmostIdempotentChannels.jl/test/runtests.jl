@@ -17,6 +17,20 @@ using AlmostIdempotentChannels
 using Test
 using LinearAlgebra
 
+# The exact cb-norm VALUE (eta_idempotence / idempotency_defect / the diamond_*
+# SDP) lives ONLY in the AICMosekExt package extension (bead aic-exa.8 [J5]). An
+# extension activates only when its trigger packages are LOADED in the session
+# (not merely present in the env), so we MUST `using` them here for T2–T5. They
+# are test-target deps (Project.toml [targets].test); if a load fails (no solver
+# installed) the SDP testsets are SKIPPED, keeping the solver-free core green.
+const _HAVE_MOSEK = try
+    @eval using Convex, Mosek, MosekTools
+    Base.get_extension(AlmostIdempotentChannels, :AICMosekExt) !== nothing
+catch err
+    @warn "MOSEK extension unavailable; SDP testsets (T2–T5) SKIPPED" err
+    false
+end
+
 # ---- channel constructors (verbatim from tools/gen_fixtures_d24.jl) ----
 e(d, i) = (v = zeros(ComplexF64, d); v[i] = 1; v)
 identity_kraus(d) = [Matrix{ComplexF64}(I, d, d)]
@@ -91,7 +105,11 @@ complex_qubit_kraus() =
         @info "T1 round-trip worst max-entry diff (C/arb ccall vs pure Julia)" worst
     end
 
-    @testset "T2 eta_idempotence matches exact analytic anchors" begin
+    if !_HAVE_MOSEK
+        @info "Skipping SDP testsets T2–T5 (MOSEK extension not loaded)"
+    end
+
+    _HAVE_MOSEK && @testset "T2 eta_idempotence matches exact analytic anchors" begin
         dep_id_norm(d) = 2 * (1 - 1 / d^2)   # ||Dep_d - id_d||_diamond
         # identity -> 0
         @test eta_idempotence(identity_kraus(2)) ≈ 0.0 atol = 1e-8
@@ -103,7 +121,7 @@ complex_qubit_kraus() =
         @info "T2 anchors" id = eta_idempotence(identity_kraus(2)) phi_t_0p3 = eta_idempotence(phit_kraus(2, 0.3)) phi_t_0p1 = eta_idempotence(phit_kraus(2, 0.1)) paper_0p1 = eta_idempotence(paper_example_kraus(0.1))
     end
 
-    @testset "T3 certified eig-free bracket brackets the SDP value" begin
+    _HAVE_MOSEK && @testset "T3 certified eig-free bracket brackets the SDP value" begin
         # The certified C bracket [lo,hi] (eig-free, no solver) must contain the
         # MOSEK diamond-norm value — ties the certified C bracket to the SDP across
         # the ccall boundary. Slack 1e-7 for the SDP solver tolerance.
@@ -122,7 +140,7 @@ complex_qubit_kraus() =
         @info "T3 bracket margins (lo <= eta <= hi)" margins
     end
 
-    @testset "T4 GADC (live channel): eta=0 at gamma=0,1; interior > 0" begin
+    _HAVE_MOSEK && @testset "T4 GADC (live channel): eta=0 at gamma=0,1; interior > 0" begin
         # eta=0 anchors: gamma=0 -> identity; gamma=1 -> reset-to-fixed-state
         # (T^2=T). Interior 0<gamma<1 is not idempotent -> eta > 0.
         p = 0.5
@@ -135,7 +153,7 @@ complex_qubit_kraus() =
         @info "T4 GADC (p=0.5)" eta_gamma0 = eta0 eta_gamma1 = eta1 eta_gamma0p5 = etamid
     end
 
-    @testset "T5 strong duality: eta_primal == eta_dual == eta_ref (pins dual norm)" begin
+    _HAVE_MOSEK && @testset "T5 strong duality: eta_primal == eta_dual == eta_ref (pins dual norm)" begin
         # The cross-check that PINS the QETLAB MIN-dual normalization (direction +
         # constant, bead aic-m24 step 3a). For every analytic anchor + the complex
         # fixture, the MAX primal value (diamond_norm_watrous_primal) and the MIN

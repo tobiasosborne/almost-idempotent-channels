@@ -45,6 +45,72 @@ function _unflatten_kraus(re::Vector{Float64}, im::Vector{Float64},
     return ops
 end
 
+# ----- flat NxN row-major helper (for the cb-norm certifier matrices) -----
+
+# Flatten an N x N ComplexF64 matrix into the C row-major layout M[p*N+q] = A[p+1,q+1]
+# (0-based C; 1-based Julia), matching the Convention-A Choi layout choi_diff
+# returns / aic_ucp_shim.h:20 uses for the N x N (N=n^2) certifier matrices.
+# Returns (re, im) as flat Vector{Float64} of length N*N.
+function _flatten_NN(A::AbstractMatrix{ComplexF64}, N::Int)
+    size(A) == (N, N) || throw(ArgumentError(
+        "_flatten_NN: matrix is $(size(A)), expected ($N, $N)"))
+    re = Vector{Float64}(undef, N * N)
+    im = Vector{Float64}(undef, N * N)
+    for p in 1:N, q in 1:N
+        idx = (p - 1) * N + q
+        re[idx] = real(A[p, q])
+        im[idx] = imag(A[p, q])
+    end
+    return re, im
+end
+
+# ----- aic_cbnorm_certify_d (the TIGHT certified bracket; pure marshalling) -----
+
+# _cbnorm_certify(J, X, P, Q, Y0, Y1, n; prec) -> CertifiedBracket
+#   The MOSEK-tight rigorous bracket on eta = ||Phi^2-Phi||_cb (design §3.4). PURE
+# MARSHALLING (no solver — it lives in the CORE, not the extension): J and the two
+# MOSEK feasible points (MAX-primal X,P,Q; MIN-dual Y0,Y1) are flattened to the
+# N x N [p*N+q] (re,im) layout (N=n^2) and handed to the C arb certifier
+# aic_cbnorm_certify_d (aic_ucp_shim.h:68), which loads them to acb_mat, runs the
+# certifier, and returns the rigorous [lo,hi] (arb lower FLOOR / upper CEIL). The
+# EXTENSION computes the six matrices via the Watrous SDP and calls this. `value`
+# is left to the caller (the SDP point estimate). FAIL LOUD on rc != 0 or a
+# non-finite bracket (Rule 4). label defaults to the idempotency-defect label.
+function _cbnorm_certify(J::AbstractMatrix{ComplexF64},
+                         X::AbstractMatrix{ComplexF64},
+                         P::AbstractMatrix{ComplexF64},
+                         Q::AbstractMatrix{ComplexF64},
+                         Y0::AbstractMatrix{ComplexF64},
+                         Y1::AbstractMatrix{ComplexF64},
+                         n::Int; prec::Int = 106,
+                         value::Union{Float64,Nothing} = nothing,
+                         label::AbstractString = "‖Φ²−Φ‖_cb")
+    n >= 1 || throw(ArgumentError("_cbnorm_certify: n must be >= 1, got $n"))
+    prec >= 2 || throw(ArgumentError("_cbnorm_certify: prec must be >= 2, got $prec"))
+    N = n * n
+    Jr, Ji = _flatten_NN(J, N)
+    Xr, Xi = _flatten_NN(X, N)
+    Pr, Pi = _flatten_NN(P, N)
+    Qr, Qi = _flatten_NN(Q, N)
+    Y0r, Y0i = _flatten_NN(Y0, N)
+    Y1r, Y1i = _flatten_NN(Y1, N)
+    lo = Ref{Cdouble}(0.0)
+    hi = Ref{Cdouble}(0.0)
+    rc = GC.@preserve Jr Ji Xr Xi Pr Pi Qr Qi Y0r Y0i Y1r Y1i ccall(
+        _SYM_CBNORM_CERTIFY_D[], Cint,
+        (Ptr{Cdouble}, Ptr{Cdouble},
+         Ptr{Cdouble}, Ptr{Cdouble}, Ptr{Cdouble}, Ptr{Cdouble},
+         Ptr{Cdouble}, Ptr{Cdouble}, Ptr{Cdouble}, Ptr{Cdouble},
+         Ptr{Cdouble}, Ptr{Cdouble}, Ptr{Cdouble}, Ptr{Cdouble},
+         Cint, Cint),
+        lo, hi, Jr, Ji, Xr, Xi, Pr, Pi, Qr, Qi, Y0r, Y0i, Y1r, Y1i, n, prec)
+    rc == 0 || error("aic_cbnorm_certify_d returned $rc")
+    (isfinite(lo[]) && isfinite(hi[])) ||
+        error("aic_cbnorm_certify_d: non-finite bracket [$(lo[]), $(hi[])] " *
+              "(lost-precision arb ball?)")
+    return CertifiedBracket(lo[], hi[]; value = value, label = label)
+end
+
 # ----- C2: aic_assoc_summary_d -----
 
 # _assoc_summary(kraus, n, r; eps, prec) -> NamedTuple

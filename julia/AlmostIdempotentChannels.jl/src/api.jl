@@ -28,17 +28,27 @@
 # ============================================================================
 
 """
-    certified_defect(Φ::UCPMap; prec=106) -> CertifiedBracket
+    certified_defect(Φ::UCPMap; prec=106, tight=false) -> CertifiedBracket
 
 A RIGOROUS two-sided bracket on the idempotency defect η = ‖Φ²−Φ‖_cb
-(approximate_algebras.tex:347). Solver-free — the eig-free arb certifier
+(approximate_algebras.tex:347).
+
+`tight=false` (THE DEFAULT, SOLVER-FREE): the eig-free arb certifier
 (`aic_cbnorm_eigfree_d`) rounded outward, so `lo ≤ η ≤ hi` holds to the arb
-working precision. THE DEFAULT: works with no MOSEK and NEVER aborts (no basin
-pre-check needed). The bracket is loose by design (`hi/lo ~ 2n`); it certifies a
-value rather than computing it, so `value` is `nothing`. The exact η VALUE is
-[`idempotency_defect`](@ref) (the Watrous SDP, MOSEK extension).
+working precision. Works with no MOSEK and NEVER aborts (no basin pre-check
+needed). The bracket is loose by design (`hi/lo ~ 2n`); it certifies a value
+rather than computing it, so `value` is `nothing`.
+
+`tight=true` (MOSEK EXTENSION ONLY): the MOSEK-tight rigorous bracket — the arb
+certifier (`aic_cbnorm_certify_d`) fed the Watrous SDP feasible points (MAX-primal
+X,P,Q for the lower bound; MIN-dual Y0,Y1 for the upper bound), so `hi − lo`
+collapses to ~(solver tol + arb radius) instead of ~2n. `value` carries the SDP
+point estimate. Requires Convex + Mosek + MosekTools; WITHOUT them this throws a
+helpful install hint (NOT a `MethodError`). The exact η VALUE alone is
+[`idempotency_defect`](@ref).
 """
-function certified_defect(Φ::UCPMap; prec::Int=106)::CertifiedBracket
+function certified_defect(Φ::UCPMap; prec::Int=106, tight::Bool=false)::CertifiedBracket
+    tight && return _tight_bracket_impl(Φ, prec)
     lo, hi = eta_eigfree(Φ.kraus; prec=prec)
     return CertifiedBracket(lo, hi; label="‖Φ²−Φ‖_cb")
 end

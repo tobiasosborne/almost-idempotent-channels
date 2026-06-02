@@ -42,9 +42,23 @@ idempotency_defect(kraus::Vector{Matrix{ComplexF64}}; prec::Int = 106)::Float64 
 # fires only when the extension is not loaded.
 _diamond_value_impl(::Any, ::Int) = error("idempotency_defect " * _MOSEK_HINT)
 
+# Internal dispatch hook for the TIGHT certified bracket (the MOSEK-feasible-points
+# path of certified_defect(Φ; tight=true), design §3.4). The core certified_defect
+# (api.jl) is solver-free for tight=false; only tight=true routes here. The
+# extension adds the real method (compute the SDP feasible points, feed them to
+# aic_cbnorm_certify_d); this fallback fires when the extension is not loaded.
+_tight_bracket_impl(::Any, ::Int) = error("certified_defect(Φ; tight=true) " * _MOSEK_HINT)
+
 # ---- the Watrous diamond-norm SDP entry points (extension-only) ----
-# Stubbed on the Convention-A Choi + dim signature src/sdp.jl uses; the extension
-# shadows each with the real Convex.jl + MOSEK method (bead J5, aic-exa.8).
+# CATCH-ALL (::Any, ::Any) fallbacks, NOT (::Matrix{ComplexF64}, ::Int). The
+# extension's real methods ARE on (::Matrix{ComplexF64}, ::Int) — the SAME
+# signature src/sdp.jl used and the tests (T5) call. If these stubs were ALSO on
+# that signature the extension would OVERWRITE them, which Julia ≥1.12 forbids
+# during precompilation ("Method overwriting is not permitted during Module
+# precompilation" — AICMosekExt would fail to precompile). Stubbing on (::Any,
+# ::Any) makes the extension's concrete method strictly MORE SPECIFIC, so it ADDS
+# (not overwrites) and wins cleanly — exactly the register-by-method-override
+# pattern used for _diamond_value_impl (design §3.3; api.jl review N-3).
 
 """
     diamond_norm_watrous(J::Matrix{ComplexF64}, n::Int)
@@ -52,7 +66,7 @@ _diamond_value_impl(::Any, ::Int) = error("idempotency_defect " * _MOSEK_HINT)
 Watrous 2012 MAX-primal diamond-norm SDP for the map with Convention-A Choi `J`.
 Extension-only (Convex + Mosek + MosekTools); throws a helpful error otherwise.
 """
-diamond_norm_watrous(::Matrix{ComplexF64}, ::Int) =
+diamond_norm_watrous(::Any, ::Any) =
     error("diamond_norm_watrous " * _MOSEK_HINT)
 
 """
@@ -61,7 +75,7 @@ diamond_norm_watrous(::Matrix{ComplexF64}, ::Int) =
 MAX-primal SDP exposing the feasible point (X,P,Q) for the arb lower-bound
 certifier. Extension-only; throws a helpful error otherwise.
 """
-diamond_norm_watrous_primal(::Matrix{ComplexF64}, ::Int) =
+diamond_norm_watrous_primal(::Any, ::Any) =
     error("diamond_norm_watrous_primal " * _MOSEK_HINT)
 
 """
@@ -70,5 +84,5 @@ diamond_norm_watrous_primal(::Matrix{ComplexF64}, ::Int) =
 QETLAB/Watrous MIN-dual SDP exposing (Y0,Y1) for the arb upper-bound certifier.
 Extension-only; throws a helpful error otherwise.
 """
-diamond_norm_dual(::Matrix{ComplexF64}, ::Int) =
+diamond_norm_dual(::Any, ::Any) =
     error("diamond_norm_dual " * _MOSEK_HINT)

@@ -32,14 +32,26 @@ today exposes only `eta_idempotence`/`eta_eigfree`/`choi_diff` + the Watrous SDP
 The headline pipeline (`factorize→B/Δ/Υ`, `associated_algebra`, `certified_defect`) is NOT reachable from Julia.
 `aic_factorize_choi_shim_d` already rebuilds the whole pipeline internally — [C] extends it to emit artifacts.
 
-**PROGRESS (2026-06-02c):** `aic-exa.1`[R]✓ `aic-exa.2`[D]✓ (`docs/research/julia_package_design.md` +
-orchestrator Appendix B) `aic-exa.3`[C]✓ (commit cf7ebc8 — C2–C5 flat-double shims + the new rigorous
-`aic_cbnorm_eigfree_ball_choi_rect` core; full suite 46/46, fast 22/22, ASan clean, hostile-reviewed no
-blockers, FINDINGS §C22; frozen ABI signatures are in `bd show aic-exa.6` notes). **NOW:** `aic-exa.4`[J1].
-The whole headline pipeline is reachable solver-free over flat doubles.
+**PROGRESS (2026-06-02c):** `aic-exa.1`[R]✓ `.2`[D]✓ (`docs/research/julia_package_design.md` + orchestrator
+Appendix B1–B10) `.3`[C]✓ (cf7ebc8 — C2–C5 shims + rigorous `aic_cbnorm_eigfree_ball_choi_rect`, FINDINGS §C22)
+`.4`[J1]✓ (8ba846b — MOSEK→weakdeps+ext, Preferences libpath) `.5`[J2]✓ (2958cfb — value types + `show`;
+`ChannelFactorization` renamed off the `LinearAlgebra.Factorization` clash) `.6`[J3]✓ (db397d6 — `@ccall`
+layer, 41-check Rule-6 cross-check vs C oracle) `.7`[J4]✓ (413a68c — the joy API: `certified_defect`,
+`associated_algebra`, `main_isomorphism`, `factorize` (extends `LinearAlgebra.factorize`), `encode`/`decode`
+via the rectangular `CPMap` type; basin guards so no SIGABRT). **NOW:** `aic-exa.8`[J5] MOSEK ext → then
+`.9`[T] tests → `.10`[X] docs.
 
-**RECOVERY AFTER COMPACTION:** read CLAUDE.md → this section → `bd show aic-exa` (+ its open children) →
-`bd ready` → resume the lowest-open `aic-exa.N`. The [C] ABI is frozen in `bd show aic-exa.6`. Memory:
+**Frozen ABI** (consumed by [J3]): `bd show aic-exa.6` notes. **Open follow-ups:** `.11` (split 484-LOC
+types.jl), `.12` ([T] η-membership slack), **`.13` (P1 bug: `factorize`→`aic_funcalc_xpow` SIGABRTs beyond
+ρ(Φ²−Φ)≲0.1, far tighter than the prop_P basin; the C factorize tests never exercised it; J4 added an interim
+Julia guard `_FACTORIZE_RHO_MAX=0.10`; proper fix = extend the xpow domain or graceful ABI error-return).**
+
+**Key invariants now true:** core loads + tests intent solver-free; `names(AIC) ∩ names(Base)==[]`, `∩
+LinearAlgebra==[:factorize]`; `decode(F)` is O(η)-TP (round-trip cb brackets are the certificate, not iscptp@1e-9);
+the whole headline pipeline is reachable solver-free over flat doubles.
+
+**RECOVERY AFTER COMPACTION:** read CLAUDE.md → this section → `bd show aic-exa` (+ open children) →
+`bd ready` → resume the lowest-open `aic-exa.N`. ABI frozen in `bd show aic-exa.6`. Memory:
 `project_julia_epic_orchestration`.
 
 ---
