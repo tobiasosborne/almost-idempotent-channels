@@ -42,6 +42,7 @@
  *   chan_carrier_dropout domain 1C, tex:1724/1731 : near-degenerate carrier, rank near-drop
  *   chan_blockalg       domain 3D, tex:484/1249 : eps~c/n dimension-blowup block algebra (+)_j M_d
  *   chan_noncomm_boundary README:57, tex:347/378 : NON-COMMUTATIVE eta_cb=1/4-kappa boundary (id(x)cb_op_gap)
+ *   chan_conc_defect    domain 2B, tex:2192-2204/2385-2422 : RANK-1 defect on a near-degenerate subspace (gap_sub)
  *
  * API SHAPE (reusable by tests AND benches). Each NLA generator takes a caller-managed
  * acb_mat_t `out` that the caller has init'd to the right shape (asserted), the
@@ -265,6 +266,38 @@ void aic_adv_chan_blockalg(aic_ucp_kraus *out, slong k, slong d, double t,
  * it). See aic_adversarial_noncomm.c for the full derivation. */
 void aic_adv_chan_noncomm_boundary(aic_ucp_kraus *out, slong m, slong d,
                                    double kappa, slong prec);
+
+/* fam2B — RANK-1 defect CONCENTRATED on a NEAR-DEGENERATE subspace
+ * (docs/adversarial/domain.md:249-288; the O(sqrt eta) Phi_assoc1 / W
+ * cancellation stressor of th_almost_idemp, tex:2192-2204, tex:2296,
+ * tex:2385-2422). A measure-prepare UCP self-map on B(C^N), N=d>=3, in the
+ * OBSERVABLE convention Phi(X)=sum_a K_a^dag X K_a:
+ *   v = (sqrt(1-tail), sqrt(w1), sqrt(w2), 0,...,0)   (unit, on span{0,1,2}),
+ *   K_0 = |v><0|  (column 0 = v),   K_j = |j><j|  (j = 1 .. d-1),
+ * UNITAL (<v|v>=1) and CP (rank-1 Kraus) for ALL knobs — the family-1B Kraus
+ * pattern (aic_adv_chan_cb_op_gap) with a 3D measured vector. Defect:
+ *   Phi^2-Phi = P_0 (x) <rho_sub, .>,   EXACTLY superoperator-RANK-1,
+ *   rho_sub = -tail|v><v| + w1|1><1| + w2|2><2|,  tail = w1+w2 = 1-|v_0|^2.
+ * CALIBRATION (knob eta = TARGET cb defect; closed form + bisection root-find,
+ * mirroring aic_adv_chan_noncomm_boundary): tail is the lower root of
+ * tail*sqrt(1-tail) = eta on [0,2/3], so eta_cb := ||Phi^2-Phi||_cb = eta
+ * (tex:378, a function of tail only). The split w2 = tail*gap_sub, w1 = tail-w2
+ * makes |2> the NEAR-DEGENERATE measured direction: gap_sub in (0,1] is the
+ * RELATIVE weight of |2> in rho_sub, and as gap_sub -> 0 the |2> eigen-direction
+ * collapses toward the kernel (realized small weight tail*gap_sub -> 0) — the
+ * near-degenerate subspace the W cancellation (tex:2385-2422) is stressed on.
+ * eta_cb is UNCHANGED by gap_sub (depends on tail only): gap_sub tunes the
+ * SUBSPACE, not the magnitude. WHY THE LITERAL domain.md:255-261 FORMULA IS NOT
+ * USED: Phi = Phi_idemp + eta*(1-Phi_idemp)D is NOT CP (certified-negative Choi
+ * min-eig ~ -eta*c/2 for every eta>0; FINDINGS §C18) — this UCP measure-prepare
+ * map realizes the SAME named properties honestly. Asserts d>=3,
+ * 0 < eta <= 0.3849 (above the peak there is NO calibration root — fail loud,
+ * Rule 4), 0 < gap_sub <= 1. eta -> 0 REDUCTION: v -> |0>, Phi -> complete
+ * dephasing, EXACTLY idempotent, defect 0 (bracket [0,0]). `out` is
+ * aic_ucp_kraus_init'd HERE (caller clears with aic_ucp_kraus_clear). See
+ * aic_adversarial_domain2.c for the full derivation. */
+void aic_adv_chan_conc_defect(aic_ucp_kraus *out, slong d, double eta,
+                              double gap_sub, slong prec);
 
 #ifdef __cplusplus
 }

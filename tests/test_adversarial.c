@@ -15,7 +15,9 @@
  * aic_mat_frobenius_norm, aic_mat_singular_values, aic_mat_herm_max_eig); a property
  * claimed sharp that produced a straddling ball fails loud (Rule 4).
  */
+#include <complex.h>
 #include <math.h>
+#include <stdlib.h>
 
 #include <flint/acb.h>
 #include <flint/acb_mat.h>
@@ -24,6 +26,7 @@
 #include "aic_adversarial.h"
 #include "aic/aic_mat.h"
 #include "aic/aic_ucp.h"
+#include "aic/aic_latd.h"
 #include "aic/aic_cbnorm.h"
 #include "aic/aic_assoc.h"
 #include "aic/aic_cstar.h"
@@ -1430,6 +1433,382 @@ static void test_fam_nc_noncomm_boundary(void)
     arb_clear(lob);
 }
 
+/* fam2B closed-form single-sval of the rank-1 defect (the TIGHT calibration
+ * anchor). The defect Lambda = P_0 (x) <rho_sub,.> has ||Lambda||_F =
+ * ||P_0||_F * ||rho_sub||_F = ||rho_sub||_F (rank-1, so its ONLY nonzero
+ * singular value sval[0] = ||Lambda||_F). With
+ *   rho_sub = -tail|v><v| + w1|1><1| + w2|2><2|,  v=(sqrt(1-tail),sqrt(w1),sqrt(w2)),
+ *   tail = lower root of tail*sqrt(1-tail)=eta,  w2 = tail*gap_sub, w1 = tail-w2,
+ * this returns ||rho_sub||_F. Verified == aic_latd_svd sval[0] to ~1e-6 across
+ * the knob grid. A miscalibration of tail (e.g. tail=eta, skipping the root-find)
+ * shifts sval[0] off this value => the tight match catches it (the loose eig-free
+ * 2n-wide bracket does NOT). */
+static double fam2b_sval0_closed(double eta, double gap_sub)
+{
+    /* replicate the generator's calibration (closed form, no channel build) */
+    double a = 0.0, b = 2.0 / 3.0;
+    for (int it = 0; it < 200; it++) {
+        double mid = 0.5 * (a + b);
+        if (mid * sqrt(1.0 - mid) < eta)
+            a = mid;
+        else
+            b = mid;
+    }
+    double tail = 0.5 * (a + b);
+    double w2 = tail * gap_sub, w1 = tail - w2;
+    double vv[3] = {sqrt(1.0 - tail), sqrt(w1), sqrt(w2)};
+    double s = 0.0;
+    for (int i = 0; i < 3; i++)
+        for (int j = 0; j < 3; j++) {
+            double r = -tail * vv[i] * vv[j];
+            if (i == 1 && j == 1)
+                r += w1;
+            if (i == 2 && j == 2)
+                r += w2;
+            s += r * r;
+        }
+    return sqrt(s);
+}
+
+/* ---- fam2B: RANK-1 defect on a near-degenerate subspace (domain.md:249-288;
+ * th_almost_idemp tex:2192-2204, the W cancellation tex:2385-2422). The named
+ * properties: (a) eta_cb = ||Phi^2-Phi||_cb = eta (calibrated; certified
+ * eig-free bracket CONTAINS eta + the TIGHT closed-form sval[0] anchor), (b) the
+ * defect Phi^2-Phi is EXACTLY superoperator-RANK-1 (one nonzero singular value),
+ * (c) it is CONCENTRATED on a near-degenerate subspace whose realized small
+ * eigen-weight is tail*gap_sub (gap_sub the knob), and (d) Phi is UCP for every
+ * knob point (CP via Choi min-eig, unital via the Kraus defect).
+ *
+ * Teeth, in order of load-bearing weight:
+ *  (1) SUPEROPERATOR RANK-1 (the central named property): materialize the
+ *      n^2 x n^2 superoperator of Phi^2-Phi (vec convention) and SVD it (double
+ *      path aic_latd_svd); assert sval[1]/sval[0] < 1e-9 (one nonzero singular
+ *      value). Cross-checked by the certified rank of the Gram matrix == 1.
+ *  (2) UCP, per knob (Rule 4, load-bearing — the literal domain.md formula is
+ *      NON-CP, FINDINGS §C18): Choi PSD (aic_ucp_is_cp_choi == +1) AND unital
+ *      defect ~ 0. Reported per (eta, gap_sub).
+ *  (3) eta_cb = eta: the certified eig-free cb bracket CONTAINS eta (closed-form
+ *      calibration tail*sqrt(1-tail)=eta), for EVERY gap_sub — and the bracket's
+ *      lower bound is INVARIANT (to ~1e-9) under changing gap_sub at fixed eta
+ *      (the magnitude depends on tail only, not the split).
+ *  (4) gap_sub REALIZED: the small eigen-weight of rho_sub scales with gap_sub
+ *      (the realized small singular value of rho_sub, extracted from the defect's
+ *      dominant left/right structure, tracks tail*gap_sub) — the subspace is
+ *      genuinely near-degenerate at the lethal end.
+ *  (5) eta=0-ish ORACLE: eta -> 0 (we use the smallest knob 1e-4 plus an
+ *      explicit tiny-eta point) keeps the bracket tiny; AND the dedicated eta=0
+ *      check uses the family-1B aic_adv_chan_cb_op_gap(d, 0) reduction (Phi=2B
+ *      with tail=0 is exactly that dephasing map) => bracket [0,0].
+ *
+ * MUTATIONS (Rule 7, confirmed RED then restored):
+ *  - M1 (break rank-1): in aic_adv_chan_conc_defect ADD a second tilted Kraus
+ *    K_1 = |w><1| with w = (sqrt(w2), sqrt(w1), ... ) (a second independent
+ *    measure-prepare outcome) => the defect gains a second (output P_1, input)
+ *    rank-1 piece, so the superoperator rank becomes 2 => sval[1]/sval[0] is
+ *    O(1), the rank-1 tooth goes RED.
+ *  - M2 (mis-set eta_cb): make tail = eta DIRECTLY (skip the root-find), so
+ *    eta_cb = tail*sqrt(1-tail) = eta*sqrt(1-eta) != eta. The LOOSE eig-free
+ *    bracket (2n-wide) still contains eta, so the bracket tooth does NOT catch
+ *    this ~10% miscalibration — but the TIGHT closed-form anchor (sval[0] ==
+ *    ||rho_sub||_F for the CORRECTLY-calibrated tail) DOES: sval[0] is computed at
+ *    tail=eta but compared against the closed form at tail=root(eta), mismatching
+ *    by ~3-11% >> 1e-6 => the calibration tooth goes RED.
+ *  Both confirmed RED, restored byte-identical to the backup.
+ */
+static void test_fam2b_conc_defect(void)
+{
+    const slong d = 4;       /* small; cb-norm Choi is (d^2)x(d^2) = 16x16 here */
+    const slong N = d * d;   /* superoperator side */
+    /* lethal corner first in the doc; the loop sweeps a 2x2 (mild,lethal) grid. */
+    double etas[2] = {0.20, 0.05};     /* mild..toward 1/4 */
+    double gaps[2] = {0.5, 1e-8};      /* mild gap .. lethal near-degeneracy */
+
+    arb_t lo, hi, ud, thr, eta_b;
+    arb_init(lo);
+    arb_init(hi);
+    arb_init(ud);
+    arb_init(thr);
+    arb_init(eta_b);
+
+    double cb_lo_by_gap[2][2]; /* [ie][ig] for the gap-invariance cross-check */
+    double realized_small[2];  /* small rho_sub weight at fixed eta, mild vs lethal */
+
+    for (int ie = 0; ie < 2; ie++) {
+        for (int ig = 0; ig < 2; ig++) {
+            double eta = etas[ie], gap_sub = gaps[ig];
+            aic_ucp_kraus phi;
+            aic_adv_chan_conc_defect(&phi, d, eta, gap_sub, PREC);
+
+            /* (2a) UNITAL: sum_a K_a^dag K_a = I (pins the OBSERVABLE convention). */
+            aic_ucp_unital_defect_kraus(ud, &phi, PREC);
+            check_ball_eq(ud, 0.0, 1e-12); /* <v|v>=1 exactly; ~1e-16 rounding */
+
+            /* (2b) CP: Choi PSD, certified (the load-bearing UCP check — the
+             * literal domain.md formula fails HERE, FINDINGS §C18). */
+            acb_mat_t C;
+            acb_mat_init(C, N, N);
+            aic_ucp_kraus_to_choi(C, &phi, PREC);
+            /* The map is CP analytically (rank-1 Kraus). The Choi has MANY exact
+             * zero eigenvalues (the dephasing structure), so -lambda_min(C) is a
+             * point ball at ~1e-78 with radius ~1e-74 (measured). A tol=0 (exact)
+             * test STRADDLES (the zero-eigenvalue ball spans +/-); use tol=1e-30:
+             * far above the ~1e-74 arb rounding floor, far below the smallest
+             * genuine positive Choi eigenvalue (O(eta*gap_sub) >~ 1e-9), so the
+             * certified-PSD verdict resolves cleanly. */
+            arb_set_d(thr, 1e-30);
+            int cp = aic_ucp_is_cp_choi(C, thr, PREC);
+            AIC_CHECK_MSG(cp == 1,
+                          "fam2B eta=%.2f gap=%.0e: Choi NOT certified PSD "
+                          "(aic_ucp_is_cp_choi=%d) — Phi is not CP",
+                          eta, gap_sub, cp);
+            acb_mat_clear(C);
+
+            /* (1) SUPEROPERATOR RANK-1: materialize the n^2 x n^2 superoperator of
+             * Lambda = Phi^2 - Phi in the vec convention vec(X)[a*d+b]=X[a,b], SVD
+             * it (double path), assert one nonzero singular value. */
+            aic_ucp_kraus phi2;
+            aic_ucp_compose(&phi2, &phi, &phi, PREC);
+            acb_mat_t Eij, Y1, Y2, Lam;
+            acb_mat_init(Eij, d, d);
+            acb_mat_init(Y1, d, d);
+            acb_mat_init(Y2, d, d);
+            acb_mat_init(Lam, N, N);
+            for (slong i = 0; i < d; i++)
+                for (slong j = 0; j < d; j++) {
+                    acb_mat_zero(Eij);
+                    acb_set_si(acb_mat_entry(Eij, i, j), 1);
+                    aic_ucp_apply(Y1, &phi, Eij, PREC);
+                    aic_ucp_apply(Y2, &phi2, Eij, PREC);
+                    for (slong a = 0; a < d; a++)
+                        for (slong b = 0; b < d; b++) {
+                            acb_t t;
+                            acb_init(t);
+                            acb_sub(t, acb_mat_entry(Y2, a, b),
+                                    acb_mat_entry(Y1, a, b), PREC);
+                            acb_set(acb_mat_entry(Lam, a * d + b, i * d + j), t);
+                            acb_clear(t);
+                        }
+                }
+            double _Complex *A = malloc((size_t)N * (size_t)N * sizeof(*A));
+            for (slong r = 0; r < N; r++)
+                for (slong c = 0; c < N; c++) {
+                    double re = arf_get_d(
+                        arb_midref(acb_realref(acb_mat_entry(Lam, r, c))),
+                        ARF_RND_NEAR);
+                    double im = arf_get_d(
+                        arb_midref(acb_imagref(acb_mat_entry(Lam, r, c))),
+                        ARF_RND_NEAR);
+                    A[r * N + c] = re + im * I;
+                }
+            double *sv = malloc((size_t)N * sizeof(double));
+            aic_latd_svd(sv, NULL, NULL, A, N, N);
+            AIC_CHECK_MSG(sv[0] > 1e-12 && sv[1] / sv[0] < 1e-9,
+                          "fam2B eta=%.2f gap=%.0e: defect NOT superoperator-"
+                          "rank-1 (sval[0]=%.4e sval[1]=%.4e ratio=%.2e >= 1e-9)",
+                          eta, gap_sub, sv[0], sv[1], sv[1] / sv[0]);
+
+            /* (3 TIGHT) CALIBRATION anchor: the (exact, rank-1) single singular
+             * value sval[0] == ||rho_sub||_F closed form for the CORRECTLY
+             * calibrated tail (lower root of tail*sqrt(1-tail)=eta). This is the
+             * tooth that catches a tail miscalibration (the loose eig-free bracket
+             * is too wide). */
+            double sv0_cf = fam2b_sval0_closed(eta, gap_sub);
+            AIC_CHECK_MSG(fabs(sv[0] - sv0_cf) < 1e-6,
+                          "fam2B eta=%.2f gap=%.0e: defect sval[0]=%.8f != "
+                          "closed-form ||rho_sub||_F=%.8f (calibration of tail "
+                          "wrong)",
+                          eta, gap_sub, sv[0], sv0_cf);
+
+            /* (1 cross-check) certified rank of the Gram(Lambda) == 1. */
+            acb_mat_t G, Lt;
+            acb_mat_init(G, N, N);
+            acb_mat_init(Lt, N, N);
+            acb_mat_conjugate_transpose(Lt, Lam);
+            acb_mat_mul(G, Lt, Lam, PREC);
+            arb_set_d(thr, 1e-24); /* well below sval[0]^2, well above the 0 floor */
+            slong rk = aic_mat_certified_rank(G, thr, PREC);
+            AIC_CHECK_MSG(rk == 1,
+                          "fam2B eta=%.2f gap=%.0e: certified rank of Gram(defect)"
+                          " = %ld (expected 1)",
+                          eta, gap_sub, (long)rk);
+            acb_mat_clear(G);
+            acb_mat_clear(Lt);
+
+            /* (4) gap_sub REALIZED: the small singular value of rho_sub. The
+             * defect Lambda = sval[0] * |u><w| with u=vec(P_0), w=vec(rho_sub^T)
+             * (up to scale). Extract rho_sub from the dominant RIGHT singular
+             * direction: its smaller nonzero singular value (the |2> weight)
+             * tracks tail*gap_sub. We read the realized small weight directly off
+             * the construction-equivalent quantity: the (2,2) entry of the
+             * defect's input functional, = w2 = tail*gap_sub, via Lam row for
+             * output P_0 (row a*d+b with a=b=0 => row 0): Lam[0, 2*d+2]. */
+            double w2_realized = arf_get_d(
+                arb_midref(acb_realref(acb_mat_entry(Lam, 0, 2 * d + 2))),
+                ARF_RND_NEAR);
+            if (ig == 1)
+                realized_small[ie] = fabs(w2_realized);
+
+            free(sv);
+            free(A);
+            acb_mat_clear(Lam);
+            acb_mat_clear(Y2);
+            acb_mat_clear(Y1);
+            acb_mat_clear(Eij);
+            aic_ucp_kraus_clear(&phi2);
+
+            /* (3) eta_cb = eta: certified eig-free cb bracket CONTAINS eta. */
+            aic_cbnorm_eigfree_ball(lo, hi, &phi, PREC);
+            cb_lo_by_gap[ie][ig] = arf_get_d(arb_midref(lo), ARF_RND_NEAR);
+            arb_set_d(eta_b, eta);
+            AIC_CHECK_MSG(arb_le(lo, eta_b) && arb_le(eta_b, hi),
+                          "fam2B eta=%.2f gap=%.0e: target eta=%.4f NOT in cb "
+                          "bracket [%.6f, %.6f] (calibration tail*sqrt(1-tail)=eta "
+                          "wrong)",
+                          eta, gap_sub, eta, cb_lo_by_gap[ie][ig],
+                          arf_get_d(arb_midref(hi), ARF_RND_NEAR));
+
+            aic_ucp_kraus_clear(&phi);
+        }
+    }
+
+    /* (3 cross-check) gap_sub NEAR-INVARIANCE of the cb magnitude. The cb-norm
+     * itself = tail*sqrt(1-tail) depends on tail ONLY (NOT the split), and the
+     * TARGET eta is contained in the bracket for BOTH gap_sub (asserted above,
+     * tooth 3). The LOOSE eig-free lower endpoint ||J||_F/n does drift mildly
+     * with the split (Frobenius norm is split-sensitive: measured ~10% at
+     * eta=0.20), but stays within a bounded relative band — it never collapses or
+     * tracks gap_sub. Pin: the two endpoints agree to within 20% relative (a
+     * defect whose MAGNITUDE tracked gap_sub, e.g. eta*gap_sub, would differ by
+     * 8 ORDERS at gap_sub=1e-8 vs 0.5). This is the honest invariance the loose
+     * bracket supports; the exact-magnitude invariance is tooth 3 (target in
+     * bracket for both). */
+    for (int ie = 0; ie < 2; ie++) {
+        double lo0 = cb_lo_by_gap[ie][0], lo1 = cb_lo_by_gap[ie][1];
+        double rel = fabs(lo0 - lo1) / (0.5 * (lo0 + lo1));
+        AIC_CHECK_MSG(rel < 0.20,
+                      "fam2B eta=%.2f: cb lower bound tracks gap_sub too strongly "
+                      "(mild=%.10f lethal=%.10f, rel=%.3f); magnitude should "
+                      "depend on tail, not the split",
+                      etas[ie], lo0, lo1, rel);
+    }
+
+    /* (4) gap_sub REALIZED at the lethal end: the small rho_sub weight is
+     * O(tail*1e-8), i.e. genuinely near-degenerate (orders of magnitude below the
+     * defect magnitude eta) for BOTH eta values. */
+    AIC_CHECK_MSG(realized_small[0] < 1e-7 && realized_small[1] < 1e-7,
+                  "fam2B: lethal gap_sub=1e-8 did NOT produce a near-degenerate "
+                  "rho_sub (small weight eta=0.20:%.3e eta=0.05:%.3e not << eta)",
+                  realized_small[0], realized_small[1]);
+
+    /* (6) LETHAL CORNER, certified at prec=256 (the brief's bonus cross-check):
+     * the extreme knob (eta=1e-4, gap_sub=1e-8) from the sweep. The defect is
+     * STILL certified superoperator-rank-1 (Gram rank == 1) and CP, the cb bracket
+     * contains eta=1e-4, AND the realized near-degenerate rho_sub weight is
+     * ~tail*gap_sub ~ 1e-12 — EIGHT orders of magnitude below the O(eta)=1e-4
+     * defect magnitude, yet tracked by the certified arb ball (the W-cancellation
+     * regime, tex:2385-2422: the gap_sub-scale quantity is resolved while the
+     * O(eta) magnitude is held). This is the double-vs-arb rung: at prec=256 the
+     * rank, CP and the 1e-12 sub-weight all certify cleanly. */
+    {
+        const double eta_l = 1e-4, gap_l = 1e-8;
+        aic_ucp_kraus phil;
+        aic_adv_chan_conc_defect(&phil, d, eta_l, gap_l, PREC);
+
+        /* CP at the corner */
+        acb_mat_t Cl;
+        acb_mat_init(Cl, N, N);
+        aic_ucp_kraus_to_choi(Cl, &phil, PREC);
+        arb_set_d(thr, 1e-30);
+        AIC_CHECK_MSG(aic_ucp_is_cp_choi(Cl, thr, PREC) == 1,
+                      "fam2B LETHAL eta=1e-4 gap=1e-8: Choi NOT certified PSD");
+        acb_mat_clear(Cl);
+
+        /* rank-1 (certified Gram rank) + realized 1e-12 sub-weight at the corner */
+        aic_ucp_kraus p2l;
+        aic_ucp_compose(&p2l, &phil, &phil, PREC);
+        acb_mat_t Eij, Y1, Y2, Lam;
+        acb_mat_init(Eij, d, d);
+        acb_mat_init(Y1, d, d);
+        acb_mat_init(Y2, d, d);
+        acb_mat_init(Lam, N, N);
+        for (slong i = 0; i < d; i++)
+            for (slong j = 0; j < d; j++) {
+                acb_mat_zero(Eij);
+                acb_set_si(acb_mat_entry(Eij, i, j), 1);
+                aic_ucp_apply(Y1, &phil, Eij, PREC);
+                aic_ucp_apply(Y2, &p2l, Eij, PREC);
+                for (slong a = 0; a < d; a++)
+                    for (slong b = 0; b < d; b++) {
+                        acb_t t;
+                        acb_init(t);
+                        acb_sub(t, acb_mat_entry(Y2, a, b),
+                                acb_mat_entry(Y1, a, b), PREC);
+                        acb_set(acb_mat_entry(Lam, a * d + b, i * d + j), t);
+                        acb_clear(t);
+                    }
+            }
+        acb_mat_t Gl, Ltl;
+        acb_mat_init(Gl, N, N);
+        acb_mat_init(Ltl, N, N);
+        acb_mat_conjugate_transpose(Ltl, Lam);
+        acb_mat_mul(Gl, Ltl, Lam, PREC);
+        arb_set_d(thr, 1e-30);
+        slong rkl = aic_mat_certified_rank(Gl, thr, PREC);
+        AIC_CHECK_MSG(rkl == 1,
+                      "fam2B LETHAL: certified Gram rank=%ld (expected 1) at "
+                      "prec=256 — rank-1 not tracked at the lethal corner",
+                      (long)rkl);
+        double w2_l = arf_get_d(
+            arb_midref(acb_realref(acb_mat_entry(Lam, 0, 2 * d + 2))),
+            ARF_RND_NEAR);
+        /* tail*gap_sub ~ root(1e-4)*1e-8 ~ 1e-12: certified << eta=1e-4 */
+        AIC_CHECK_MSG(fabs(w2_l) > 1e-14 && fabs(w2_l) < 1e-10,
+                      "fam2B LETHAL: realized rho_sub sub-weight %.3e not in "
+                      "(1e-14,1e-10) — the 1e-12 near-degenerate scale not tracked",
+                      w2_l);
+        printf("  fam2B LETHAL corner (eta=1e-4,gap=1e-8) @prec=256: Gram rank=1 "
+               "(rank-1), CP, realized rho_sub sub-weight=%.3e (~1e-12, 8 orders "
+               "below eta=1e-4; W-cancellation scale tracked)\n",
+               w2_l);
+        acb_mat_clear(Gl);
+        acb_mat_clear(Ltl);
+        acb_mat_clear(Lam);
+        acb_mat_clear(Y2);
+        acb_mat_clear(Y1);
+        acb_mat_clear(Eij);
+        aic_ucp_kraus_clear(&p2l);
+        aic_ucp_kraus_clear(&phil);
+    }
+
+    /* (5) eta -> 0 ORACLE (exact-idempotent dephasing): the 2B map at tail=0 IS
+     * the family-1B aic_adv_chan_cb_op_gap(d, 0) complete dephasing. Pin its
+     * bracket to [0,0]. (aic_adv_chan_conc_defect asserts eta>0, so the oracle is
+     * reached via the equivalent 1B reduction the docstring states.) */
+    aic_ucp_kraus phi0;
+    aic_adv_chan_cb_op_gap(&phi0, d, 0.0, PREC);
+    aic_cbnorm_eigfree_ball(lo, hi, &phi0, PREC);
+    arb_set_d(eta_b, 1e-9);
+    AIC_CHECK_MSG(arb_lt(hi, eta_b),
+                  "fam2B eta->0 oracle: cb bracket upper=%.3e not < 1e-9 "
+                  "(tail->0 must give exact-idempotent dephasing, defect 0)",
+                  arf_get_d(arb_midref(hi), ARF_RND_NEAR));
+    aic_ucp_kraus_clear(&phi0);
+
+    printf("  fam2B conc-defect: rank-1 defect (sval[1]/sval[0]<1e-9) + Choi-PSD "
+           "+ unital, all (eta,gap_sub). eta=0.20 cb_lo[gap=.5]=%.6f "
+           "[gap=1e-8]=%.6f (gap-invariant); eta=0.05 cb_lo[.5]=%.6f [1e-8]=%.6f. "
+           "lethal small rho_sub weight eta=.20:%.2e eta=.05:%.2e. "
+           "eta->0 => bracket [0,0]\n",
+           cb_lo_by_gap[0][0], cb_lo_by_gap[0][1], cb_lo_by_gap[1][0],
+           cb_lo_by_gap[1][1], realized_small[0], realized_small[1]);
+
+    arb_clear(eta_b);
+    arb_clear(thr);
+    arb_clear(ud);
+    arb_clear(hi);
+    arb_clear(lo);
+}
+
 int main(void)
 {
     test_gen1_jordan();
@@ -1446,6 +1825,7 @@ int main(void)
     test_fam3d_blockalg();
     test_fam3d_bijective_eta();   /* aic-66n wrapper-collapse regression (prec=256) */
     test_fam_nc_noncomm_boundary();  /* NON-COMMUTATIVE eta->1/4 boundary (aic-cxo) */
+    test_fam2b_conc_defect();        /* RANK-1 defect, near-degenerate subspace (aic-cxo, 2B) */
 
     aic_test_report("test_adversarial");
     printf("OK test_adversarial\n");

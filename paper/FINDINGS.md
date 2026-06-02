@@ -826,6 +826,59 @@ with the concrete evidence from where they bit.
   `rho`. The tensor-with-identity trick is the general recipe to lift ANY commutative boundary channel
   to a non-commutative one at the SAME `eta_cb`.
 
+### C18. The LITERAL family-2B generator `Phi = Phi_idemp + eta*(1-Phi_idemp)D` (`docs/adversarial/domain.md:255-261`) is NOT CP — the subtracted `-eta*Phi_idemp*D` piece always leaves the PSD cone; the honest UCP realization is a measure-prepare map
+- **Status:** RESOLVED (bead **aic-cxo**, family 2B; `tests/aic_adversarial_domain2.c` +
+  `tests/test_adversarial.c::test_fam2b_conc_defect`, mutation-proven). The catalogue's literal
+  generator FORMULA cannot ship as a channel; a different UCP construction with the SAME named
+  properties was built instead (Law 3: constructivize, don't transcribe — but here the transcription
+  is not even UCP).
+- **The literal formula.** `domain.md:255-261` proposes `Phi = Phi_idemp + eta*delta_channel`,
+  `delta_channel(X) = |v><v|Tr(rho_sub X) - Phi_idemp(|v><v|Tr(rho_sub X))`, "chosen to satisfy
+  `||Phi^2-Phi||_cb = eta` while the defect is rank-1". Writing `P = Phi_idemp` (idempotent
+  self-adjoint superop) and `D(X) = |v><v|Tr(rho_sub X)` (a CP measure-prepare superop), this is
+  `Phi = P + eta*(1-P)D = P + eta*D - eta*P*D`.
+- **It is NOT CP (certified, probe grid).** The `-eta*P*D` term SUBTRACTS a CP piece, pushing the Choi
+  out of the PSD cone for EVERY `eta>0`. Measured (the materialized superoperator -> Choi, certified
+  `aic_mat_herm_max_eig(-C)`): with `P` = full dephasing on `C^3`, `eta in {0.20,0.10,0.05,...,0.006}`,
+  `gap_sub in {0.5,0.05,0.005}`, the Choi MIN eigenvalue was `~ -eta*c/2 < 0` at EVERY point
+  (`minEig(Choi)` ranged `-2.75e-2` at `eta=0.20` down to `-1.0e-5` at `eta=0.006`; ALL NON-CP). The
+  negativity scales with `eta` but never vanishes — there is no `eta`-range where the literal formula
+  is a channel. (A block-diagonal `rho_sub` ALSO makes the defect identically ZERO, since
+  `(1-P)rho_sub=0` — a second way the literal formula degenerates.)
+- **The honest UCP realization (a measure-prepare map, the paper's OWN 1B route).** On `B(C^d)`, `d>=3`,
+  OBSERVABLE convention: `K_0 = |v><0|` with `v=(sqrt(1-tail),sqrt(w1),sqrt(w2),0...)` on `span{0,1,2}`,
+  `K_j = |j><j|` (`j>=1`). UNITAL (`<v|v>=1`) and CP (rank-1 Kraus) for ALL knobs — the family-1B Kraus
+  pattern with a 3D measured vector. The defect is EXACTLY superoperator-rank-1 (verified
+  `aic_latd_svd` `sval[1]=0.0` across the whole grid; certified `Gram` rank `==1`):
+  `Phi^2-Phi = P_0 (x) <rho_sub,.>`, `rho_sub = -tail|v><v| + w1|1><1| + w2|2><2|` (derived; output
+  `P_0` fixed, input functional `rho_sub` = the "density on the near-degenerate subspace"). CALIBRATION:
+  `tail` = lower root of `tail*sqrt(1-tail)=eta` (the family-1B closed form `tex:378`, a function of
+  `tail` ONLY); `gap_sub` knob = relative weight `w2/tail` of the near-degenerate measured direction
+  `|2>` (as `gap_sub->0` the `|2>` eigen-direction collapses toward the kernel, realized small weight
+  `~tail*gap_sub -> 0`). **CB-NORM CAVEAT (hostile-review correction — keep `cb != op != F`):** the
+  ACTUAL cb-norm is `||Phi^2-Phi||_cb = ||rho_sub||_op` (`P_0` has unit op-norm), which equals
+  `tail*sqrt(1-tail) = eta` only in the symmetric `gap_sub->0` limit; at a finite split it is
+  `eta + O(gap_sub*eta)` (measured ~0.9% ABOVE `eta` at the mild `gap_sub=0.5`, vanishing to `<1e-9` at
+  the lethal `gap_sub=1e-8` corner — i.e. `eta_cb=eta` is exact exactly where the adversarial value
+  lives). The calibration `tail*sqrt(1-tail)=eta` sets `tail` (hence `||rho_sub||_F`), NOT the cb-norm
+  directly. Measured (prec=256, d=4): full knob grid `eta in {0.20,0.05,0.01,1e-4}`,
+  `gap_sub in {0.5,0.1,1e-3,1e-8}` ALL certified UCP (`minEig(Choi) ~ -1e-78`, certified PSD),
+  rank-1, cb bracket contains `eta`. LETHAL corner `(eta=1e-4,gap_sub=1e-8)` @prec=256: certified
+  rank-1, CP, realized `rho_sub` sub-weight `9.999e-13` — 8 orders below `eta=1e-4`, tracked by the
+  arb ball (the `W`-cancellation `tex:2385-2422` scale resolved while the `O(eta)` magnitude holds).
+- **Calibration cannot be pinned by the loose bracket alone (a §C17-flavored point).** The eig-free
+  `2n`-wide bracket CONTAINS `eta` for both the correct calibration AND a `~10%` tail miscalibration
+  (`tail=eta` gives `eta_cb=eta*sqrt(1-eta)`, still inside the wide bracket). The TIGHT calibration
+  tooth is the EXACT closed form `sval[0] = ||Lambda||_F = ||rho_sub||_F` (rank-1, so `sval[0]` is the
+  single nonzero singular value): it matches `aic_latd_svd` `sval[0]` to `~1e-6` and a miscalibration
+  shifts it by `~3-11% >> 1e-6` (the M2 mutation). Same lesson as §C17: the loose bracket alone cannot
+  pin the calibration — a sharp closed-form anchor is required.
+- **Takeaway.** A catalogue formula asserted to have a property ("`||Phi^2-Phi||_cb=eta`, rank-1") need
+  not even be a valid channel. ALWAYS certify UCP (Choi PSD) before shipping a "channel" generator
+  (Rule 4); when the literal formula fails, find the honest construction with the same NAMED properties
+  (here the paper's own measure-prepare map gives rank-1 + concentrated + UCP for free) rather than
+  faking the literal one.
+
 ---
 
 ## D. Open questions / escalations (unresolved)
