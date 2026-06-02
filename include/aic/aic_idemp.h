@@ -308,6 +308,81 @@ void aic_idemp_gamma_kraus(aic_idemp_gamma *out, const aic_idemp_wedderburn *W,
 
 void aic_idemp_gamma_clear(aic_idemp_gamma *out);
 
+/* --- prop_Delta explicit Kraus form of the inclusion Delta (aic-ynu, I4) ---
+ *
+ * Delta_structure (.tex:2098-2103). The inclusion Delta : A = (+)_j B(L_j) ->
+ * B(H) decomposes block-diagonally w.r.t. H = M (+) M^perp (lem_idemp :1916):
+ *
+ *     Delta(A) = sum_j J_M W_j^dag (A_j (x) 1_{E_j}) W_j J_M^dag  (the M-part = w(A))
+ *              + J_{Mperp} Sigma(A) J_{Mperp}^dag                 (the M^perp-part)
+ *                                                                 (eq Delta_structure)
+ *
+ * where w(A) = sum_j W_j^dag (A_j (x) 1_{E_j}) W_j (eq Aw, :2095) is the
+ * *-monomorphism, and Sigma : A -> B(M^perp) is some UCP map.
+ *
+ * THE M-PART KRAUS FORM (constructive, from W_j + J_M). Writing
+ * A_j (x) 1_{E_j} = sum_{c in E_j} (1_{L_j} (x) e_c) A_j (1_{L_j} (x) e_c)^dag,
+ * the M-part is a Kraus sum over (block j, multiplicity index c):
+ *
+ *     Delta_M(A) = sum_{j, c in E_j} K_{j,c} A_hat K_{j,c}^dag,
+ *     K_{j,c} = J_M W_j^dag (1_{L_j} (x) e_c) P_j  : L = (+)_k L_k -> H,
+ *
+ * an n x dL_tot operator (dL_tot = sum_j dim_L[j]), with P_j : L -> L_j the block
+ * projection and A_hat = (+)_j A_j the abstract A-element as an operator on
+ * L = (+)_j L_j (the carrier of A as a C* algebra). Each K_{j,c}^dag K_{j,c} =
+ * P_j^dag (1_{L_j} (x) e_c^dag) W_j J_M^dag J_M W_j^dag (1_{L_j} (x) e_c) P_j;
+ * summed over (j,c) it is the M-part of Delta's "unitality" Delta(1_A)|_M = Pi_M
+ * (the M-block of 1_H). The blocks of A_hat are read off GAUGE-SAFELY through w:
+ * A_j = Tr_{E_j}(W_j w(A) W_j^dag) / dim_E[j] (W_j an isometry onto block j), so no
+ * abstract A-basis convention bites (mirrors the gamma_kraus w-target idiom).
+ *
+ * THE M^perp / Sigma PART (read from the stored d->Delta). Sigma is determined by
+ * the SPECIFIC inclusion d->Delta (th_idemp_structure), not free; we read it off
+ * the stored Delta: Sigma(B_k) = J_{Mperp}^dag B_k J_{Mperp}, B_k = column k of
+ * d->Delta reshaped n x n. The struct stores Sigma as a (dmp*dmp) x dim_A matrix
+ * (dmp = n - dim_M; row-major vec), so the full reconstruction is
+ * Delta(B_k) = J_M w(B_k) J_M^dag + J_{Mperp} Sigma_col_k J_{Mperp}^dag.
+ *
+ * THE GATE (.tex:2100, the crux tooth). The Delta-Kraus map MUST equal the stored
+ * d->Delta: for each A-basis element B_k, the reconstructed Delta(B_k) (M-part via
+ * the Kraus K_{j,c} + M^perp-part via Sigma) must equal d->Delta column k (reshaped
+ * n x n) to tol. This pins the K_{j,c} build + the W_j usage + the Sigma read-off at
+ * once. The decompose routine FAILS LOUD (Rule 4) if the match fails (a mismatch is
+ * a W_j/convention bug, escalated, not faked — every Delta has this structure,
+ * :2098). Plus: Delta is unital onto M (Delta_M(1_A) = Pi_M) and the full Delta is
+ * UCP (the n x dL_tot K_{j,c} together with J_{Mperp} Sigma^{1/2}-Kraus give a CP
+ * map with sum K^dag K consistent with the inclusion). */
+typedef struct {
+    slong n;            /* = d->n (dim H)                                        */
+    slong dim_M;        /* = W->dim_M                                            */
+    slong dim_Mperp;    /* = n - dim_M (dim M^perp)                              */
+    slong dim_A;        /* = W->dim_A                                            */
+    slong dL_tot;       /* sum_j dim_L[j] (dim of L = (+)_j L_j, A's carrier)    */
+    slong num_blocks;   /* = W->num_blocks                                       */
+    slong *dim_L;       /* dim_L[0..m-1] (copied from W, self-contained)         */
+    slong *dim_E;       /* dim_E[0..m-1]                                         */
+    slong *off_L;       /* off_L[j] = sum_{k<j} dim_L[k], block offset in L      */
+    slong n_kraus;      /* number of M-part Kraus ops = sum_j dim_E[j]          */
+    acb_mat_t *K;       /* n_kraus M-part Kraus ops, each n x dL_tot (K_{j,c})   */
+    acb_mat_t Sigma;    /* (dim_Mperp^2) x dim_A: Sigma(A) on M^perp, col k =
+                         * vec(J_Mperp^dag B_k J_Mperp) (row-major). Empty (0x0)
+                         * when dim_Mperp == 0 (M = H, the trace-preserving case). */
+} aic_idemp_delta;
+
+/* Build the prop_Delta Kraus operators K_{j,c} of the M-part of the inclusion
+ * Delta and the M^perp Sigma matrix, from the Wedderburn data W (same `d`).
+ * `out` is OUTPUT (caller must aic_idemp_delta_clear it). `prec` is the arb
+ * working precision.
+ *
+ * Fails loud (Rule 4) if: the Kraus M-part is not unital onto M (Delta_M(1_A) !=
+ * Pi_M); the full Delta-Kraus map does NOT match the stored d->Delta on the A-basis
+ * (the crux tooth — a mismatch is a convention/W_j bug, not a silent miss).
+ * Cites .tex:2098-2103. */
+void aic_idemp_delta_kraus(aic_idemp_delta *out, const aic_idemp_wedderburn *W,
+                           const aic_idemp_decomp *d, slong prec);
+
+void aic_idemp_delta_clear(aic_idemp_delta *out);
+
 #ifdef __cplusplus
 }
 #endif
