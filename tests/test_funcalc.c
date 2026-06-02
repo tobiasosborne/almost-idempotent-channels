@@ -31,9 +31,10 @@
  *     per instance, asserted to do EITHER (a) deliver a CERTIFIED output meeting the
  *     paper bound (in-basin), OR (b) FAIL LOUD via SIGABRT (out-of-basin). "Passes on
  *     nice inputs" is NOT tested. The reusable idiom is fc_assert_dual (a draw +
- *     dual-outcome harness) + the fc_watch fork+SIGALRM watchdog (mirror of
- *     test_xo0_failloud.c / test_adversarial.c v5f), copyable by the projection /
- *     contraction / ucp retrofits. The instances + MEASURED behavior (prec=256):
+ *     dual-outcome harness) + the shared fork+SIGALRM watchdog now factored into
+ *     tests/aic_watchdog.{h,c} (aic_watchdog_assert_failloud, bead aic-8de), reused
+ *     by the projection / contraction / ucp retrofits. The instances + MEASURED
+ *     behavior (prec=256):
  *       - gen6 boundary_x2I (nla 7a, tex:807-841): s=+0.5,+0.01 IN-BASIN -> aic_sgn
  *         delivers sgn^2=I (~2.4e-74), [X,sgn]=0, AND the tex:520 bound
  *         ||sgn(X)-X|| <= ||X||*||X^2-I|| holds (ratio 0.37, 0.29). s=-0.01 OUT
@@ -77,10 +78,10 @@
  * inflated tol, or dropping the ||YX-XY|| arm) would let a non-sign pass — recorded
  * RED by hand. Restored; suite GREEN.
  */
-/* _POSIX_C_SOURCE: the fork+SIGALRM watchdog (bead aic-dbo.4, test 7) uses
- * sigaction/kill/mkstemp/alarm — same feature-test macro as test_xo0_failloud.c. */
+/* _POSIX_C_SOURCE: test_out_of_basin_failloud (test 6 teeth) still forks
+ * in-line (fork/waitpid/WIF*). The reusable fork+SIGALRM watchdog moved to
+ * tests/aic_watchdog.{h,c} (bead aic-8de), which carries its own macro. */
 #define _POSIX_C_SOURCE 200809L
-#include <fcntl.h>
 #include <signal.h>
 #include <string.h>
 #include <sys/wait.h>
@@ -473,95 +474,23 @@ static void test_out_of_basin_failloud(void)
  *
  * THE REUSABLE dbo.4 PATTERN. For an adversarial instance, we must assert
  * EITHER the certified funcalc bound holds (in-basin) OR the routine FAILS
- * LOUD (out-of-basin). Two reusable pieces below — copyable verbatim by the
- * projection / contraction / ucp retrofits:
- *   (A) fc_watch: a fork + SIGALRM watchdog (mirror of test_xo0_failloud.c's
- *       xo0_run_child and test_adversarial.c's v5f_run_child — both are static
- *       to their own .c, so each retrofit carries its own copy; the watchdog is
- *       a HANG backstop, since a funcalc domain guard aborts BEFORE any iteration
- *       it is belt-and-suspenders here, but the pattern is the point).
- *   (B) fc_assert_failloud(fn, who): run fn() in fc_watch and assert it
- *       SIGABRTed (out-of-basin -> Rule-4 abort) and did not hang.
- * The in-basin "bound holds" half is asserted inline per instance (the certified
- * arb identities/bounds), since the certified quantity differs per routine. */
+ * LOUD (out-of-basin). The out-of-basin half goes through the CANONICAL shared
+ * watchdog aic_watchdog_assert_failloud (tests/aic_watchdog.{h,c}, bead aic-8de):
+ * it runs the child fn() under a fork + SIGALRM watchdog and asserts the child
+ * did NOT exit cleanly, died by SIGABRT (out-of-basin -> Rule-4 abort), and its
+ * stderr contains the expected needle — all bounded so a hang fails loud rather
+ * than stalling the gate. This file was the first migrated consumer; the helper
+ * unifies the nine former private copies. The in-basin "bound holds" half is
+ * asserted inline per instance (the certified arb identities/bounds), since the
+ * certified quantity differs per routine. */
 
-#define FC_WATCH_S 20              /* a child alive past this is a HANG */
-
-typedef void (*fc_child_fn)(void);
-static volatile pid_t fc_watch_pid = 0;
-static volatile sig_atomic_t fc_timed_out = 0;
-static void fc_alarm(int sig)
-{
-    (void) sig;
-    fc_timed_out = 1;
-    if (fc_watch_pid > 0) kill(fc_watch_pid, SIGKILL);
-}
-
-/* Run fn() in a forked child bounded by a SIGALRM watchdog. Captures the child's
- * stderr into `err` (NUL-terminated, `errsz`). Writes the raw wait status into
- * *status. Returns 1 if the child terminated within the watchdog, 0 if it was
- * killed for hanging (caller asserts on that). */
-static int fc_watch(fc_child_fn fn, int *status, char *err, size_t errsz)
-{
-    char tmpl[] = "/tmp/aic_fc_err_XXXXXX";
-    int efd = mkstemp(tmpl);
-    AIC_CHECK_MSG(efd >= 0, "fc_watch: mkstemp failed");
-    fflush(NULL);
-    pid_t pid = fork();
-    AIC_CHECK_MSG(pid >= 0, "fc_watch: fork failed");
-    if (pid == 0) {
-        dup2(efd, STDERR_FILENO);
-        close(efd);
-        fn();
-        _exit(0);                  /* reached only if fn did NOT abort */
-    }
-    fc_watch_pid = pid;
-    fc_timed_out = 0;
-    struct sigaction sa = {0}, old;
-    sa.sa_handler = fc_alarm;
-    sigaction(SIGALRM, &sa, &old);
-    alarm(FC_WATCH_S);
-    int st = 0;
-    pid_t w;
-    do { w = waitpid(pid, &st, 0); } while (w < 0 && !fc_timed_out);
-    alarm(0);
-    sigaction(SIGALRM, &old, NULL);
-    if (w < 0) waitpid(pid, &st, 0);
-    lseek(efd, 0, SEEK_SET);
-    ssize_t r = read(efd, err, errsz - 1);
-    err[(r > 0) ? (size_t) r : 0] = '\0';
-    close(efd);
-    unlink(tmpl);
-    *status = st;
-    return fc_timed_out ? 0 : 1;
-}
-
-/* Assert fn() FAILS LOUD: terminates within the watchdog (no hang) via SIGABRT,
- * and its stderr CONTAINS `needle` (the basin-violation message — proves it
- * aborted for the RIGHT reason, not some unrelated crash). `who` labels the case. */
-static void fc_assert_failloud(fc_child_fn fn, const char *who, const char *needle)
-{
-    int status = 0;
-    char err[4096];
-    int finished = fc_watch(fn, &status, err, sizeof err);
-    AIC_CHECK_MSG(finished, "%s: out-of-basin call HUNG past %ds watchdog "
-                  "(expected a fast Rule-4 abort)", who, FC_WATCH_S);
-    AIC_CHECK_MSG(WIFSIGNALED(status) && WTERMSIG(status) == SIGABRT,
-                  "%s: expected SIGABRT (out-of-basin fail-loud) but got "
-                  "WIFSIGNALED=%d WTERMSIG=%d / WIFEXITED=%d code=%d. stderr: %s",
-                  who, WIFSIGNALED(status),
-                  WIFSIGNALED(status) ? WTERMSIG(status) : -1,
-                  WIFEXITED(status), WIFEXITED(status) ? WEXITSTATUS(status) : -1,
-                  err);
-    AIC_CHECK_MSG(strstr(err, needle) != NULL,
-                  "%s: aborted but WITHOUT the basin-violation message '%s' "
-                  "(silent/wrong-reason abort?). stderr: %s", who, needle, err);
-}
+/* The fork+SIGALRM fail-loud watchdog is now the canonical shared helper. */
+#include "aic_watchdog.h"
 
 /* --- 7a. gen6 boundary_x2I: the deliver-vs-fail-loud pair for sgn/theta --- */
 
-/* Out-of-basin children (drawn at module scope so fc_watch's void(void) child can
- * reach them; the knob is baked in per the MEASURED out-of-basin value). */
+/* Out-of-basin children (drawn at module scope so the watchdog's void(void) child
+ * can reach them; the knob is baked in per the MEASURED out-of-basin value). */
 static void fc_child_sgn_gen6_out(void)
 {
     acb_mat_t X, S;
@@ -683,10 +612,10 @@ static void test_adv_boundary_x2I(void)
      *     then fails the SPECTRAL Gelfand certifier (rho(I-X^2)=1.01 !< 1).
      *   - aic_sgn_newton_schulz hits the op-basin domain assert directly.
      * (MEASURED ||X^2-I||_op = 1.01, rho(I-X^2) = 1.01 — out of BOTH bases.) */
-    fc_assert_failloud(fc_child_sgn_gen6_out,
+    aic_watchdog_assert_failloud(fc_child_sgn_gen6_out, 20,
                        "aic_sgn(gen6 s=-0.01)",
                        "cannot certify rho(I-X^2)");
-    fc_assert_failloud(fc_child_ns_gen6_out,
+    aic_watchdog_assert_failloud(fc_child_ns_gen6_out, 20,
                        "aic_sgn_newton_schulz(gen6 s=-0.01)",
                        "out of validity domain");
 }
@@ -720,10 +649,10 @@ static void test_adv_jordan_t13(void)
      * and rho(I-X^2)~1.11 for t down to 1e-9 (and even t=1) — the whole matrix is
      * OUTSIDE the funcalc domain (no in-basin "deliver" half exists for this gen;
      * nla.md:74-78). So this is a pure fail-loud instance for sgn AND theta. */
-    fc_assert_failloud(fc_child_sgn_jordan,
+    aic_watchdog_assert_failloud(fc_child_sgn_jordan, 20,
                        "aic_sgn(gen1 jordan t=1e-9)",
                        "rho");
-    fc_assert_failloud(fc_child_theta_jordan,
+    aic_watchdog_assert_failloud(fc_child_theta_jordan, 20,
                        "aic_theta(gen1 jordan t=1e-9)",
                        "rho");
 }
@@ -871,7 +800,7 @@ static void test_adv_graded_diag(void)
      * xpow term-cap fires (a Rule-4 abort, NOT a domain abort) — the routine
      * refuses to return an uncertified result. This is the SAME input on which
      * aic_sgn (quadratic) delivers, isolating the series route's distinct limit. */
-    fc_assert_failloud(fc_child_abs_graded_out,
+    aic_watchdog_assert_failloud(fc_child_abs_graded_out, 20,
                        "aic_abs(gen5 range=1.25)",
                        "series tail not below tol");
 }
