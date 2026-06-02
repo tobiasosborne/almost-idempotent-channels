@@ -18,3 +18,7 @@ julia/AlmostIdempotentChannels.jl/deps/build.log
 
 # docs plotting env — regeneratable; Manifest pins an absolute dev path
 docs/plots/Manifest.toml
+
+# Documenter generated site + docs Manifest (regeneratable)
+docs/build/
+docs/Manifest.toml
