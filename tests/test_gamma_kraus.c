@@ -17,9 +17,24 @@
  * (b) Gamma_kraus unital (Gamma_j(1_M) = 1_{L_j}); (c) Gamma.w = 1_A (apply
  * Gamma_kraus to w(B_k) and recover B_k, the .tex:2107 defining property).
  *
- * SCOPE: noiseless_subsystem(2,2) [E_1 = C^2, the NONTRIVIAL gamma_1 = (1/2)1 —
- * THE crux], block_cond_exp(5,2) [M_2 (+) M_3, E_j = C^1], identity(3) [E = C^1],
- * block_cond_exp(4,2) [M_2 (+) M_2, E_j = C^1].
+ * SCOPE: noiseless_subsystem(2,2) [E_1 = C^2, gamma_1 = (1/2)1 — UNIFORM],
+ * ns_weighted(2,2,(0.8,0.2)) [E_1 = C^2, gamma_0 = diag(0.2,0.8) — NON-UNIFORM,
+ * THE data-driven-solve tooth], block_cond_exp(5,2) [M_2 (+) M_3, E_j = C^1],
+ * identity(3) [E = C^1], block_cond_exp(4,2) [M_2 (+) M_2, E_j = C^1].
+ *
+ * THE NON-UNIFORM-GAMMA TOOTH (aic-ynu I3 hostile-review gap). Every other oracle
+ * here has gamma_j UNIFORM: the C^1 blocks give gamma_j = [1], and the maximally-
+ * mixing noiseless_subsystem gives gamma_1 = (1/2)1. So a "shortcut: gamma = 1/dE"
+ * regression would pass ALL of them — none distinguishes a real data-driven least-
+ * squares solve from a hardcoded uniform gamma. ns_weighted(2,2,(0.8,0.2)) closes
+ * that: it weights the multiplicity E by sigma = diag(0.8,0.2), and the prop_Gamma
+ * extraction returns gamma_0 = diag(0.2,0.8) (NON-uniform; the conditional-
+ * expectation density, the "complement" of sigma forced by Gamma w = 1_A — verified
+ * by /tmp probe). check_nonuniform_gamma asserts that measured value to 1e-10 AND
+ * re-checks it is genuinely off-uniform (||gamma_0 - (1/2)1||_op = 0.3 >> 0). The
+ * mutation forcing the SOURCE solve to 1/dE confirms this oracle goes RED while the
+ * uniform oracles stay green (measured ||gamma_0 - (1/2)1||_op = 0.3, the op-norm of
+ * diag(-0.3,+0.3)).
  */
 #include <math.h>
 
@@ -290,6 +305,85 @@ static void check_gamma(const char *name, aic_ucp_kraus *phi)
     aic_idemp_clear(&d);
 }
 
+/* THE NON-UNIFORM-GAMMA ORACLE (aic-ynu I3 review). Runs the full pipeline on
+ * ns_weighted(2,2,(0.8,0.2)) and asserts, on top of the check_gamma gates, that the
+ * EXTRACTED gamma_0 is the NON-uniform density diag(0.2,0.8) (a real data-driven
+ * solve, not a hardcoded 1/dE). expect = the measured value (probe-verified);
+ * ||gamma_0 - (1/2)1||_op (= 0.3 here, the op-norm of diag(-0.3,+0.3)) is asserted
+ * as a lower bound >= 0.1 so the test cannot be satisfied by a uniform gamma_0.
+ * Prints gamma_0 so the non-uniformity is visible. */
+static void check_nonuniform_gamma(void)
+{
+    printf("NON-UNIFORM gamma oracle (ns_weighted(2,2,(0.8,0.2))):\n");
+    aic_ucp_kraus phi;
+    double w[2] = {0.8, 0.2};
+    make_ns_weighted(&phi, 2, 2, w);
+
+    /* full pipeline + all check_gamma gates (match-d.Gamma, density, unitality). */
+    check_gamma("ns_weighted(2,2,(0.8,0.2))", &phi);
+
+    /* re-run to read gamma_0 here (check_gamma frees its own G). */
+    aic_idemp_decomp d;
+    aic_idemp_decompose(&d, &phi, GKPREC);
+    aic_idemp_wedderburn W;
+    aic_idemp_wedderburn_decompose(&W, &d, GKPREC);
+    aic_idemp_gamma G;
+    aic_idemp_gamma_kraus(&G, &W, &d, GKPREC);   /* production self-certifies match */
+
+    slong dE = G.dim_E[0];
+    AIC_CHECK_MSG(dE == 2, "ns_weighted: expected dim_E=2, got %ld", (long) dE);
+
+    /* (a) gamma_0 == diag(0.2, 0.8) to 1e-10 (the measured non-uniform value). */
+    acb_mat_t expect, diff;
+    acb_mat_init(expect, dE, dE);
+    acb_set_d(acb_mat_entry(expect, 0, 0), 0.2);
+    acb_set_d(acb_mat_entry(expect, 1, 1), 0.8);
+    acb_mat_init(diff, dE, dE);
+    acb_mat_sub(diff, G.gamma_j[0], expect, GKPREC);
+    arb_t e;
+    arb_init(e);
+    aic_mat_opnorm(e, diff, GKPREC);
+    double gerr = dd(e);
+    AIC_CHECK_MSG(gerr <= 1e-10,
+                  "ns_weighted: gamma_0 != diag(0.2,0.8) (||.||=%.3e > 1e-10)", gerr);
+
+    /* (b) gamma_0 is genuinely NON-uniform: ||gamma_0 - (1/2)1||_op >> 0. A uniform
+     * gamma_0 = (1/2)1 (the shortcut) would make this ZERO, so a lower bound here is
+     * the tooth a "gamma = 1/dE" regression cannot pass. */
+    acb_mat_t halfI;
+    acb_mat_init(halfI, dE, dE);
+    acb_set_d(acb_mat_entry(halfI, 0, 0), 0.5);
+    acb_set_d(acb_mat_entry(halfI, 1, 1), 0.5);
+    acb_mat_sub(diff, G.gamma_j[0], halfI, GKPREC);
+    aic_mat_opnorm(e, diff, GKPREC);
+    double nonunif = dd(e);
+    AIC_CHECK_MSG(nonunif >= 0.1,
+                  "ns_weighted: gamma_0 is UNIFORM (||gamma_0 - (1/2)1||=%.3e < 0.1) "
+                  "-- contradicts the reviewer; d.Gamma collapses the weighting?",
+                  nonunif);
+
+    /* (c) match-d.Gamma residual (re-asserted independently, as in check_gamma). */
+    double mr = match_resid(&W, (const acb_mat_t *) G.gamma_j, &d, GKPREC);
+    AIC_CHECK_MSG(mr <= 1e-10, "ns_weighted: match-d.Gamma residual %.3e > 1e-10", mr);
+
+    printf("  gamma_0 = diag(%.6f, %.6f)  [NON-UNIFORM]  ||gamma_0-(1/2)1||=%.4f\n",
+           arf_get_d(arb_midref(acb_realref(acb_mat_entry(G.gamma_j[0], 0, 0))),
+                     ARF_RND_NEAR),
+           arf_get_d(arb_midref(acb_realref(acb_mat_entry(G.gamma_j[0], 1, 1))),
+                     ARF_RND_NEAR),
+           nonunif);
+    printf("  gamma_0-vs-expect=%.2e  match-d.Gamma=%.2e\n", gerr, mr);
+
+    arb_clear(e);
+    acb_mat_clear(halfI);
+    acb_mat_clear(diff);
+    acb_mat_clear(expect);
+    aic_idemp_gamma_clear(&G);
+    aic_idemp_wedderburn_clear(&W);
+    aic_idemp_clear(&d);
+    aic_ucp_kraus_clear(&phi);
+}
+
 /* MUTATION PROOF (Rule 7): perturb gamma_1 on noiseless_subsystem(2,2) and confirm
  * the match-d.Gamma tooth goes RED. d->Gamma is the MAXIMALLY-MIXED conditional
  * expectation (gamma_1 = (1/2)1), so replacing gamma with 1/dE would NOT break it;
@@ -367,6 +461,7 @@ static void test_oracles(void)
 int main(void)
 {
     test_oracles();
+    check_nonuniform_gamma();
     mutation_proof();
     aic_test_report("test_gamma_kraus");
     printf("OK test_gamma_kraus\n");

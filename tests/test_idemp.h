@@ -66,6 +66,39 @@ static void make_noiseless_subsystem(aic_ucp_kraus *phi, slong dL, slong dE)
         }
 }
 
+/* Weighted noiseless subsystem on H = C^dL (x) C^dE: the make_noiseless_subsystem
+ * generalization with a NON-UNIFORM multiplicity weight sigma = diag(w_0..w_{dE-1})
+ * (a density matrix on E, sum_k w_k = 1):
+ *   Phi(X) = Tr_E( (1_L (x) sigma) X ) (x) 1_E.
+ * Heisenberg Kraus K_{jk} = sqrt(w_j) (1_L (x) |e_j><e_k|) (dE^2 ops); H row I =
+ * a*dE + j (left-major, L the major factor, matching make_noiseless_subsystem and
+ * the W_j row convention t = a*dE + c, include/aic/aic_idemp.h:179). EXACTLY
+ * idempotent and unital (verified, /tmp probe: ||Phi^2-Phi||~4e-17, ||sum K^dag K
+ * - 1||~5e-17): Phi^2=Phi because sum_j w_j (1_L(x)|e_k><e_k|) collapses to a
+ * projection-like reset of E, and sum_j w_j = 1 gives unitality. Img Phi ~ B(C^dL),
+ * dim_A = dL^2; M = H (Q=1), dim_M = dL*dE.
+ *
+ * WHY this exists (aic-ynu I3 hostile-review gap): make_noiseless_subsystem mixes E
+ * MAXIMALLY (sigma = 1_E/dE) so its extracted gamma_j is UNIFORM ((1/2)1) — every
+ * existing prop_Gamma oracle has a uniform gamma_j, so none exercises the data-driven
+ * gamma_j solve (a hardcoded "gamma = 1/dE" shortcut would pass them all). With
+ * w = (0.8, 0.2) the prop_Gamma extraction returns gamma_0 = diag(0.2, 0.8) (the
+ * NON-uniform conditional-expectation density; measured, see test_gamma_kraus.c) —
+ * a GREEN test where the correctly-solved gamma_j is genuinely non-uniform. */
+static void make_ns_weighted(aic_ucp_kraus *phi, slong dL, slong dE, const double *w)
+{
+    slong n = dL * dE;
+    aic_ucp_kraus_init(phi, n, n, dE * dE);
+    slong op = 0;
+    for (slong j = 0; j < dE; j++)
+        for (slong k = 0; k < dE; k++) {
+            double s = sqrt(w[j]);
+            for (slong a = 0; a < dL; a++)
+                acb_set_d(acb_mat_entry(phi->K[op], a * dE + j, a * dE + k), s);
+            op++;
+        }
+}
+
 /* Identity Phi = id on C^d: K_0 = 1_d. dim_M=d, dim_A=d^2. */
 static void make_identity(aic_ucp_kraus *phi, slong d)
 {
