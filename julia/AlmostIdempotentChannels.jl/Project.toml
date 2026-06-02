@@ -27,12 +27,18 @@ MosekTools = "1ec41992-ff65-5c91-ac43-2df89e9693a4"
 AICMosekExt = ["Convex", "Mosek", "MosekTools"]
 
 [compat]
-julia       = "1.10"
-Preferences = "1"
-Printf      = "1"
-Convex      = "0.16"
-Mosek       = "11"
-MosekTools  = "0.15, 0.16"
+julia         = "1.10"
+Libdl         = "1"
+LinearAlgebra = "1"
+Preferences   = "1"
+Printf        = "1"
+Convex        = "0.16"
+Mosek         = "11"
+MosekTools    = "0.15, 0.16"
+# test-only deps (extras); Aqua's deps_compat requires a bound for every extra too.
+Aqua          = "0.8"
+Random        = "1"
+Test          = "1"
 
 [extras]
 Test   = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
