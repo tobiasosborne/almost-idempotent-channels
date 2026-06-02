@@ -1,15 +1,18 @@
 # HANDOFF.md — almost-idempotent-channels
 
-## ▶▶ LATEST (2026-06-02a, orchestrated, laptop): aic-66n + aic-t5w + aic-dbo.3 + aic-cxo + aic-v5f CLOSED — tex:484 universality thread COMPLETE + the adversarial channel/algebra corpus + the lethal-shortlist TOP-8 COMPLETE (findings C17/C18/D7n/D1/D6)
+## ▶▶ LATEST (2026-06-02a, orchestrated, laptop): tex:484 universality thread + the adversarial channel corpus (lethal TOP-8) COMPLETE; the dbo.4 corpus-payoff retrofit STARTED (funcalc + ucp). 5 beads closed; findings C17/C18/D7n/D1/D6
 
-**State:** master FULLY GREEN — `ctest -L fast` 18/18 (~3.4s); `test_adversarial` ~44s
-(n=293, all 9 generators GREEN); working tree clean, up to date with `origin/master`. bd: 99
-issues (imported from JSONL at session start — the recurring SessionStart desync; `bd import`
-fixed it 88→95, then +4 new follow-up beads). 5 beads CLOSED this session (aic-66n, aic-t5w,
-aic-dbo.3, aic-cxo — P1; aic-v5f — P2); ~14 commits, all pushed. Orchestration shape: 9
-background workflows (diagnose / implement+hostile-review pipelines / recons), each commit+push
-per green increment, every Core change hostile-reviewed (all SHIP, 0 blockers) + independently
-verified before commit; bead design/notes carry the durable plan (compaction-robust).
+**State:** master FULLY GREEN — `ctest -L fast` 18/18 (~3.4s); full `ctest` 40/40; working tree
+clean, up to date with `origin/master` (HEAD `c0a5347`). bd: 100 issues (imported from JSONL at
+session start — the recurring SessionStart desync; `bd import` fixed it 88→95, then +5 follow-up
+beads). **5 beads CLOSED this session** (aic-66n, aic-t5w, aic-dbo.3, aic-cxo — P1; aic-v5f — P2);
+**~16 commits, all pushed**; 12 background workflows (diagnose / implement+hostile-review pipelines
+/ recons), each commit+push per green increment, **every Core change hostile-reviewed (all SHIP, 0
+blockers) + independently verified before commit**; bead design/notes carry the durable plan
+(compaction-robust). FIVE genuine paper-spec/numerical findings surfaced + handled honestly (never
+faked): §C17 (ρ≠η_cb), §C18 (literal 2B formula non-CP), §D7n (build-prec Hermiticity), §D1
+(gauge-artifact / Ω(1)-gap), §D6 (6A subsumed); plus several charter/overclaim corrections caught
+in review.
 
 **LANDED — `aic-66n` (P1 BUG) CLOSED: the unit-aware projection gap-audition.** Root cause
 (diagnosed + prototyped + hostile-reviewed): the nontrivial-projection finder
@@ -97,15 +100,33 @@ near-singular 3a-3c, nearly-commuting 4c, companion/Frank/Toeplitz 6a-6c, contra
 precision-saturation 8a-8c); the 3A/5A channel sub-gens (only if a hand-engineered worst-case A is
 wanted — blocked by aic-bag anyway). `aic-dbo.2` stays OPEN for the matrix families.
 
-**NEXT (orchestrated) — the adversarial top-8 is done; the next thread is a fresh choice:**
-(1) **`aic-dbo.4`** (highest leverage: retrofit every module's tests/benches to draw adversarial
-instances, bound-holds OR fail-loud — the corpus payoff; needs dbo.2's matrix families or a dep
-trim); (2) the lower-priority nla.md MATRIX generators (clean, laptop-trivial — Kahan 5b
-catastrophic-cancellation is the classic arb-justifying one); (3) the **Julia package** (the
-stated deliverable, largely untouched — `aic-ssu` certified-bracket wrapper / `aic-obc` ccall pkg
-/ `aic-jhe` cb-distance; SERIAL Julia only); (4) `aic-w4o.2` (full acb SVD, the last certified
-primitive); (5) the filed follow-up beads (d≥3/k≥5 projection-coverage, dbo3-widen, d>2-noncomm-pin,
-driver-split, 3C deliver-tooth public-contract assert). The tex:484 thread + the adversarial
+**STARTED — `aic-dbo.4` (P1, claimed): the corpus-payoff retrofit.** GAP that motivated it: the
+rich corpus was built but only the SELF-tests (test_adversarial), test_dbo3, test_mat consumed it —
+the MODULE tests drew ZERO evil instances. Now wiring it in, module by module, with the
+bound-holds-OR-fail-loud policy. **2 modules retrofitted (the pattern is proven):**
+- **funcalc** (commit `2d2b82f`, `test_funcalc` checks 21→67): established the reusable idiom —
+  `fc_watch` fork+SIGALRM watchdog + `fc_assert_failloud(fn,who,needle)` [SIGABRT + the basin
+  message = right cause] for the FAIL-LOUD half; inline certified arb bounds for the BOUND-HOLDS
+  half. Drew boundary_x2I/jordan_t13/near_degen_herm/graded_diag onto sgn/theta/abs/prop_P.
+  funcalc proven robust (no gap; reviewer tried hard). 2 Rule-2 charter corrections documented.
+- **ucp** (commit `c0a5347`, `test_ucp` checks →433): drew 7 channel gens onto the ucp routines
+  (carrier_rank straddle fail-loud, cb-bracket-contains-closed-form, Choi-PSD, unital defect,
+  Kraus round-trip, non-CP-extract fail-loud). **MUT4b perturbed the SOURCE
+  (`src/aic_ucp_carrier.c`) and the double-vs-arb cross-check caught it** — the retrofit catches
+  REAL module regressions, not just test perturbations. No new ucp gap; reproduced + worked around
+  the pre-existing `aic-wyo` densifier-guard fail-loud (not re-filed).
+
+**NEXT (orchestrated) — continue the dbo.4 retrofit, then a fresh thread:**
+(1) **finish `aic-dbo.4`**: retrofit **projection** (draw the 3C near-trivial gen + blockalg — the
+deliver-or-refuse of the aic-66n finder), **contraction** (lem_invfun c<1 edge — needs a 7c gen
+built first), **cstar_build** (heavy/slow — the near-boundary blockalg/mixconj); the **shared
+watchdog helper** (`tests/aic_watchdog.c`, now 4 near-identical copies — P4 filed) is worth doing
+BEFORE more retrofits. (2) the lower-priority nla.md MATRIX generators (Kahan 5b
+catastrophic-cancellation is the classic arb-justifying one). (3) the **Julia package** (the stated
+deliverable, largely untouched — `aic-ssu`/`aic-obc`/`aic-jhe`; SERIAL Julia only). (4) `aic-w4o.2`
+(full acb SVD, the last certified primitive). (5) the filed follow-up beads (d≥3/k≥5
+projection-coverage, dbo3-widen, d>2-noncomm-pin, driver-split, 3C deliver-tooth public-contract
+assert, shared-watchdog). The tex:484 thread + the adversarial
 channel/algebra corpus (the whole lethal top-8) are COMPLETE.
 
 ---
