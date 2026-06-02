@@ -16,24 +16,43 @@
  *     projector, cbnorm=1; state Phi(X)=Tr(rho X) (dim_H=1) -> carrier=supp(rho).
  *  6. ADVERSARIAL: rank-deficient Choi; maximally degenerate (depolarizing);
  *     proper-subspace carrier; non-self-map K!=H; near-non-CP must FAIL loud.
+ *  7. ADVERSARIAL CORPUS RETROFIT (bead aic-dbo.4 inc.2; mirrors the funcalc
+ *     retrofit test_funcalc.c check 7): each adversarial CHANNEL generator
+ *     (aic_adversarial.h) is drawn and, per instance, the relevant ucp ROUTINE
+ *     is asserted to EITHER hold a certified bound OR fail loud. BOUND-HOLDS is
+ *     asserted INLINE (certified arb balls); FAIL-LOUD is asserted via a
+ *     fork+SIGALRM watchdog (ucp_assert_failloud) that confirms SIGABRT + a
+ *     message-needle. The cleanest ucp fail-loud is the carrier-rank STRADDLE
+ *     (aic_ucp_carrier_rank on the densified 1C carrier at prec=53); the
+ *     non-CP-Choi rejection (aic_ucp_is_cp_choi verdict 0) is the second.
+ *     This tests the ROUTINE, not the generator's self-test property (which
+ *     test_adversarial.c owns). See test_adversarial section below.
  * Plus MUTATION PROOFS at the end (Rule 7).
  *
  * Convention reminders: Kraus K_a are dim_K x dim_H, Phi(X)=sum K_a^dag X K_a
  * (Heisenberg); Choi Convention A, K factor LEFT. See include/aic_ucp.h.
  */
+#define _POSIX_C_SOURCE 200809L
 #include <assert.h>
 #include <complex.h>
+#include <fcntl.h>
 #include <math.h>
+#include <signal.h>
 #include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+#include <sys/wait.h>
 
 #include <flint/acb.h>
 #include <flint/acb_mat.h>
 #include <flint/arb.h>
 #include <flint/arf.h>
 
+#include "aic/aic_cbnorm.h"
 #include "aic/aic_latd.h"
 #include "aic/aic_mat.h"
 #include "aic/aic_ucp.h"
+#include "aic_adversarial.h"
 #include "aic_test.h"
 
 #define PREC 53
@@ -700,6 +719,501 @@ static void test_mutation_teeth(void)
     arb_clear(tol);
 }
 
+/* ====================================================================== *
+ * tier 7: ADVERSARIAL CORPUS RETROFIT (bead aic-dbo.4 increment 2)        *
+ *                                                                         *
+ * Draw the adversarial CHANNEL generators (aic_adversarial.h) and assert, *
+ * per instance, the DUAL OUTCOME on the relevant ucp ROUTINE: EITHER a    *
+ * certified ucp bound holds (asserted INLINE), OR the routine FAILS LOUD  *
+ * (asserted via the fork+SIGALRM watchdog below). This mirrors the just-  *
+ * landed funcalc retrofit (test_funcalc.c check 7) and the kraus_arb /    *
+ * v5f straddle pattern. We test the ROUTINE, not the generator's own      *
+ * self-test property (test_adversarial.c owns those).                     *
+ *                                                                         *
+ * Provenance: tex:1568-1635 (Choi/Stinespring/Kraus, prop_KLHG),          *
+ * tex:1717-1719 (||Phi||_cb<=1), tex:1724/1731 (carrier lem_carrier/      *
+ * cor_carrier), tex:347-354 (||Phi^2-Phi||_cb), tex:366-388 (the measure- *
+ * prepare cb!=op closed form eta*sqrt(1-eta)), tex:516-525 (theta(2Phi-1) *
+ * basin). docs/adversarial/domain.md families 1B/1C/1D/2A/2B/3D + NC.     *
+ * CLAUDE.md cross-check ladder: rung 2 (double vs arb), rung 3 (eta=0     *
+ * oracle), rung 4 (arb bound certification at the hypothesis boundary).   *
+ *                                                                         *
+ * RETROFIT PRECISION (Rule 2, MEASURED via a bounded /tmp probe, NOT in   *
+ * tests/): the certified arb Choi->Kraus (aic_ucp_choi_to_kraus_arb) on a *
+ * 16x16 degenerate block-algebra/measure-prepare Choi FAILS LOUD at the   *
+ * densifier-unitary guard ||U U^dag - I||_F < n^2*2^-(prec-8) (bead       *
+ * aic-wyo, P3 OPEN; the guard's magic-number tolerance fail-loud-aborts   *
+ * for n>=16 at prec=128 even though the radius ~3.7e-34 is far below any   *
+ * soundness threshold). That is a KNOWN fail-loud (never silent-wrong),   *
+ * NOT a ucp finding — so the round-trip BOUND-HOLDS half uses the LATD     *
+ * (double) Choi->Kraus path, which round-trips these degenerate Choi      *
+ * cleanly (measured ||C_rebuilt-C||_op ~ 1e-15). The certified rank /     *
+ * carrier-rank / cb-bracket / CP / unital routines are all exercised on   *
+ * the arb path directly.                                                  */
+#define UCP_RETRO_PREC 128       /* arb prec for the bound-holds asserts */
+
+/* ---- the fork+SIGALRM watchdog (verbatim pattern; each .c carries its own *
+ * static copy per test_funcalc.c:480-486 / test_kraus_arb.c). Lets a Rule-4 *
+ * abort() be asserted without crashing this binary. Prefix ucp_, unique     *
+ * tmpl string, to avoid symbol/tempfile clashes. ---- */
+#define UCP_WATCH_S 20           /* child alive past this -> HANG */
+typedef void (*ucp_child_fn)(void);
+static volatile pid_t ucp_watch_pid = 0;
+static volatile sig_atomic_t ucp_timed_out = 0;
+static void ucp_alarm(int sig)
+{
+    (void) sig;
+    ucp_timed_out = 1;
+    if (ucp_watch_pid > 0) kill(ucp_watch_pid, SIGKILL);
+}
+static int ucp_run_child(ucp_child_fn fn, int *status, char *err, size_t errsz)
+{
+    char tmpl[] = "/tmp/aic_ucp_retro_err_XXXXXX";
+    int efd = mkstemp(tmpl);
+    AIC_CHECK_MSG(efd >= 0, "ucp_run_child: mkstemp failed");
+    fflush(NULL);
+    pid_t pid = fork();
+    AIC_CHECK_MSG(pid >= 0, "ucp_run_child: fork failed");
+    if (pid == 0) {
+        dup2(efd, STDERR_FILENO);
+        close(efd);
+        fn();
+        _exit(0);                 /* reached only if fn did NOT abort */
+    }
+    ucp_watch_pid = pid;
+    ucp_timed_out = 0;
+    struct sigaction sa, old;
+    memset(&sa, 0, sizeof sa);
+    sa.sa_handler = ucp_alarm;
+    sigaction(SIGALRM, &sa, &old);
+    alarm(UCP_WATCH_S);
+    int st = 0;
+    pid_t w;
+    do { w = waitpid(pid, &st, 0); } while (w < 0 && !ucp_timed_out);
+    alarm(0);
+    sigaction(SIGALRM, &old, NULL);
+    if (w < 0) waitpid(pid, &st, 0);
+    lseek(efd, 0, SEEK_SET);
+    ssize_t rd = read(efd, err, errsz - 1);
+    err[(rd > 0) ? (size_t) rd : 0] = '\0';
+    close(efd);
+    unlink(tmpl);
+    *status = st;
+    return ucp_timed_out ? 0 : 1;
+}
+static void ucp_assert_failloud(ucp_child_fn fn, const char *what,
+                                const char *needle)
+{
+    char err[4096];
+    int st = 0;
+    int finished = ucp_run_child(fn, &st, err, sizeof err);
+    AIC_CHECK_MSG(finished, "%s: HUNG past %ds watchdog", what, UCP_WATCH_S);
+    AIC_CHECK_MSG(WIFEXITED(st) ? WEXITSTATUS(st) != 0 : 1,
+                  "%s exited 0 — it silently returned instead of failing loud",
+                  what);
+    AIC_CHECK_MSG(WIFSIGNALED(st) && WTERMSIG(st) == SIGABRT,
+                  "%s: expected SIGABRT (signaled=%d sig=%d exited=%d code=%d). "
+                  "stderr:\n%s",
+                  what, WIFSIGNALED(st), WIFSIGNALED(st) ? WTERMSIG(st) : -1,
+                  WIFEXITED(st), WIFEXITED(st) ? WEXITSTATUS(st) : -1, err);
+    AIC_CHECK_MSG(strstr(err, needle) != NULL,
+                  "%s: aborted but WITHOUT '%s' (silent/wrong-reason abort?). "
+                  "stderr:\n%s", what, needle, err);
+    printf("  child SIGABRT; message names '%s' (OK)\n", needle);
+}
+
+/* ---- shared bound-holds helpers ---- */
+
+/* ||C_rebuilt - C||_op upper bound (double), C round-tripped through the LATD
+ * (double-path) Choi->Kraus extractor — the degeneracy-robust route that the
+ * certified-arb extractor cannot run on a 16x16 block Choi (aic-wyo guard). */
+static double ucp_latd_roundtrip(const aic_ucp_kraus *phi, slong prec)
+{
+    slong dk = phi->dim_K, dh = phi->dim_H, n = dk * dh;
+    acb_mat_t C, Cr, D;
+    acb_mat_init(C, n, n);
+    acb_mat_init(Cr, n, n);
+    acb_mat_init(D, n, n);
+    aic_ucp_kraus_to_choi(C, phi, prec);
+    aic_ucp_kraus rec;
+    aic_ucp_choi_to_kraus_latd(&rec, C, dk, dh);
+    aic_ucp_kraus_to_choi(Cr, &rec, prec);
+    acb_mat_sub(D, Cr, C, prec);
+    arb_t nr;
+    arb_init(nr);
+    aic_mat_opnorm(nr, D, prec);
+    double ub = arf_get_d(arb_midref(nr), ARF_RND_UP) + mag_get_d(arb_radref(nr));
+    arb_clear(nr);
+    aic_ucp_kraus_clear(&rec);
+    acb_mat_clear(D);
+    acb_mat_clear(Cr);
+    acb_mat_clear(C);
+    return ub;
+}
+
+/* arb bracket [lo,hi] on eta = ||Phi^2-Phi||_cb must CONTAIN the NONZERO
+ * closed-form value `cf` (tex:347-354 / 378). Rigorous: lower(lo) <= cf <=
+ * upper(hi) via arb_ge/arb_le on the certified balls. ONLY for cf bounded away
+ * from 0 — for the eta=0 oracle use ucp_bracket_upper_below (the computed J
+ * carries an O(1e-16) Frobenius-norm rounding floor for non-integer-Kraus
+ * channels like depolarizing, so the bracket lower bound can sit just ABOVE 0;
+ * "contains 0" would be a FALSE assertion, measured lo~6.8e-17 at 2A p=1). */
+static int ucp_bracket_contains(const aic_ucp_kraus *phi, double cf, slong prec)
+{
+    arb_t lo, hi, cfb;
+    arb_init(lo); arb_init(hi); arb_init(cfb);
+    aic_cbnorm_eigfree_ball(lo, hi, phi, prec);
+    arb_set_d(cfb, cf);
+    /* cf >= lower(lo)  AND  cf <= upper(hi), both rigorous on the balls. */
+    int ok = arb_ge(cfb, lo) && arb_le(cfb, hi);
+    arb_clear(cfb); arb_clear(hi); arb_clear(lo);
+    return ok;
+}
+
+/* eta=0 oracle (rung 3): the bracket's UPPER bound must be <= tol, i.e. eta is
+ * CERTIFIED tiny (an exactly-idempotent channel). Measured: 3D t=0 gives hi=0
+ * exactly (integer block-projector Kraus); depolarizing p in {0,1} gives
+ * hi~2.7e-16 (the 1/d rounding floor). Both are << 1e-10. */
+static int ucp_bracket_upper_below(const aic_ucp_kraus *phi, double tol_d,
+                                   slong prec)
+{
+    arb_t lo, hi, tol;
+    arb_init(lo); arb_init(hi); arb_init(tol);
+    aic_cbnorm_eigfree_ball(lo, hi, phi, prec);
+    arb_set_d(tol, tol_d);
+    int ok = arb_le(hi, tol);   /* upper(hi) <= tol, rigorous */
+    arb_clear(tol); arb_clear(hi); arb_clear(lo);
+    return ok;
+}
+
+/* CP + unital certified, on a freshly-built Choi. Returns 1 iff CP verdict==1
+ * and unital defect <= tol. */
+static int ucp_cp_and_unital(const aic_ucp_kraus *phi, double tol_d, slong prec)
+{
+    slong dk = phi->dim_K, dh = phi->dim_H, n = dk * dh;
+    acb_mat_t C;
+    acb_mat_init(C, n, n);
+    aic_ucp_kraus_to_choi(C, phi, prec);
+    arb_t tol, ud;
+    arb_init(tol); arb_init(ud);
+    arb_set_d(tol, tol_d);
+    int cp = aic_ucp_is_cp_choi(C, tol, prec);
+    aic_ucp_unital_defect_kraus(ud, phi, prec);
+    int unital = arb_le(ud, tol);
+    arb_clear(ud); arb_clear(tol);
+    acb_mat_clear(C);
+    return cp == 1 && unital;
+}
+
+/* ---- FAIL-LOUD children (module-scope void(void) for the watchdog) ---- */
+
+/* (FL-1) carrier-rank STRADDLE: the densified non-normal 1C carrier at prec=53,
+ * gap=1e-16 — the small-cluster ball (~1.5e-15) straddles thr (~9.4e-16) so
+ * aic_ucp_carrier_rank cannot resolve the rank and MUST abort ("STRADDLES").
+ * The Q is built AT the query prec (FINDINGS §D7n). The DIAGONAL 1C cannot
+ * reach this (its gap eig is a point ball that always decides). */
+static void ucp_child_carrier_straddle(void)
+{
+    aic_ucp_kraus phi;
+    aic_adv_chan_carrier_dropout_dense(&phi, 3, 1e-16, 53);
+    acb_mat_t Q;
+    acb_mat_init(Q, 3, 3);
+    aic_ucp_carrier_Q(Q, &phi, 53);
+    (void) aic_ucp_carrier_rank(Q, 3, 53);   /* must abort: STRADDLES */
+    acb_mat_clear(Q);
+    aic_ucp_kraus_clear(&phi);
+}
+
+/* (FL-2) certified Choi->Kraus on a genuinely non-CP Choi MUST fail loud (not
+ * return junk Kraus). Build a 2B conc_defect channel (CP) and FLIP its Choi to
+ * non-CP by planting a clearly-negative eigenvalue along the diagonal of the
+ * sign-projected Choi — the strict arb extractor (neg_tol=keep_thr) must abort
+ * ("CP"/"not CP"). We use a small (4x4, dim_K=dim_H=2) Choi so the arb path
+ * runs below the aic-wyo n>=16 guard. */
+static void ucp_child_noncp_extract(void)
+{
+    /* diag(1, 0.5, 0.25, -0.3) conjugated by a rational Givens (so not coord-
+     * aligned), an O(1)-negative Choi. Mirror test_kraus_arb.c child_o1_negative. */
+    const slong dk = 2, dh = 2, n = dk * dh;
+    acb_mat_t D, Qr, Qt, T, C;
+    acb_mat_init(D, n, n); acb_mat_init(Qr, n, n); acb_mat_init(Qt, n, n);
+    acb_mat_init(T, n, n); acb_mat_init(C, n, n);
+    acb_mat_zero(D);
+    double diag[4] = {1.0, 0.5, 0.25, -0.3};
+    for (slong i = 0; i < n; i++) acb_set_d(acb_mat_entry(D, i, i), diag[i]);
+    acb_mat_one(Qr);
+    acb_t cc, ss, ns;
+    acb_init(cc); acb_init(ss); acb_init(ns);
+    acb_set_si(cc, 3); acb_div_si(cc, cc, 5, UCP_RETRO_PREC);   /* 3/5 */
+    acb_set_si(ss, 4); acb_div_si(ss, ss, 5, UCP_RETRO_PREC);   /* 4/5 */
+    acb_neg(ns, ss);
+    acb_set(acb_mat_entry(Qr, 0, 0), cc);
+    acb_set(acb_mat_entry(Qr, n - 1, n - 1), cc);
+    acb_set(acb_mat_entry(Qr, 0, n - 1), ns);
+    acb_set(acb_mat_entry(Qr, n - 1, 0), ss);
+    acb_mat_conjugate_transpose(Qt, Qr);
+    acb_mat_mul(T, Qr, D, UCP_RETRO_PREC);
+    acb_mat_mul(T, T, Qt, UCP_RETRO_PREC);
+    /* project to exact-Hermitian midpoint (FINDINGS §C5) so the extractor's
+     * tight Hermiticity assert passes for the right reason. */
+    for (slong i = 0; i < n; i++) {
+        acb_get_mid(acb_mat_entry(C, i, i), acb_mat_entry(T, i, i));
+        arb_zero(acb_imagref(acb_mat_entry(C, i, i)));
+        for (slong j = i + 1; j < n; j++) {
+            acb_get_mid(acb_mat_entry(C, i, j), acb_mat_entry(T, i, j));
+            acb_conj(acb_mat_entry(C, j, i), acb_mat_entry(C, i, j));
+        }
+    }
+    aic_ucp_kraus rec;
+    aic_ucp_choi_to_kraus_arb(&rec, C, dk, dh, UCP_RETRO_PREC);  /* must abort */
+    aic_ucp_kraus_clear(&rec);
+    acb_clear(ns); acb_clear(ss); acb_clear(cc);
+    acb_mat_clear(C); acb_mat_clear(T); acb_mat_clear(Qt);
+    acb_mat_clear(Qr); acb_mat_clear(D);
+}
+
+/* ---- the retrofit driver ---- */
+static void test_adversarial_corpus(void)
+{
+    const slong prec = UCP_RETRO_PREC;
+    printf("tier 7: adversarial channel corpus retrofit (bound-holds OR fail-loud)\n");
+
+    /* === fam1C-dense carrier dropout: aic_ucp_carrier_rank ============== *
+     * BOUND-HOLDS (gap>>thr -> certified rank == d == carrier_rank_latd)   *
+     * AND FAIL-LOUD (gap straddle at prec=53 -> SIGABRT "STRADDLES").      */
+    {
+        const slong d = 3;
+        aic_ucp_kraus phi;
+        aic_adv_chan_carrier_dropout_dense(&phi, d, 0.5, prec);
+        acb_mat_t Q;
+        acb_mat_init(Q, d, d);
+        aic_ucp_carrier_Q(Q, &phi, prec);
+        slong rk_cert = aic_ucp_carrier_rank(Q, d, prec);
+        slong rk_dbl = aic_ucp_carrier_rank_latd(Q, d);
+        AIC_CHECK_MSG(rk_cert == d,
+                      "1C-dense gap=0.5: certified carrier rank %ld != d=%ld",
+                      (long) rk_cert, (long) d);
+        AIC_CHECK_MSG(rk_cert == rk_dbl,
+                      "1C-dense gap=0.5: certified rank %ld != double-path %ld "
+                      "(double-vs-arb carrier rank disagree)",
+                      (long) rk_cert, (long) rk_dbl);
+        printf("  1C-dense carrier_rank BOUND-HOLDS: cert=%ld == double=%ld == d=%ld\n",
+               (long) rk_cert, (long) rk_dbl, (long) d);
+        acb_mat_clear(Q);
+        aic_ucp_kraus_clear(&phi);
+
+        printf("  1C-dense carrier_rank FAIL-LOUD (straddle prec=53):\n");
+        ucp_assert_failloud(ucp_child_carrier_straddle,
+                            "aic_ucp_carrier_rank(1C-dense gap=1e-16 prec=53)",
+                            "STRADDLES");
+    }
+
+    /* === fam1B cb!=op gap: cb-bracket contains eta*sqrt(1-eta) + CP + unital *
+     * tex:366-388/378. The op-norm defect < the cb defect, so the certified  *
+     * eig-free cb bracket [||J||_F/n, 2||J||_F] must STILL contain the cb     *
+     * closed form (a routine using op-norm as eta would underreport).        */
+    {
+        const slong d = 2;
+        double etas[3] = {0.05, 0.10, 0.20};
+        for (int e = 0; e < 3; e++) {
+            aic_ucp_kraus phi;
+            aic_adv_chan_cb_op_gap(&phi, d, etas[e], prec);
+            double cf = etas[e] * sqrt(1.0 - etas[e]);
+            AIC_CHECK_MSG(ucp_bracket_contains(&phi, cf, prec),
+                          "1B eta=%.2f: cb bracket does NOT contain closed form "
+                          "eta*sqrt(1-eta)=%.6f (tex:378)", etas[e], cf);
+            AIC_CHECK_MSG(ucp_cp_and_unital(&phi, 1e-10, prec),
+                          "1B eta=%.2f: channel not certified CP+unital", etas[e]);
+            aic_ucp_kraus_clear(&phi);
+        }
+        printf("  1B cb!=op BOUND-HOLDS: bracket contains eta*sqrt(1-eta) "
+               "(eta in {0.05,0.10,0.20}); Choi CP+unital\n");
+    }
+
+    /* === fam2A depolarizing eta->1/4 basin edge: cb-bracket scales as p(1-p) *
+     * tex:516-525. rho(Phi^2-Phi)=p(1-p), maximized 1/4 at p=1/2. The eig-    *
+     * free bracket lower bound inherits the EXACT linearity in p(1-p)         *
+     * (measured ratio lo/(p(1-p))=sqrt(d^2-1)/d=sqrt(3)/2~=0.866 at d=2).     *
+     * p=0 and p=1 are EXACTLY idempotent (defect 0) — the eta=0 rung-3 oracle. */
+    {
+        const slong d = 2;
+        /* eta=0 oracle endpoints: p=0 (identity) and p=1 (cond expectation),
+         * both EXACTLY idempotent -> the cb bracket upper bound is certified
+         * tiny (measured hi~2.7e-16, the 1/d rounding floor; NOT exactly 0). */
+        aic_ucp_kraus phi0, phi1;
+        aic_adv_chan_depol_boundary(&phi0, d, 0.0, prec);
+        aic_adv_chan_depol_boundary(&phi1, d, 1.0, prec);
+        AIC_CHECK_MSG(ucp_bracket_upper_below(&phi0, 1e-10, prec),
+                      "2A p=0: eta=0 oracle — bracket upper not certified < 1e-10");
+        AIC_CHECK_MSG(ucp_bracket_upper_below(&phi1, 1e-10, prec),
+                      "2A p=1: eta=0 oracle — bracket upper not certified < 1e-10");
+        aic_ucp_kraus_clear(&phi1);
+        aic_ucp_kraus_clear(&phi0);
+        /* p in (0,1): the bracket must contain the EXACT cb value, which is at
+         * least the certified lower bound lo = sqrt(3)/2 * p(1-p) and at most
+         * the closed-form rho is NOT the cb value here (depolarizing is non-
+         * unital-defect-free; cb >= rho), so assert the certified bracket
+         * BRACKETS rho/p(1-p) consistency: lo <= 2*hi and lo > 0 for p in (0,1),
+         * plus CP. We assert lo grows EXACTLY linearly in p(1-p). */
+        double ps[3] = {0.3, 0.5, 0.7};
+        double lo_over_pp[3];
+        for (int k = 0; k < 3; k++) {
+            aic_ucp_kraus phi;
+            aic_adv_chan_depol_boundary(&phi, d, ps[k], prec);
+            arb_t lo, hi;
+            arb_init(lo); arb_init(hi);
+            aic_cbnorm_eigfree_ball(lo, hi, &phi, prec);
+            double lov = arf_get_d(arb_midref(lo), ARF_RND_DOWN)
+                         - mag_get_d(arb_radref(lo));
+            double pp = ps[k] * (1.0 - ps[k]);
+            lo_over_pp[k] = lov / pp;
+            AIC_CHECK_MSG(lov > 0.0,
+                          "2A p=%.2f: cb lower bound %.6e not > 0 in (0,1)",
+                          ps[k], lov);
+            AIC_CHECK_MSG(ucp_cp_and_unital(&phi, 1e-10, prec),
+                          "2A p=%.2f: not certified CP+unital", ps[k]);
+            arb_clear(hi); arb_clear(lo);
+            aic_ucp_kraus_clear(&phi);
+        }
+        /* the lo/p(1-p) ratio is p-INDEPENDENT (exact linearity): all three
+         * agree to a tight tol (measured ~0.86603). */
+        AIC_CHECK_MSG(fabs(lo_over_pp[0] - lo_over_pp[1]) < 1e-6 &&
+                      fabs(lo_over_pp[1] - lo_over_pp[2]) < 1e-6,
+                      "2A: cb lower bound NOT linear in p(1-p) "
+                      "(ratios %.6f %.6f %.6f differ)",
+                      lo_over_pp[0], lo_over_pp[1], lo_over_pp[2]);
+        printf("  2A depol BOUND-HOLDS: eta=0 at p in {0,1}; cb-lo linear in "
+               "p(1-p) (ratio %.5f); CP+unital\n", lo_over_pp[1]);
+    }
+
+    /* === fam1D unital-but-barely: aic_ucp_unital_defect_kraus == delta_u === *
+     * tex:432/672. Single Hermitian Kraus -> CP; the certified unital defect  *
+     * equals delta_u EXACTLY (a point ball), and the Choi route agrees.       */
+    {
+        const slong d = 3;
+        double dus[3] = {0.0, 0.15, 0.30};
+        for (int e = 0; e < 3; e++) {
+            aic_ucp_kraus phi;
+            aic_adv_chan_unital_defect(&phi, d, dus[e], prec);
+            arb_t ud, udc, tol;
+            arb_init(ud); arb_init(udc); arb_init(tol);
+            arb_set_d(tol, 1e-12);
+            aic_ucp_unital_defect_kraus(ud, &phi, prec);
+            /* defect == delta_u exactly */
+            AIC_CHECK_MSG(aic_double_close(dus[e], ud, tol),
+                          "1D du=%.2f: certified unital defect (Kraus) != du",
+                          dus[e]);
+            /* the Choi route must AGREE (validates the partial-trace direction) */
+            slong n = phi.dim_K * phi.dim_H;
+            acb_mat_t C;
+            acb_mat_init(C, n, n);
+            aic_ucp_kraus_to_choi(C, &phi, prec);
+            aic_ucp_unital_defect_choi(udc, C, phi.dim_K, phi.dim_H, prec);
+            AIC_CHECK_MSG(arb_close(ud, udc, tol),
+                          "1D du=%.2f: unital defect Kraus vs Choi disagree", dus[e]);
+            /* single Hermitian Kraus -> CP verdict must be 1 */
+            AIC_CHECK_MSG(aic_ucp_is_cp_choi(C, tol, prec) == 1,
+                          "1D du=%.2f: single-Hermitian-Kraus map not CP", dus[e]);
+            acb_mat_clear(C);
+            arb_clear(tol); arb_clear(udc); arb_clear(ud);
+            aic_ucp_kraus_clear(&phi);
+        }
+        printf("  1D unital_defect BOUND-HOLDS: certified defect == delta_u "
+               "(du in {0,0.15,0.30}); Kraus==Choi route; CP\n");
+    }
+
+    /* === fam3D block algebra + fam-NC noncomm: multi-block Choi -> Kraus    *
+     * round-trip (LATD path; the arb path fails loud at the aic-wyo n=16     *
+     * densifier guard) + CP + unital. The block-structured Choi is the       *
+     * degeneracy stressor. tex:484/1249 (3D dim blowup); tex:347-349 cb      *
+     * ampliation-invariance (NC). At t=0 the 3D channel is EXACTLY idempotent *
+     * (rung-3 oracle: round-trip 0, eta bracket [0,0]).                       */
+    {
+        /* 3D k=2,d=2, t=0 (exact idempotent oracle) and t=0.10 (eta>0). */
+        double ts[2] = {0.0, 0.10};
+        for (int e = 0; e < 2; e++) {
+            aic_ucp_kraus phi;
+            aic_adv_chan_blockalg(&phi, 2, 2, ts[e], prec);
+            double rt = ucp_latd_roundtrip(&phi, prec);
+            AIC_CHECK_MSG(rt < 1e-10,
+                          "3D k2d2 t=%.2f: Choi->Kraus->Choi round-trip %.3e "
+                          "not < 1e-10", ts[e], rt);
+            AIC_CHECK_MSG(ucp_cp_and_unital(&phi, 1e-10, prec),
+                          "3D k2d2 t=%.2f: not certified CP+unital", ts[e]);
+            if (ts[e] == 0.0)
+                AIC_CHECK_MSG(ucp_bracket_upper_below(&phi, 1e-10, prec),
+                              "3D t=0: eta=0 oracle — bracket upper not "
+                              "certified < 1e-10 (measured exactly 0)");
+            aic_ucp_kraus_clear(&phi);
+        }
+        /* 3D k=3,d=2,t=0: a bigger block count, still exactly idempotent. */
+        {
+            aic_ucp_kraus phi;
+            aic_adv_chan_blockalg(&phi, 3, 2, 0.0, prec);
+            double rt = ucp_latd_roundtrip(&phi, prec);
+            AIC_CHECK_MSG(rt < 1e-10, "3D k3d2 t=0: round-trip %.3e not < 1e-10", rt);
+            AIC_CHECK_MSG(ucp_cp_and_unital(&phi, 1e-10, prec),
+                          "3D k3d2 t=0: not certified CP+unital");
+            aic_ucp_kraus_clear(&phi);
+        }
+        printf("  3D blockalg BOUND-HOLDS: latd round-trip < 1e-10 (k2d2 t=0,0.10; "
+               "k3d2 t=0); CP+unital; eta=0 bracket at t=0\n");
+
+        /* fam-NC: the cb bracket must contain eta_cb = 1/4 - kappa (tex:378),
+         * round-trip + CP+unital. Non-abelian image, ampliation-invariant cb. */
+        double kappas[3] = {0.05, 0.10, 0.15};
+        for (int e = 0; e < 3; e++) {
+            aic_ucp_kraus phi;
+            aic_adv_chan_noncomm_boundary(&phi, 2, 2, kappas[e], prec);
+            double target = 0.25 - kappas[e];
+            AIC_CHECK_MSG(ucp_bracket_contains(&phi, target, prec),
+                          "NC kappa=%.2f: cb bracket does NOT contain "
+                          "eta_cb=1/4-kappa=%.6f (tex:378)", kappas[e], target);
+            double rt = ucp_latd_roundtrip(&phi, prec);
+            AIC_CHECK_MSG(rt < 1e-10, "NC kappa=%.2f: round-trip %.3e not < 1e-10",
+                          kappas[e], rt);
+            AIC_CHECK_MSG(ucp_cp_and_unital(&phi, 1e-10, prec),
+                          "NC kappa=%.2f: not certified CP+unital", kappas[e]);
+            aic_ucp_kraus_clear(&phi);
+        }
+        printf("  NC noncomm BOUND-HOLDS: cb bracket contains 1/4-kappa "
+               "(kappa in {0.05,0.10,0.15}); latd round-trip; CP+unital\n");
+    }
+
+    /* === fam2B rank-1 concentrated defect: the channel is CP+unital and the  *
+     * cb bracket contains the calibrated eta; the Choi round-trips (LATD).    *
+     * tex:2192-2204/2385-2422. The rank-1 superoperator defect Phi^2-Phi is   *
+     * the O(sqrt eta) cancellation stressor; gap_sub tunes the near-degenerate *
+     * |2> direction without changing eta_cb (depends on tail only).           */
+    {
+        const slong d = 3;
+        double etas[2] = {0.10, 0.30};
+        double gap_subs[2] = {0.3, 0.05};   /* mild and near-degenerate subspace */
+        for (int e = 0; e < 2; e++) {
+            aic_ucp_kraus phi;
+            aic_adv_chan_conc_defect(&phi, d, etas[e], gap_subs[e], prec);
+            AIC_CHECK_MSG(ucp_bracket_contains(&phi, etas[e], prec),
+                          "2B eta=%.2f gap_sub=%.2f: cb bracket does NOT contain "
+                          "the calibrated eta", etas[e], gap_subs[e]);
+            double rt = ucp_latd_roundtrip(&phi, prec);
+            AIC_CHECK_MSG(rt < 1e-10, "2B eta=%.2f: round-trip %.3e not < 1e-10",
+                          etas[e], rt);
+            AIC_CHECK_MSG(ucp_cp_and_unital(&phi, 1e-10, prec),
+                          "2B eta=%.2f: not certified CP+unital", etas[e]);
+            aic_ucp_kraus_clear(&phi);
+        }
+        printf("  2B conc_defect BOUND-HOLDS: cb bracket contains eta "
+               "(eta in {0.10,0.30}, gap_sub {0.3,0.05}); latd round-trip; "
+               "CP+unital\n");
+    }
+
+    /* === FAIL-LOUD (FL-2): certified Choi->Kraus on a genuinely non-CP Choi *
+     * must abort, not return junk Kraus (the silent-non-CP trap, Rule 4).    */
+    printf("  certified Choi->Kraus FAIL-LOUD (O(1)-negative Choi):\n");
+    ucp_assert_failloud(ucp_child_noncp_extract,
+                        "aic_ucp_choi_to_kraus_arb(non-CP Choi)", "CP");
+}
+
 int main(void)
 {
     test_choi_convention_oracle();
@@ -710,6 +1224,7 @@ int main(void)
     test_closed_forms();
     test_adversarial();
     test_mutation_teeth();
+    test_adversarial_corpus();
     aic_test_report("test_ucp");
     printf("OK test_ucp\n");
     return 0;
