@@ -12,8 +12,9 @@
  * PAPER TECHNIQUE vs CONSTRUCTIVE ROUTE (Law 3). The paper PROVES every UCP Gamma
  * with Gamma w = 1_A has eq-Gamma form (a Choi-form + algebraic-elimination
  * existence argument). In finite dim we EXTRACT the gamma_j that reproduces the
- * STORED d->Gamma (which turns out maximally-mixed; paper/FINDINGS.md §C20): eq
- * Gamma is LINEAR in gamma_j, so we feed a spanning set of
+ * STORED d->Gamma (maximally-mixed for the uniform noiseless-subsystem oracle, but
+ * the solve is GENERAL — a non-uniform d->Gamma yields a non-uniform gamma_j;
+ * paper/FINDINGS.md §C20): eq Gamma is LINEAR in gamma_j, so we feed a spanning set of
  * B(M) inputs, read the per-block target Gamma_j(X) from d->Gamma through the
  * *-monomorphism w, and least-squares solve for gamma_j (unique: W_j is an
  * isometry onto block j, so gamma_j |-> Gamma_j is injective). gamma_j is then
