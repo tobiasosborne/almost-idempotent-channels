@@ -48,6 +48,15 @@ include("types.jl")
 # Compact + multi-line Base.show for every type (bead J2; design §2.6).
 include("show.jl")
 
+# Low-level @ccall wrappers over the C2-C5 ABI shims (bead J3 aic-exa.6). INTERNAL
+# (underscore-prefixed, NOT exported); bead J4 (api.jl) builds the public verbs on
+# top. ccall.jl = C2/C3 (_assoc_summary, _main_iso_summary) + the _unflatten_kraus
+# helper; ccall_factorize.jl = C4/C5 (_factorize_artifacts, the two-call protocol).
+# Included AFTER types.jl/show.jl: they construct CertifiedBracket and reuse
+# _flatten_kraus (defined in the main module body below — resolved at call time).
+include("ccall.jl")
+include("ccall_factorize.jl")
+
 export choi_diff, eta_eigfree, eta_idempotence, idempotency_defect,
        diamond_norm_watrous, diamond_norm_watrous_primal, diamond_norm_dual,
        libaic_path, set_libaic_path!
