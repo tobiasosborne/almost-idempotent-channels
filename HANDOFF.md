@@ -1,13 +1,15 @@
 # HANDOFF.md — almost-idempotent-channels
 
-## ▶▶ LATEST (2026-06-02a, orchestrated, laptop): aic-66n + aic-t5w + aic-dbo.3 CLOSED — the tex:484 universality thread COMPLETE (both k≥4 walls cleared + the dim-sweep canary green)
+## ▶▶ LATEST (2026-06-02a, orchestrated, laptop): aic-66n + aic-t5w + aic-dbo.3 + aic-cxo CLOSED — the tex:484 universality thread COMPLETE + the adversarial channel corpus finished (noncomm η→1/4, 2B; findings C17/C18)
 
-**State:** master FULLY GREEN — `ctest -L fast` 18/18 (~3.4s); `test_adversarial` 45.5s (the
-new k≥4 regression GREEN); working tree clean, up to date with `origin/master` (HEAD
-`3620f02`). bd: 96 issues (imported from JSONL at session start — the recurring SessionStart
-desync; `bd import` fixed it 88→95, then +1 new coverage bead). Commit range this session:
-`3029fe5..3620f02`. Orchestration shape: 3 workflows (diagnose → implement+hostile-review →
-recon), each commit+push per green increment, bead design/notes carry the durable plan.
+**State:** master FULLY GREEN — `ctest -L fast` 18/18 (~3.5s); `test_adversarial` ~47s
+(n=183, all generators GREEN); working tree clean, up to date with `origin/master` (HEAD
+`00ddaa2`). bd: 98 issues (imported from JSONL at session start — the recurring SessionStart
+desync; `bd import` fixed it 88→95, then +3 new follow-up beads). Commit range this session:
+`3029fe5..00ddaa2` (6 feat/test + 1 handoff). Orchestration shape: 7 background workflows
+(diagnose → implement+hostile-review pipelines + recon), each commit+push per green increment,
+every Core change hostile-reviewed (all SHIP) + independently verified before commit; bead
+design/notes carry the durable plan (compaction-robust).
 
 **LANDED — `aic-66n` (P1 BUG) CLOSED: the unit-aware projection gap-audition.** Root cause
 (diagnosed + prototyped + hostile-reviewed): the nontrivial-projection finder
@@ -53,10 +55,27 @@ DNF, so the laptop sweep is capped at dim_A≤20.
 takes a different valid recursion path). The GREEN slope verdict hinges on the dim_A=20
 endpoint (lumpy scatter) — a widen-sweep + shared-fam3d-helper follow-up bead is FILED (P3).
 
-**NEXT (orchestrated):** the remaining aic-cxo tranche (non-comm calibrated η→1/4, family 2B,
-mixconj corpus unification w/ aic-f9u.1), aic-v5f (densified carrier), the d≥3/k≥5 projection-
-coverage + dbo3-widen beads, aic-jhe (tight MOSEK cb-distance), Julia packaging
-(aic-obc/aic-95g.2). The tex:484 thread is now COMPLETE (both walls cleared + the canary green).
+**ALSO LANDED — `aic-cxo` (P1) CLOSED: the adversarial channel corpus tranche 2.** Two
+generators on top of the 3D blockalg (which closed the tex:484 thread above):
+- **noncomm η→1/4 boundary** (`aic_adv_chan_noncomm_boundary`, `tests/aic_adversarial_noncomm.c`,
+  commit `46c9bf9`): a NON-COMMUTATIVE channel calibrated to `η_cb=1/4−κ`. Resolved the §C15
+  feasibility Q → **FINDINGS §C17**: `ρ ≠ η_cb` (make_mixconj's cb-norm can't be certified to 1/4,
+  but `Φ=id_{M_m}⊗Ψ_η` reaches it exactly via cb ampliation-invariance; tensor-with-identity is the
+  general lift recipe). star-commutator=1.0 (vs 0 for abelian G2).
+- **family 2B concentrated rank-1 defect** (`aic_adv_chan_conc_defect`, `tests/aic_adversarial_domain2.c`,
+  commit `00ddaa2`): the O(√η) Φ_assoc1 cancellation stressor. **FINDINGS §C18**: the LITERAL
+  domain.md:255-261 formula is NOT CP (rejected; honest family-1B measure-prepare shipped instead).
+  Orchestrator fixed the review's cb≠op≠F overclaim (true cb-norm `=‖ρ_sub‖_op=η+O(gap·η)`).
+The LOW mixconj corpus-unification item was folded into `aic-f9u.1` (shared corpus). The
+adversarial channel families (1B/1C/1D/2A/2B/3D + noncomm) all now have certified generators.
+
+**NEXT (orchestrated):** `aic-v5f` (densified near-degenerate carrier — clean, de-risked, uses
+the aic-4td certified-rank machinery, closes the 1C diagonal-carrier no-straddle gap); then the
+higher-leverage `aic-dbo.4` (retrofit: every module's tests draw adversarial instances,
+bound-holds OR fail-loud) + `aic-f9u.1` (shared-corpus unification incl. mixconj); the d≥3/k≥5
+projection-coverage + dbo3-widen + d>2-noncomm-pin follow-up beads; `aic-jhe`/`aic-ssu` (Julia
+cb-distance / certified-bracket wrappers); Julia packaging (`aic-obc`/`aic-95g.2`); `aic-w4o.2`
+(full acb SVD). The tex:484 thread + the adversarial channel corpus are COMPLETE.
 
 ---
 
