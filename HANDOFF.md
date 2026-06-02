@@ -1,15 +1,15 @@
 # HANDOFF.md — almost-idempotent-channels
 
-## ▶▶ LATEST (2026-06-02a, orchestrated, laptop): aic-66n + aic-t5w + aic-dbo.3 + aic-cxo CLOSED — the tex:484 universality thread COMPLETE + the adversarial channel corpus finished (noncomm η→1/4, 2B; findings C17/C18)
+## ▶▶ LATEST (2026-06-02a, orchestrated, laptop): aic-66n + aic-t5w + aic-dbo.3 + aic-cxo + aic-v5f CLOSED — tex:484 universality thread COMPLETE + the adversarial channel/algebra corpus + the lethal-shortlist TOP-8 COMPLETE (findings C17/C18/D7n/D1/D6)
 
-**State:** master FULLY GREEN — `ctest -L fast` 18/18 (~3.5s); `test_adversarial` ~47s
-(n=183, all generators GREEN); working tree clean, up to date with `origin/master` (HEAD
-`00ddaa2`). bd: 98 issues (imported from JSONL at session start — the recurring SessionStart
-desync; `bd import` fixed it 88→95, then +3 new follow-up beads). Commit range this session:
-`3029fe5..00ddaa2` (6 feat/test + 1 handoff). Orchestration shape: 7 background workflows
-(diagnose → implement+hostile-review pipelines + recon), each commit+push per green increment,
-every Core change hostile-reviewed (all SHIP) + independently verified before commit; bead
-design/notes carry the durable plan (compaction-robust).
+**State:** master FULLY GREEN — `ctest -L fast` 18/18 (~3.4s); `test_adversarial` ~44s
+(n=293, all 9 generators GREEN); working tree clean, up to date with `origin/master`. bd: 99
+issues (imported from JSONL at session start — the recurring SessionStart desync; `bd import`
+fixed it 88→95, then +4 new follow-up beads). 5 beads CLOSED this session (aic-66n, aic-t5w,
+aic-dbo.3, aic-cxo — P1; aic-v5f — P2); ~14 commits, all pushed. Orchestration shape: 9
+background workflows (diagnose / implement+hostile-review pipelines / recons), each commit+push
+per green increment, every Core change hostile-reviewed (all SHIP, 0 blockers) + independently
+verified before commit; bead design/notes carry the durable plan (compaction-robust).
 
 **LANDED — `aic-66n` (P1 BUG) CLOSED: the unit-aware projection gap-audition.** Root cause
 (diagnosed + prototyped + hostile-reviewed): the nontrivial-projection finder
@@ -76,23 +76,37 @@ rational Givens chains) ⟹ non-diagonal carrier `Q` (off-diag 0.156) + conventi
 prec=53 ⟹ zero-cluster ball straddles thr ⟹ `aic_ucp_carrier_rank` aborts, fork/SIGALRM
 watchdog-tested) + CONVENTION (non-normal K catches the K-marginal bug). FINDINGS §D7n.
 
-**ADVERSARIAL CORPUS STATUS (for the next agent):** CHANNEL gens (domain.md) — DONE: 1B,1C,
-1C-dense,1D,2A,2A-noncomm,2B,3D (8). REMAINING prioritized: **3C** (near-trivial proj / Route-A
-split failure — would give adversarial regression coverage for the aic-66n fix), **5B** (high-mult
-block / degenerate eig merging — stresses the D5n/aic-4td certified-eig wall), 6A (worst-case
-composite O(η)), 6B (lem_RC near-failure ‖C_j‖→0), 1A (extremal min-Kraus-rank), 3B/4A/4B/4C/5A.
-MATRIX gens (nla.md) — DONE ~7/24 (1a t^1/3, 2a/2c non-normal, 4a/4b degenerate, 5c graded, 7a/7b
-boundary). REMAINING: Jordan 1b/1c, Grcar 2b, Kahan 5b, Hilbert 5a, near-singular 3a-3c,
-nearly-commuting 4c, companion/Frank/Toeplitz 6a-6c, contraction 7c, precision-saturation 8a-8c.
-`aic-dbo.2` (umbrella generator bead) stays OPEN (prioritized shortlist not exhausted).
+**ALSO LANDED — domain 3C** (commit `879d882`, `aic_adv_proj_near_trivial`,
+`tests/aic_adversarial_projsplit.c`): the near-trivial-projection deliver-or-refuse fixture (#7
+lethal). FINDING §D1 extended: the literal 3C scenario is UNREACHABLE — every genuine 2+-dim
+algebra's orthonormal basis always supplies an O(1)-gap `H_k`, so the aic-66n audition ALWAYS
+delivers; small-gap only at dim_A=1 / degenerate spectrum (evidence toward the open Ω(1)-gap Q).
 
-**NEXT (orchestrated):** continue the lethal-shortlist generators (3C/5B are the highest-value —
-they stress the session's two central walls: projection finder + degenerate-eig); then the
-higher-leverage `aic-dbo.4` (retrofit: every module's tests draw adversarial instances,
-bound-holds OR fail-loud — depends on dbo.2) + `aic-f9u.1` (shared-corpus unification incl.
-mixconj); the d≥3/k≥5 projection-coverage + dbo3-widen + d>2-noncomm-pin + driver-split follow-up
-beads; `aic-jhe`/`aic-ssu` (Julia wrappers); Julia packaging (`aic-obc`/`aic-95g.2`); `aic-w4o.2`
-(full acb SVD). The tex:484 thread + the core adversarial CHANNEL corpus (1B–3D) are COMPLETE.
+**LETHAL-SHORTLIST TOP-8 COMPLETE (7 built + #8 documented-subsumed):** #1 4b, #2 2A, #3 3D,
+#4 1a, #5 7a, #6 1B, #7 3C all BUILT; **#8 domain 6A SUBSUMED** (2026-06-02 recon, FINDINGS §D6):
+6A's pure-C composite `C=hi/η` is already `test_factorize` T8 (range [3.1,5.9], reproduced
+4.14@n=4 / 4.92@n=9); its TIGHT-C / faithful-dim-sweep content is the `aic-bag` MOSEK diamond-SDP
+stall (eig-free `2‖J‖_F` has O(N) §C12 looseness ⟹ fakes c=O(N)); compose-2A+3A+5A not buildable
+(3A/5A gens don't exist); cost-walled (factorize TIMEOUT at n=16). Folded into `aic-bag`.
+
+**ADVERSARIAL CORPUS STATUS:** CHANNEL/algebra gens (domain.md) DONE: 1B,1C,1C-dense,1D,2A,
+2A-noncomm,2B,3C,3D (9) + 6A-subsumed. The high-value channel/algebra corpus is COMPLETE.
+MATRIX gens (nla.md) DONE ~7/24 (1a,2a/2c,4a/4b,5c,7a/7b). REMAINING (lower priority, NONE in the
+top-8): the ~17 un-built nla.md MATRIX families (Jordan 1b/1c, Grcar 2b, Kahan 5b, Hilbert 5a,
+near-singular 3a-3c, nearly-commuting 4c, companion/Frank/Toeplitz 6a-6c, contraction 7c,
+precision-saturation 8a-8c); the 3A/5A channel sub-gens (only if a hand-engineered worst-case A is
+wanted — blocked by aic-bag anyway). `aic-dbo.2` stays OPEN for the matrix families.
+
+**NEXT (orchestrated) — the adversarial top-8 is done; the next thread is a fresh choice:**
+(1) **`aic-dbo.4`** (highest leverage: retrofit every module's tests/benches to draw adversarial
+instances, bound-holds OR fail-loud — the corpus payoff; needs dbo.2's matrix families or a dep
+trim); (2) the lower-priority nla.md MATRIX generators (clean, laptop-trivial — Kahan 5b
+catastrophic-cancellation is the classic arb-justifying one); (3) the **Julia package** (the
+stated deliverable, largely untouched — `aic-ssu` certified-bracket wrapper / `aic-obc` ccall pkg
+/ `aic-jhe` cb-distance; SERIAL Julia only); (4) `aic-w4o.2` (full acb SVD, the last certified
+primitive); (5) the filed follow-up beads (d≥3/k≥5 projection-coverage, dbo3-widen, d>2-noncomm-pin,
+driver-split, 3C deliver-tooth public-contract assert). The tex:484 thread + the adversarial
+channel/algebra corpus (the whole lethal top-8) are COMPLETE.
 
 ---
 

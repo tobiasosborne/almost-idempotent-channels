@@ -1217,6 +1217,26 @@ with the concrete evidence from where they bit.
   cb-norm) + eig-free T8 as the rigorous per-instance upper. Scaffolding committed:
   `src/aic_factorize_shim.{c,h}` (green), `tools/gen_fixtures_factorize_f4.jl` (eager-flush,
   `F4_ONLY` filter, relaxed-tol override, GC).
+- **Adversarial Family 6A (worst-case composite `O(η)`) is SUBSUMED by {`test_factorize` T8 +
+  this bead} (2026-06-02 recon, bead `aic-dbo.2`).** `domain.md:658-697` proposes a
+  worst-case-engineered `η`-idempotent maximizing `C` in `‖ΔΥ−Φ‖_cb ≤ Cη`. Verdict: NOT a
+  separate buildable test. **(a)** Its pure-C content (the per-instance eig-free composite
+  `C = max(hi_du,hi_ud)/η` on the full `Δ,Υ,B` pipeline) is ALREADY `test_factorize` T8 (single
+  + multi-block; documented range `[3.1,5.9]`) — the recon probe reproduced it at `C=4.14` (n=4)
+  / `4.92` (n=9) on a near-boundary `mixconj(d,d/2,0.20)` (`η≈0.10`). **(b)** Its DISTINCTIVE
+  content — the TIGHT worst-case `C` and a FAITHFUL dimension-independence canary for it — needs
+  the Watrous diamond SDP and is exactly THIS §D6 stall: the eig-free `hi=2‖J‖_F` carries the
+  `O(N)` §C12 looseness, so an eig-free dim-sweep FAKES a `c=O(N)` law (a test that cannot
+  faithfully test universality; the mild `4.14→4.92` growth measured here is the looseness, NOT
+  a real `c`). **(c)** The compose-`2A+3A+5A` recipe is not buildable as written — the **3A**
+  (concentrated associativity defect) and **5A** (δ-hom near `δ_max`) `aic_adv_chan` sub-generators
+  DO NOT EXIST (prerequisites only if a hand-engineered worst-case `A` is ever wanted, which also
+  needs new `cstar_build`-takes-an-`A` plumbing). **(d)** COST-WALLED: the full factorize pipeline
+  is `0.45s` (n=4) / `175s` (n=9, `cstar_build` 155s dominant) / TIMEOUT at n=16 (180s) — so the
+  6A dim sweep `{16,25}` is INFEASIBLE on this laptop regardless. So 6A's genuinely-new goal folds
+  into THIS bead (`aic-bag`: the tight/dim-faithful `C` via the reformulated/JuMP SDP); the
+  per-instance boundedness is T8. The README lethal-shortlist top-8 is now **7 built + 6A
+  documented-subsumed** (complete).
 
 ### D7. Certified Choi→Kraus (`aic_ucp_choi_to_kraus_arb`) — the rank gap needs prec ≥ 64, NOT 53 — `aic-4td` inc-2 step D
 - **Status:** EXPECTED behaviour, recorded (2026-06-01, `src/aic_ucp_kraus_arb.c`,
