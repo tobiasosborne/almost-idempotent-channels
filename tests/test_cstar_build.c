@@ -64,6 +64,7 @@
 #include "aic/aic_mat.h"
 #include "aic_test.h"
 #include "aic/aic_ucp.h"
+#include "aic_adversarial.h"
 #include "test_idemp.h"
 
 #define CPREC 256
@@ -705,12 +706,179 @@ static void test_t4_multiclass(void)
     }
 }
 
+/* ===================== T5: ADVERSARIAL CORPUS blockalg (bead aic-dbo.4) ===== *
+ * The dbo.4 corpus-payoff retrofit: make THIS module's own test self-sufficient
+ * for adversarial coverage by drawing the shared corpus generator aic_adv_chan_
+ * blockalg (fam3D, domain.md:416-449; the eps~c/n dimension-blowup block algebra
+ * (+)_j M_d, tex:484/tex:1249) — the CANONICAL blockalg->cstar_build path proven
+ * in tests/test_adversarial.c::test_fam3d_bijective_eta (aic-66n). Bounded to the
+ * CHEAPEST blockalg k=2,d=2 (dim_A = k*d^2 = 8): ONE deliver point + the eta=0
+ * oracle. The full universality dim-sweep across k is owned by test_adversarial
+ * (test_fam3d_bijective_eta); this is the focused self-sufficiency point, NOT a
+ * duplicate of that sweep.
+ *
+ * Two draws, both blockalg(k=2,d=2):
+ *  (1) DELIVER (t=0.05, eta>0): a GENUINELY eta-idempotent A = M_2 (+) M_2. Mirror
+ *      test_fam3d_bijective_eta EXACTLY (the proven, reviewed call sequence):
+ *      eta = the op-norm idempotence proxy ||S_Phi^2 - S_Phi||_op (the SAME
+ *      eta_proxy this TU already defines, == test_adversarial's fam3d_eta_proxy);
+ *      eps := eta in aic_cstar_build (CRITICAL, FINDINGS §C11 / bead aic-t5w: pass
+ *      eta, NOT ae.eps_assoc, which is ~700x smaller and trips the errreduce C0
+ *      gate). Assert BOUND-HOLDS: build SUCCEEDS, v BIJECTIVE (dim_B == dim_A == 8),
+ *      iso defect c = iso_def/eta < 1.0 (the SAME O(1) bound test_fam3d uses),
+ *      and B's block structure == (+)_2 M_2 (num_blocks==2, each d==2).
+ *  (2) eta=0 ORACLE (t=0.0, EXACTLY idempotent): the cleanest ground truth (Rule 6,
+ *      cross-check ladder #3). Build B from the exactly-idempotent Phi0 (the k-block
+ *      conditional expectation, defect 0); assert iso_def ~ machine-zero AND B's
+ *      block sizes match the INDEPENDENT aic_idemp_decompose (th_idemp_structure)
+ *      decomposition EXACTLY (num_blocks, dim_A in bijection) — the exact-idempotent
+ *      oracle the whole master loop (.tex:1414) must satisfy at eta=0.
+ *
+ * THE UNIT-AWARE PROJECTION (FINDINGS §C16/§C11). The Stage-1 loop recurses through
+ * S_P WRAPPER subalgebras whose unit is Ptilde_m = Co_P(P) (.tex:1082), NOT 1_n; the
+ * aic-66n unit-aware gap audition (.tex:929) is what keeps the t=0.05 deliver from
+ * collapsing the split onto the wrapper unit. k=2 stays in the regime that completes
+ * at prec=256 (test_adversarial's k=4 is the prec-256 stress point; k=2 is cheap). */
+static void test_t5_blockalg_corpus(void)
+{
+    printf("T5 adversarial corpus blockalg (aic_adv_chan_blockalg, fam3D; "
+           "tex:1414/484, FINDINGS §C11/§C16):\n");
+    const slong k = 2, d = 2;
+    const slong dim_A_exp = k * d * d;   /* = 8 */
+
+    /* (1) DELIVER: blockalg(k=2,d=2,t=0.05), eta>0 — mirror test_fam3d_bijective_eta. */
+    {
+        aic_ucp_kraus phi;
+        aic_adv_chan_blockalg(&phi, k, d, 0.05, CPREC);
+        double eta = eta_proxy(&phi, CPREC);   /* REUSED: this TU's eta_proxy */
+        AIC_CHECK_MSG(eta > 1e-6,
+                      "T5 deliver: eta=%.3e not > 0 (t=0.05 must make Phi genuinely "
+                      "almost-idempotent)", eta);
+
+        aic_assoc_ecstar ae;
+        aic_assoc_ecstar_from_phi(&ae, &phi, CPREC);
+        AIC_CHECK_MSG(ae.A.dim_A == dim_A_exp,
+                      "T5 deliver: dim_A=%ld != k*d^2=%ld", (long) ae.A.dim_A,
+                      (long) dim_A_exp);
+
+        /* eps := eta (NOT ae's ~700x-smaller assoc defect; FINDINGS §C11/aic-t5w). */
+        aic_dhom_B B;
+        aic_dhom_v v;
+        arb_t iso;
+        arb_init(iso);
+        aic_cstar_build(&B, &v, iso, &ae.A, eta, CPREC);
+
+        /* sort B's block sizes for the multiset comparison */
+        long got[16];
+        for (slong l = 0; l < B.num_blocks; l++) got[l] = (long) B.d[l];
+        qsort(got, (size_t) B.num_blocks, sizeof(long), dbl_cmp);
+
+        arb_t a;
+        arb_init(a);
+        int bij = aic_errreduce_is_bijective(a, &v, CPREC);
+        double smin = dd(a);
+        double isod = dd(iso);
+        double c = eta > 1e-12 ? isod / eta : 0.0;
+        printf("  DELIVER blockalg(%ld,%ld,0.05): eta=%.4e dim_B=%ld iso_def=%.3e "
+               "c=iso/eta=%.4f num_blocks=%ld d=[%ld,%ld] bij=%d sig=%.6f\n",
+               (long) k, (long) d, eta, (long) B.dim_B, isod, c,
+               (long) B.num_blocks, got[0], B.num_blocks > 1 ? got[1] : 0, bij, smin);
+
+        /* (a) BIJECTIVE: dim_B == dim_A == 8 AND sigma_min near 1. */
+        AIC_CHECK_MSG(B.dim_B == dim_A_exp,
+                      "T5 deliver: dim_B=%ld != dim_A=%ld (not bijective; the "
+                      "wrapper-collapse abort, aic-66n)", (long) B.dim_B,
+                      (long) dim_A_exp);
+        AIC_CHECK_MSG(bij && smin > 0.5,
+                      "T5 deliver: v not bijective (sigma_min=%.4f <= 0.5)", smin);
+        /* (b) iso defect O(eta): the SAME O(1) bound test_fam3d_bijective_eta uses. */
+        AIC_CHECK_MSG(c < 1.0,
+                      "T5 deliver: c=iso_def/eta=%.4f not O(1) (eta=%.3e iso_def=%.3e)",
+                      c, eta, isod);
+        /* (c) block structure (+)_2 M_2: num_blocks==2, each d==2. */
+        AIC_CHECK_MSG(B.num_blocks == k,
+                      "T5 deliver: num_blocks=%ld != k=%ld (the (+)_2 M_2 structure)",
+                      (long) B.num_blocks, (long) k);
+        for (slong l = 0; l < B.num_blocks; l++)
+            AIC_CHECK_MSG(got[l] == d,
+                          "T5 deliver: block %ld size %ld != d=%ld", (long) l,
+                          got[l], (long) d);
+
+        arb_clear(a);
+        arb_clear(iso);
+        aic_dhom_v_clear(&v);
+        aic_dhom_B_clear(&B);
+        aic_assoc_ecstar_clear(&ae);
+        aic_ucp_kraus_clear(&phi);
+    }
+
+    /* (2) eta=0 ORACLE: blockalg(k=2,d=2,t=0.0), EXACTLY idempotent (Rule 6). */
+    {
+        aic_ucp_kraus phi;
+        aic_adv_chan_blockalg(&phi, k, d, 0.0, CPREC);
+
+        /* INDEPENDENT oracle: th_idemp_structure block decomposition. */
+        aic_idemp_decomp dc;
+        aic_idemp_decompose(&dc, &phi, CPREC);
+
+        aic_assoc_ecstar ae;
+        aic_assoc_ecstar_from_phi(&ae, &phi, CPREC);
+
+        aic_dhom_B B;
+        aic_dhom_v v;
+        arb_t iso;
+        arb_init(iso);
+        aic_cstar_build(&B, &v, iso, &ae.A, 0.0, CPREC);
+
+        long got[16];
+        for (slong l = 0; l < B.num_blocks; l++) got[l] = (long) B.d[l];
+        qsort(got, (size_t) B.num_blocks, sizeof(long), dbl_cmp);
+
+        arb_t a;
+        arb_init(a);
+        int bij = aic_errreduce_is_bijective(a, &v, CPREC);
+        printf("  ORACLE blockalg(%ld,%ld,0.0): idemp dim_A=%ld | build dim_B=%ld "
+               "iso_def=%.3e num_blocks=%ld d=[%ld,%ld] bij=%d sig=%.6f\n",
+               (long) k, (long) d, (long) dc.dim_A, (long) B.dim_B, dd(iso),
+               (long) B.num_blocks, got[0], B.num_blocks > 1 ? got[1] : 0, bij, dd(a));
+
+        /* iso_def ~ machine-zero (the exact-idempotent oracle). */
+        AIC_CHECK_MSG(dd(iso) < 1e-10,
+                      "T5 oracle: eta=0 iso_def=%.3e not ~0", dd(iso));
+        /* dim bijection AND the INDEPENDENT aic_idemp_decompose cross-check. */
+        AIC_CHECK_MSG(B.dim_B == ae.A.dim_A && B.dim_B == dim_A_exp,
+                      "T5 oracle: dim_B=%ld != dim_A=%ld (=k*d^2=%ld)", (long) B.dim_B,
+                      (long) ae.A.dim_A, (long) dim_A_exp);
+        AIC_CHECK_MSG(ae.A.dim_A == dc.dim_A,
+                      "T5 oracle: ecstar dim_A=%ld != idemp dim_A=%ld (oracle)",
+                      (long) ae.A.dim_A, (long) dc.dim_A);
+        /* block structure (+)_2 M_2: num_blocks == k, each size d. */
+        AIC_CHECK_MSG(B.num_blocks == k,
+                      "T5 oracle: num_blocks=%ld != k=%ld", (long) B.num_blocks,
+                      (long) k);
+        for (slong l = 0; l < B.num_blocks; l++)
+            AIC_CHECK_MSG(got[l] == d,
+                          "T5 oracle: block %ld size %ld != d=%ld", (long) l, got[l],
+                          (long) d);
+        AIC_CHECK_MSG(bij && dd(a) > 0.5, "T5 oracle: v not bijective");
+
+        arb_clear(a);
+        arb_clear(iso);
+        aic_dhom_v_clear(&v);
+        aic_dhom_B_clear(&B);
+        aic_assoc_ecstar_clear(&ae);
+        aic_idemp_clear(&dc);
+        aic_ucp_kraus_clear(&phi);
+    }
+}
+
 int main(void)
 {
     test_t1_eta0_oracle();
     test_t2_universality();
     test_t3_oblique();
     test_t4_multiclass();
+    test_t5_blockalg_corpus();
     aic_test_report("test_cstar_build");
     return 0;
 }
