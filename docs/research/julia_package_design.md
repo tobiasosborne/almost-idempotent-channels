@@ -1059,6 +1059,20 @@ whose duals are TRACE-PRESERVING, not unital — construct them with `check=fals
 round-trip defect, not the constructor, is their certificate). Strip the stray "wait:" prose
 from §1.6 when [X] polishes docs.
 
+**B6 — LinearAlgebra export clashes (caught in [J2] smoke; the design's §1.1 exports collide).** The
+exported `Factorization` collides with `LinearAlgebra.Factorization` and the verb `factorize` collides with
+`LinearAlgebra.factorize` — a user doing `using AlmostIdempotentChannels, LinearAlgebra` (the common case,
+since they build ComplexF64 matrices) gets ambiguous bindings. Resolution (authoritative, supersedes §1.1/
+§1.6/§2.4 naming):
+- Rename the type `Factorization` → **`ChannelFactorization`** (exported; clash-free). Used everywhere the
+  body said `Factorization`.
+- The verb stays `factorize` but is provided by **extending `LinearAlgebra.factorize`** (`import
+  LinearAlgebra: factorize`; add `factorize(Φ::UCPMap; …)::ChannelFactorization`; `export factorize`). Because
+  we re-export LinearAlgebra's *same* binding, `using both` is NOT ambiguous (ambiguity only arises between
+  two *different* bindings of one name). Not piracy — the method's first arg is our `UCPMap` (Aqua-clean).
+- [J2] does the type rename + audits `names(AlmostIdempotentChannels) ∩ names(LinearAlgebra)` for any other
+  different-binding clash. [J4] does the `factorize` extension. [X] reflects the names in docs/doctests.
+
 **B5 — adopted as-is:** flat-double ABI (no handles, §4.1); reuse of the factorize pipeline
 build (§4.2); the C2–C5 signatures (§4.3) MODULO B1/B2; `CertifiedBracket` without
 IntervalArithmetic (§7); the file layout (§5); Preferences libpath + dlopen/RTLD verbatim

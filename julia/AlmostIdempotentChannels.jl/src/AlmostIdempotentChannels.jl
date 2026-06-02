@@ -29,6 +29,7 @@ package pattern. NO PYTHON. Design: docs/research/julia_package_design.md §3, �
 module AlmostIdempotentChannels
 
 using LinearAlgebra
+using Printf
 
 # Native-library lifecycle: Preferences libpath, dlopen handle, dlsym'd symbol
 # table, __init__ (libgmp preload + RTLD_DEEPBIND), the MethodError hint.
@@ -39,9 +40,37 @@ include("libaic.jl")
 # stubs; the AICMosekExt extension adds the real methods.
 include("sdp_stubs.jl")
 
+# The six immutable value-types (UCPMap, EpsCStarAlgebra, CStarAlgebra,
+# MainIsomorphism, ChannelFactorization, CertifiedBracket) + their accessors (bead J2).
+# Pure Julia; no ccall (the C-data-driven verbs are bead J4).
+include("types.jl")
+
+# Compact + multi-line Base.show for every type (bead J2; design §2.6).
+include("show.jl")
+
 export choi_diff, eta_eigfree, eta_idempotence, idempotency_defect,
        diamond_norm_watrous, diamond_norm_watrous_primal, diamond_norm_dual,
        libaic_path, set_libaic_path!
+
+# ----- the value-types + their accessors (bead J2) -----
+# NOTE (incremental, per the bead): we export only the types and the accessors
+# J2 OWNS. The high-level verbs that need C data (certified_defect,
+# associated_algebra, main_isomorphism, factorize, encode, decode, choi) are bead
+# J4 and are NOT exported here (no method yet).
+export UCPMap, EpsCStarAlgebra, CStarAlgebra, MainIsomorphism, ChannelFactorization,
+       CertifiedBracket
+# UCPMap accessors:
+export n, nkraus, kraus, isunital            # Base.adjoint is extended, not exported
+# CertifiedBracket accessors (Base.in/minimum/maximum are Base extensions):
+export width, midpoint, value
+# CStarAlgebra accessors:
+export blocks, dim_B, n_B
+# EpsCStarAlgebra accessors:
+export dim, ambient, epsilon
+# MainIsomorphism accessors:
+export cbnorm_forward, cbnorm_inverse, isodefect
+# ChannelFactorization accessors (encode/decode are bead J4):
+export algebra, delups_defect, upsdel_defect
 
 # ----- marshalling helpers (Julia ComplexF64 matrices <-> flat C arrays) -----
 
