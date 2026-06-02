@@ -25,6 +25,43 @@
  *     genuinely OUT-of-basin X (||X^2-I||>1) still FAILS LOUD (forked SIGABRT — the
  *     midpoint fix must not mask a real out-of-basin input).
  *
+ *  7. ADVERSARIAL DUAL-OUTCOME (bead aic-dbo.4, the FIRST increment establishing the
+ *     reusable dbo.4 pattern; CLAUDE.md adversarial-first + Rule 4). Each funcalc
+ *     routine is DRAWN against the adversarial corpus (tests/aic_adversarial.h) and,
+ *     per instance, asserted to do EITHER (a) deliver a CERTIFIED output meeting the
+ *     paper bound (in-basin), OR (b) FAIL LOUD via SIGABRT (out-of-basin). "Passes on
+ *     nice inputs" is NOT tested. The reusable idiom is fc_assert_dual (a draw +
+ *     dual-outcome harness) + the fc_watch fork+SIGALRM watchdog (mirror of
+ *     test_xo0_failloud.c / test_adversarial.c v5f), copyable by the projection /
+ *     contraction / ucp retrofits. The instances + MEASURED behavior (prec=256):
+ *       - gen6 boundary_x2I (nla 7a, tex:807-841): s=+0.5,+0.01 IN-BASIN -> aic_sgn
+ *         delivers sgn^2=I (~2.4e-74), [X,sgn]=0, AND the tex:520 bound
+ *         ||sgn(X)-X|| <= ||X||*||X^2-I|| holds (ratio 0.37, 0.29). s=-0.01 OUT
+ *         (||X^2-I||_op=1.01, rho(I-X^2)=1.01) -> aic_sgn AND aic_sgn_newton_schulz
+ *         BOTH fail loud. NOTE (Rule 2 correction): the dbo.4 brief claimed gen6
+ *         s<0 gives rho(I-X^2)=|s|<1 so the default aic_sgn would auto-dispatch to
+ *         global Newton and DELIVER; that is WRONG. gen6 is X=diag(sqrt(2-s),1,..),
+ *         so I-X^2 = diag(s-1,0,..) and rho(I-X^2)=|s-1|=1-s=1.01 for s=-0.01 — OUT
+ *         of the SPECTRAL basin too, so aic_sgn(s=-0.01) FAILS LOUD (MEASURED SIGABRT).
+ *       - gen1 jordan_t13 (nla 1a, tex:540-544): t->0 (1e-9). MEASURED ||X^2-I||~1.62,
+ *         rho(I-X^2)~1.11 for ALL tested t incl t=1 -> aic_sgn / aic_theta FAIL LOUD
+ *         (the paper's t^{1/3} fragility lands the whole companion matrix outside the
+ *         funcalc domain; nla.md:74-78 "domain guard fires for small t").
+ *       - gen4 near_degen_herm (nla 4a, tex:466-489) wired AS prop_P input: a diagonal
+ *         near-projector with eigenvalues near {0,1} a tiny `gap` apart (delta=
+ *         (gap/2)(1-gap/2) < 1/4). aic_prop_P DELIVERS an exact idempotent (Pt^2=Pt
+ *         ~1e-75) for gap down to 1e-9 (MEASURED) — the eig-free route handles the
+ *         near-degenerate spectrum the simple-eig path cannot.
+ *       - gen5 graded_diag (nla 5c, tex:667-700): range<sqrt2 IN-BASIN. aic_sgn
+ *         delivers sgn(D)=I (~e-74) up to range=1.41. SEPARATE fail-loud tooth:
+ *         aic_abs (the binomial xpow series) FAILS LOUD at range>=1.25 (q=||X^2-I||
+ *         ~0.56, still < 1 so IN the tex:511 domain) because the (X^2)^{1/2} series
+ *         needs > 200 terms — a Rule-4 cap abort, NOT a domain abort (distinct from
+ *         the sgn quadratic route, which delivers at the same input). MEASURED.
+ *     FINDING: none. Every out-of-basin instance FAILS LOUD; every in-basin instance
+ *     meets its certified bound; the double-vs-arb (prec=53 vs 256) rung agrees to
+ *     ~1.5e-14. No silent wrong answer, no bound violation surfaced.
+ *
  * Mutation-proof (CLAUDE.md Rule 7): the cross-checks were confirmed RED by
  * temporarily replacing the Newton-Schulz update 1/2 Y(3I - Y^2) with the wrong
  * coefficient 1/2 Y(2I - Y^2). The corrupted iteration no longer converges to a
@@ -40,7 +77,12 @@
  * inflated tol, or dropping the ||YX-XY|| arm) would let a non-sign pass — recorded
  * RED by hand. Restored; suite GREEN.
  */
+/* _POSIX_C_SOURCE: the fork+SIGALRM watchdog (bead aic-dbo.4, test 7) uses
+ * sigaction/kill/mkstemp/alarm — same feature-test macro as test_xo0_failloud.c. */
+#define _POSIX_C_SOURCE 200809L
+#include <fcntl.h>
 #include <signal.h>
+#include <string.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
@@ -54,6 +96,7 @@
  * public wrappers abort); the test drives it directly like test_funcalc_global.c. */
 #include "../src/aic_funcalc_internal.h"
 #include "aic/aic_mat.h"
+#include "aic_adversarial.h"        /* the adversarial corpus (bead aic-dbo.4) */
 #include "aic_test.h"
 
 static void set_tol(arb_t tol, double t) { arb_set_d(tol, t); }
@@ -424,6 +467,415 @@ static void test_out_of_basin_failloud(void)
                   WIFSIGNALED(status) ? WTERMSIG(status) : -1);
 }
 
+/* ===================================================================== *
+ * --- 7. ADVERSARIAL DUAL-OUTCOME (bead aic-dbo.4) --------------------- *
+ * ===================================================================== *
+ *
+ * THE REUSABLE dbo.4 PATTERN. For an adversarial instance, we must assert
+ * EITHER the certified funcalc bound holds (in-basin) OR the routine FAILS
+ * LOUD (out-of-basin). Two reusable pieces below — copyable verbatim by the
+ * projection / contraction / ucp retrofits:
+ *   (A) fc_watch: a fork + SIGALRM watchdog (mirror of test_xo0_failloud.c's
+ *       xo0_run_child and test_adversarial.c's v5f_run_child — both are static
+ *       to their own .c, so each retrofit carries its own copy; the watchdog is
+ *       a HANG backstop, since a funcalc domain guard aborts BEFORE any iteration
+ *       it is belt-and-suspenders here, but the pattern is the point).
+ *   (B) fc_assert_failloud(fn, who): run fn() in fc_watch and assert it
+ *       SIGABRTed (out-of-basin -> Rule-4 abort) and did not hang.
+ * The in-basin "bound holds" half is asserted inline per instance (the certified
+ * arb identities/bounds), since the certified quantity differs per routine. */
+
+#define FC_WATCH_S 20              /* a child alive past this is a HANG */
+
+typedef void (*fc_child_fn)(void);
+static volatile pid_t fc_watch_pid = 0;
+static volatile sig_atomic_t fc_timed_out = 0;
+static void fc_alarm(int sig)
+{
+    (void) sig;
+    fc_timed_out = 1;
+    if (fc_watch_pid > 0) kill(fc_watch_pid, SIGKILL);
+}
+
+/* Run fn() in a forked child bounded by a SIGALRM watchdog. Captures the child's
+ * stderr into `err` (NUL-terminated, `errsz`). Writes the raw wait status into
+ * *status. Returns 1 if the child terminated within the watchdog, 0 if it was
+ * killed for hanging (caller asserts on that). */
+static int fc_watch(fc_child_fn fn, int *status, char *err, size_t errsz)
+{
+    char tmpl[] = "/tmp/aic_fc_err_XXXXXX";
+    int efd = mkstemp(tmpl);
+    AIC_CHECK_MSG(efd >= 0, "fc_watch: mkstemp failed");
+    fflush(NULL);
+    pid_t pid = fork();
+    AIC_CHECK_MSG(pid >= 0, "fc_watch: fork failed");
+    if (pid == 0) {
+        dup2(efd, STDERR_FILENO);
+        close(efd);
+        fn();
+        _exit(0);                  /* reached only if fn did NOT abort */
+    }
+    fc_watch_pid = pid;
+    fc_timed_out = 0;
+    struct sigaction sa = {0}, old;
+    sa.sa_handler = fc_alarm;
+    sigaction(SIGALRM, &sa, &old);
+    alarm(FC_WATCH_S);
+    int st = 0;
+    pid_t w;
+    do { w = waitpid(pid, &st, 0); } while (w < 0 && !fc_timed_out);
+    alarm(0);
+    sigaction(SIGALRM, &old, NULL);
+    if (w < 0) waitpid(pid, &st, 0);
+    lseek(efd, 0, SEEK_SET);
+    ssize_t r = read(efd, err, errsz - 1);
+    err[(r > 0) ? (size_t) r : 0] = '\0';
+    close(efd);
+    unlink(tmpl);
+    *status = st;
+    return fc_timed_out ? 0 : 1;
+}
+
+/* Assert fn() FAILS LOUD: terminates within the watchdog (no hang) via SIGABRT,
+ * and its stderr CONTAINS `needle` (the basin-violation message — proves it
+ * aborted for the RIGHT reason, not some unrelated crash). `who` labels the case. */
+static void fc_assert_failloud(fc_child_fn fn, const char *who, const char *needle)
+{
+    int status = 0;
+    char err[4096];
+    int finished = fc_watch(fn, &status, err, sizeof err);
+    AIC_CHECK_MSG(finished, "%s: out-of-basin call HUNG past %ds watchdog "
+                  "(expected a fast Rule-4 abort)", who, FC_WATCH_S);
+    AIC_CHECK_MSG(WIFSIGNALED(status) && WTERMSIG(status) == SIGABRT,
+                  "%s: expected SIGABRT (out-of-basin fail-loud) but got "
+                  "WIFSIGNALED=%d WTERMSIG=%d / WIFEXITED=%d code=%d. stderr: %s",
+                  who, WIFSIGNALED(status),
+                  WIFSIGNALED(status) ? WTERMSIG(status) : -1,
+                  WIFEXITED(status), WIFEXITED(status) ? WEXITSTATUS(status) : -1,
+                  err);
+    AIC_CHECK_MSG(strstr(err, needle) != NULL,
+                  "%s: aborted but WITHOUT the basin-violation message '%s' "
+                  "(silent/wrong-reason abort?). stderr: %s", who, needle, err);
+}
+
+/* --- 7a. gen6 boundary_x2I: the deliver-vs-fail-loud pair for sgn/theta --- */
+
+/* Out-of-basin children (drawn at module scope so fc_watch's void(void) child can
+ * reach them; the knob is baked in per the MEASURED out-of-basin value). */
+static void fc_child_sgn_gen6_out(void)
+{
+    acb_mat_t X, S;
+    acb_mat_init(X, 3, 3);
+    acb_mat_init(S, 3, 3);
+    aic_adv_boundary_x2I(X, 3, -0.01, 256);  /* ||X^2-I||=1.01, rho(I-X^2)=1.01 */
+    aic_sgn(S, X, 256);                       /* must FAIL LOUD (both bases out) */
+    acb_mat_clear(S);
+    acb_mat_clear(X);
+}
+static void fc_child_ns_gen6_out(void)
+{
+    acb_mat_t X, S;
+    acb_mat_init(X, 3, 3);
+    acb_mat_init(S, 3, 3);
+    aic_adv_boundary_x2I(X, 3, -0.01, 256);
+    aic_sgn_newton_schulz(S, X, 256);         /* op-basin assert must FAIL LOUD */
+    acb_mat_clear(S);
+    acb_mat_clear(X);
+}
+
+static void test_adv_boundary_x2I(void)
+{
+    const slong prec = 256;
+    const slong n = 3;
+    /* IN-BASIN s = {0.5, 0.01}: aic_sgn delivers a certified Hermitian-unitary,
+     * and the tex:520 bound ||sgn(X)-X|| <= ||X|| O(||X^2-I||) holds with the
+     * envelope constant C=1 (MEASURED ratios 0.37, 0.29). */
+    double s_in[2] = {0.5, 0.01};
+    for (int c = 0; c < 2; c++) {
+        acb_mat_t X, S, S2, I, XS, SX, comm, D;
+        acb_mat_init(X, n, n);
+        acb_mat_init(S, n, n);
+        acb_mat_init(S2, n, n);
+        acb_mat_init(I, n, n);
+        acb_mat_init(XS, n, n);
+        acb_mat_init(SX, n, n);
+        acb_mat_init(comm, n, n);
+        acb_mat_init(D, n, n);
+        aic_adv_boundary_x2I(X, n, s_in[c], prec);
+
+        /* assert the fixture really is IN-BASIN (else the "deliver" claim is vacuous). */
+        arb_t b, one;
+        arb_init(b);
+        arb_init(one);
+        arb_one(one);
+        aic_funcalc_int_def_X2(b, X, prec);
+        AIC_CHECK_MSG(arb_lt(b, one),
+                      "test_adv_boundary_x2I: s=%g fixture not in-basin", s_in[c]);
+
+        aic_sgn(S, X, prec);
+
+        /* (i) sgn(X)^2 = I (Hermitian-unitary), certified ~1e-74. */
+        arb_t tol;
+        arb_init(tol);
+        set_tol(tol, 1e-60);
+        acb_mat_sqr(S2, S, prec);
+        acb_mat_one(I);
+        AIC_CHECK_ACB_MAT_CLOSE(S2, I, tol);
+
+        /* (ii) [X, sgn(X)] = 0 (sgn commutes with X, tex:518). */
+        acb_mat_mul(XS, X, S, prec);
+        acb_mat_mul(SX, S, X, prec);
+        acb_mat_sub(comm, XS, SX, prec);
+        arb_t cnorm;
+        arb_init(cnorm);
+        aic_mat_frobenius_norm(cnorm, comm, prec);
+        AIC_CHECK_MSG(arb_lt(cnorm, tol),
+                      "test_adv_boundary_x2I: s=%g [X,sgn(X)] not ~0", s_in[c]);
+
+        /* (iii) the tex:520 bound ||sgn(X)-X|| <= ||X|| * C * ||X^2-I||, C=1.
+         * lhs and rhs are certified arb balls; arb_le is rigorous. */
+        acb_mat_sub(D, S, X, prec);
+        arb_t lhs, nX, nX2I, rhs;
+        arb_init(lhs);
+        arb_init(nX);
+        arb_init(nX2I);
+        arb_init(rhs);
+        aic_mat_opnorm(lhs, D, prec);            /* ||sgn(X) - X|| */
+        aic_mat_opnorm(nX, X, prec);             /* ||X|| */
+        aic_funcalc_int_def_X2(nX2I, X, prec);   /* ||X^2 - I|| */
+        arb_mul(rhs, nX, nX2I, prec);            /* C=1 envelope */
+        AIC_CHECK_MSG(arb_le(lhs, rhs),
+                      "test_adv_boundary_x2I: s=%g tex:520 bound VIOLATED "
+                      "(||sgn-X|| > ||X|| ||X^2-I||)", s_in[c]);
+
+        /* (iv) double-vs-arb rung (prec=53 vs prec=256), ladder #2. */
+        acb_mat_t S53;
+        acb_mat_init(S53, n, n);
+        aic_sgn(S53, X, 53);
+        arb_t tol53;
+        arb_init(tol53);
+        set_tol(tol53, 1e-12);
+        AIC_CHECK_ACB_MAT_CLOSE(S53, S, tol53);
+
+        arb_clear(tol53);
+        acb_mat_clear(S53);
+        arb_clear(rhs);
+        arb_clear(nX2I);
+        arb_clear(nX);
+        arb_clear(lhs);
+        arb_clear(cnorm);
+        arb_clear(tol);
+        arb_clear(one);
+        arb_clear(b);
+        acb_mat_clear(D);
+        acb_mat_clear(comm);
+        acb_mat_clear(SX);
+        acb_mat_clear(XS);
+        acb_mat_clear(I);
+        acb_mat_clear(S2);
+        acb_mat_clear(S);
+        acb_mat_clear(X);
+    }
+
+    /* OUT-OF-BASIN s=-0.01: aic_sgn AND aic_sgn_newton_schulz both FAIL LOUD, but
+     * via DIFFERENT guards (the dual-path teeth):
+     *   - aic_sgn dispatches s=-0.01 (out of op-basin) to the GLOBAL Newton, which
+     *     then fails the SPECTRAL Gelfand certifier (rho(I-X^2)=1.01 !< 1).
+     *   - aic_sgn_newton_schulz hits the op-basin domain assert directly.
+     * (MEASURED ||X^2-I||_op = 1.01, rho(I-X^2) = 1.01 — out of BOTH bases.) */
+    fc_assert_failloud(fc_child_sgn_gen6_out,
+                       "aic_sgn(gen6 s=-0.01)",
+                       "cannot certify rho(I-X^2)");
+    fc_assert_failloud(fc_child_ns_gen6_out,
+                       "aic_sgn_newton_schulz(gen6 s=-0.01)",
+                       "out of validity domain");
+}
+
+/* --- 7b. gen1 jordan_t13: t->0, the tex:540 spectral-fragility domain edge --- */
+
+static void fc_child_sgn_jordan(void)
+{
+    acb_mat_t X, S;
+    acb_mat_init(X, 3, 3);
+    acb_mat_init(S, 3, 3);
+    aic_adv_jordan_t13(X, 1e-9, 256); /* ||X^2-I||~1.62, rho(I-X^2)~1.11: OUT */
+    aic_sgn(S, X, 256);               /* must FAIL LOUD */
+    acb_mat_clear(S);
+    acb_mat_clear(X);
+}
+static void fc_child_theta_jordan(void)
+{
+    acb_mat_t X, T;
+    acb_mat_init(X, 3, 3);
+    acb_mat_init(T, 3, 3);
+    aic_adv_jordan_t13(X, 1e-9, 256);
+    aic_theta(T, X, 256);             /* delegates to aic_sgn -> must FAIL LOUD */
+    acb_mat_clear(T);
+    acb_mat_clear(X);
+}
+
+static void test_adv_jordan_t13(void)
+{
+    /* The paper's t^{1/3} companion matrix (tex:540-544): MEASURED ||X^2-I||~1.62
+     * and rho(I-X^2)~1.11 for t down to 1e-9 (and even t=1) — the whole matrix is
+     * OUTSIDE the funcalc domain (no in-basin "deliver" half exists for this gen;
+     * nla.md:74-78). So this is a pure fail-loud instance for sgn AND theta. */
+    fc_assert_failloud(fc_child_sgn_jordan,
+                       "aic_sgn(gen1 jordan t=1e-9)",
+                       "rho");
+    fc_assert_failloud(fc_child_theta_jordan,
+                       "aic_theta(gen1 jordan t=1e-9)",
+                       "rho");
+}
+
+/* --- 7c. gen4 near_degen_herm AS prop_P input: tiny-gap near-projector --- */
+
+static void test_adv_near_degen_prop_P(void)
+{
+    /* gen4's raw H = diag(1-gap/2,1+gap/2,3,..) is FAR out of the funcalc domain
+     * (||H^2-I||~15). Its funcalc relevance (aic_adversarial.h gen4 docstring) is
+     * AS a prop_P input: a near-projector P whose spectrum clusters near {0,1} with
+     * a tiny `gap`. We build that diagonal P directly (the gen4 near-degenerate
+     * PAIR placed across the 0/1 projector spectrum) and assert aic_prop_P DELIVERS
+     * an exact idempotent for gap down to 1e-9 — the eig-free Gelfand/sgn route
+     * handling the near-degenerate spectrum that the simple-eig path aborts on
+     * (nla.md:466-489 4a; tex:524-533 prop_P). */
+    const slong prec = 256;
+    const slong n = 4;
+    double gaps[3] = {0.5, 1e-3, 1e-9};
+    for (int c = 0; c < 3; c++) {
+        double g = gaps[c];
+        acb_mat_t P, Pt, Pt2, P2, defect;
+        acb_mat_init(P, n, n);
+        acb_mat_init(Pt, n, n);
+        acb_mat_init(Pt2, n, n);
+        acb_mat_init(P2, n, n);
+        acb_mat_init(defect, n, n);
+        acb_mat_zero(P);
+        /* near-degenerate 0/1 pair (the gen4 pair, mapped onto a projector spectrum)
+         * plus an exact {0,1} remainder — delta = ||P^2-P|| = (g/2)(1-g/2) < 1/4. */
+        acb_set_d(acb_mat_entry(P, 0, 0), g / 2.0);       /* near 0 */
+        acb_set_d(acb_mat_entry(P, 1, 1), 1.0 - g / 2.0); /* near 1 */
+        acb_set_d(acb_mat_entry(P, 2, 2), 0.0);
+        acb_set_d(acb_mat_entry(P, 3, 3), 1.0);
+
+        /* assert delta < 1/4 (the prop_P hypothesis is genuinely satisfied). */
+        acb_mat_sqr(P2, P, prec);
+        acb_mat_sub(defect, P2, P, prec);
+        arb_t delta, quarter;
+        arb_init(delta);
+        arb_init(quarter);
+        aic_mat_opnorm(delta, defect, prec);
+        arb_set_d(quarter, 0.25);
+        AIC_CHECK_MSG(arb_lt(delta, quarter),
+                      "test_adv_near_degen_prop_P: gap=%g delta !< 1/4", g);
+
+        /* DELIVER: aic_prop_P returns an EXACT idempotent Ptilde^2 = Ptilde. */
+        aic_prop_P(Pt, P, prec);
+        acb_mat_sqr(Pt2, Pt, prec);
+        arb_t tol;
+        arb_init(tol);
+        set_tol(tol, 1e-60);
+        AIC_CHECK_ACB_MAT_CLOSE(Pt2, Pt, tol);   /* idempotent within ~1e-75 */
+
+        /* commutation [Ptilde, P] = 0 (tex:530). */
+        acb_mat_t PtP, PPt, comm;
+        acb_mat_init(PtP, n, n);
+        acb_mat_init(PPt, n, n);
+        acb_mat_init(comm, n, n);
+        acb_mat_mul(PtP, Pt, P, prec);
+        acb_mat_mul(PPt, P, Pt, prec);
+        acb_mat_sub(comm, PtP, PPt, prec);
+        arb_t cnorm;
+        arb_init(cnorm);
+        aic_mat_frobenius_norm(cnorm, comm, prec);
+        AIC_CHECK_MSG(arb_lt(cnorm, tol),
+                      "test_adv_near_degen_prop_P: gap=%g [Pt,P] not ~0", g);
+
+        arb_clear(cnorm);
+        acb_mat_clear(comm);
+        acb_mat_clear(PPt);
+        acb_mat_clear(PtP);
+        arb_clear(tol);
+        arb_clear(quarter);
+        arb_clear(delta);
+        acb_mat_clear(defect);
+        acb_mat_clear(P2);
+        acb_mat_clear(Pt2);
+        acb_mat_clear(Pt);
+        acb_mat_clear(P);
+    }
+}
+
+/* --- 7d. gen5 graded_diag: wide dynamic range -> sgn delivers, abs fails loud - */
+
+static void fc_child_abs_graded_out(void)
+{
+    acb_mat_t D, A;
+    acb_mat_init(D, 4, 4);
+    acb_mat_init(A, 4, 4);
+    aic_adv_graded_diag(D, 4, 1.25, 256); /* q=||X^2-I||~0.56 < 1 but series>200 */
+    aic_abs(A, D, 256);                   /* binomial xpow cap -> FAIL LOUD */
+    acb_mat_clear(A);
+    acb_mat_clear(D);
+}
+
+static void test_adv_graded_diag(void)
+{
+    const slong prec = 256;
+    const slong n = 4;
+    /* IN-BASIN range = {1.1, 1.3, 1.41} (all < sqrt2): the positive diagonal has
+     * sgn(D) = I; aic_sgn delivers it (MEASURED ||sgn-I||~e-74) via the QUADRATIC
+     * Newton-Schulz, robustly across the wide dynamic range. We also run the
+     * prec=53 vs prec=256 rung (ladder #2): the arb path tracks the dynamic range
+     * where a double would lose relative precision in the small entries. */
+    double ranges[3] = {1.1, 1.3, 1.41};
+    for (int c = 0; c < 3; c++) {
+        acb_mat_t D, S, S2, I, Diff;
+        acb_mat_init(D, n, n);
+        acb_mat_init(S, n, n);
+        acb_mat_init(S2, n, n);
+        acb_mat_init(I, n, n);
+        acb_mat_init(Diff, n, n);
+        aic_adv_graded_diag(D, n, ranges[c], prec);
+
+        aic_sgn(S, D, prec);
+        arb_t tol;
+        arb_init(tol);
+        set_tol(tol, 1e-60);
+        acb_mat_sqr(S2, S, prec);
+        acb_mat_one(I);
+        AIC_CHECK_ACB_MAT_CLOSE(S2, I, tol);     /* sgn^2 = I */
+        AIC_CHECK_ACB_MAT_CLOSE(S, I, tol);      /* sgn(D) = I (positive diagonal) */
+
+        acb_mat_t S53;
+        acb_mat_init(S53, n, n);
+        aic_sgn(S53, D, 53);
+        arb_t tol53;
+        arb_init(tol53);
+        set_tol(tol53, 1e-12);
+        AIC_CHECK_ACB_MAT_CLOSE(S53, S, tol53);  /* double-vs-arb rung */
+
+        arb_clear(tol53);
+        acb_mat_clear(S53);
+        arb_clear(tol);
+        acb_mat_clear(Diff);
+        acb_mat_clear(I);
+        acb_mat_clear(S2);
+        acb_mat_clear(S);
+        acb_mat_clear(D);
+    }
+
+    /* FAIL-LOUD: aic_abs at range=1.25. q=||X^2-I||~0.56 is < 1 (IN the tex:511
+     * domain), but the (X^2)^{1/2} binomial series needs > 200 terms, so the
+     * xpow term-cap fires (a Rule-4 abort, NOT a domain abort) — the routine
+     * refuses to return an uncertified result. This is the SAME input on which
+     * aic_sgn (quadratic) delivers, isolating the series route's distinct limit. */
+    fc_assert_failloud(fc_child_abs_graded_out,
+                       "aic_abs(gen5 range=1.25)",
+                       "series tail not below tol");
+}
+
 int main(void)
 {
     test_identities();
@@ -433,6 +885,11 @@ int main(void)
     test_precision_ladder();
     test_wide_radius();
     test_out_of_basin_failloud();
+    /* --- adversarial dual-outcome (bead aic-dbo.4) --- */
+    test_adv_boundary_x2I();
+    test_adv_jordan_t13();
+    test_adv_near_degen_prop_P();
+    test_adv_graded_diag();
 
     aic_test_report("test_funcalc");
     printf("OK test_funcalc\n");
