@@ -234,6 +234,80 @@ void aic_idemp_wedderburn_decompose(aic_idemp_wedderburn *out,
 
 void aic_idemp_wedderburn_clear(aic_idemp_wedderburn *out);
 
+/* --- prop_Gamma explicit Kraus form of the conditional expectation (aic-ynu, I3) ---
+ *
+ * prop_Gamma (.tex:2106-2122). Given the Wedderburn data W (the unitary W : M ->
+ * (+)_j L_j (x) E_j with components W_j) of the *-homomorphism w : A -> B(M),
+ * ANY UCP map Gamma : B(M) -> A with Gamma w = 1_A (the conditional expectation
+ * onto A) has the component-wise representation (.tex:2110, eq Gamma)
+ *
+ *     Gamma_j : B(M) -> B(L_j),
+ *     Gamma_j(X) = Tr_{E_j}( W_j X W_j^dag (1_{L_j} (x) gamma_j) )   (eq Gamma)
+ *
+ * for density matrices gamma_j on E_j (the general form of a finite-dim
+ * conditional expectation). Equivalently the Choi/Kraus form (.tex:2118-2122)
+ *
+ *     Gamma_j(X) = L_j^dag (X (x) 1_{F_j}) L_j,   L_j^dag L_j = 1_{L_j},
+ *     L_j = (W_j^dag (x) 1_{F_j})(1_{L_j} (x) xi_j),
+ *
+ * with xi_j a unit vector in E_j (x) F_j and gamma_j = Tr_{F_j}(xi_j xi_j^dag).
+ * The A-element Gamma(X) = (Gamma_1(X),...,Gamma_m(X)) in A = (+)_j B(L_j); under
+ * the *-monomorphism w it embeds as w(Gamma(X)) = sum_j W_j^dag (Gamma_j(X) (x)
+ * 1_{E_j}) W_j (.tex:2095 eq Aw).
+ *
+ * WHICH gamma_j (extracted to MATCH the stored d.Gamma, NOT presumed uniform).
+ * The stored d.Gamma = Delta^dag Lambda (aic_idemp_build.c) is a SPECIFIC
+ * conditional expectation; eq Gamma is LINEAR in gamma_j, so we SOLVE for the
+ * gamma_j that reproduces it (least squares over a spanning set of B(M) inputs,
+ * the target Gamma_j(X) read block-wise from d.Gamma through w). The solution is
+ * unique (W_j isometry onto block j => gamma_j |-> Gamma_j is injective) and is
+ * asserted to be a valid density matrix (Hermitian, PSD, trace 1; arb-certified,
+ * Rule 4). For the noiseless-subsystem oracle Phi(X)=(Tr_E X)(x)(1_E/dE) the
+ * stored d.Gamma turns out to be the MAXIMALLY-MIXED conditional expectation,
+ * gamma_1 = (1/dim E_1) 1_{E_1} (measured residual 4.5e-16); whether d.Gamma is
+ * uniform is DETERMINED by the solve, not presumed (a non-uniform gamma_j is a
+ * valid output and breaks the uniform-gamma assumption — the mutation proof).
+ *
+ * THE GATE (.tex:2113, the crux tooth). The prop_Gamma Kraus map MUST equal the
+ * stored d.Gamma: applying both to a basis E_ab of B(M) and comparing the
+ * A-coordinate (embedded via w, gauge-invariant since w is a *-monomorphism),
+ * ||w(Gamma_kraus(E_ab)) - w(d.Gamma(E_ab))||_op <= tol for all a,b. This pins
+ * the gamma_j extraction + the Tr_{E_j} convention + the W_j usage at once. The
+ * decompose routine FAILS LOUD (Rule 4) if the extracted gamma_j is not a valid
+ * density matrix or the match-d.Gamma certification fails (do NOT return a Gamma
+ * that does not match — that would be silently wrong). Per .tex:2113 EVERY Gamma
+ * with Gamma w = 1_A has this form, so a genuine mismatch means the W_j are wrong
+ * or the convention is off — a real finding, escalated, not faked.
+ *
+ * F_j = E_j with the standard purification: gamma_j = sum_c p_c |v_c><v_c|
+ * (eigendecomposition), xi_j = sum_c sqrt(p_c) |v_c>_E (x) |c>_F, so
+ * Tr_{F_j}(xi_j xi_j^dag) = gamma_j and L_j is dim_M*dim_E[j] x dim_L[j]. */
+typedef struct {
+    slong num_blocks;   /* = W->num_blocks                                       */
+    slong dim_M;        /* = W->dim_M (the carrier dim, for re-embedding via w)  */
+    slong dim_A;        /* = W->dim_A                                            */
+    slong *dim_L;       /* dim_L[0..m-1] (copied from W, self-contained)         */
+    slong *dim_E;       /* dim_E[0..m-1] = dim_F[j] (F_j = E_j)                  */
+    acb_mat_t *gamma_j; /* m density matrices, gamma_j[j] is dim_E[j] x dim_E[j] */
+    acb_mat_t *L_j;     /* m Kraus isometries, L_j[j] is (dim_M*dim_E[j]) x dim_L[j],
+                         * L_j^dag L_j = 1_{L_j}; Gamma_j(X)=L_j^dag(X(x)1_F)L_j  */
+} aic_idemp_gamma;
+
+/* Extract the prop_Gamma density matrices gamma_j and Kraus operators L_j of the
+ * stored conditional expectation d->Gamma, from the Wedderburn data W (same `d`).
+ * `out` is OUTPUT (caller must aic_idemp_gamma_clear it). `prec` is the arb
+ * working precision.
+ *
+ * Fails loud (Rule 4) if: an extracted gamma_j is not a valid density matrix
+ * (Hermitian / PSD / trace 1 beyond a prec tol); the prop_Gamma map does NOT
+ * match the stored d->Gamma on a basis of B(M) (the crux tooth — a mismatch is a
+ * convention/W_j bug, not a silent miss); or the Kraus L_j fail L_j^dag L_j = 1.
+ * Cites .tex:2106-2122. */
+void aic_idemp_gamma_kraus(aic_idemp_gamma *out, const aic_idemp_wedderburn *W,
+                           const aic_idemp_decomp *d, slong prec);
+
+void aic_idemp_gamma_clear(aic_idemp_gamma *out);
+
 #ifdef __cplusplus
 }
 #endif
