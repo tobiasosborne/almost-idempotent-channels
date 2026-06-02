@@ -41,6 +41,7 @@
  *   chan_unital_defect  domain 1D, tex:432/672 : unital-but-barely Phi(I)=I+delta_u E
  *   chan_carrier_dropout domain 1C, tex:1724/1731 : near-degenerate carrier, rank near-drop
  *   chan_blockalg       domain 3D, tex:484/1249 : eps~c/n dimension-blowup block algebra (+)_j M_d
+ *   chan_noncomm_boundary README:57, tex:347/378 : NON-COMMUTATIVE eta_cb=1/4-kappa boundary (id(x)cb_op_gap)
  *
  * API SHAPE (reusable by tests AND benches). Each NLA generator takes a caller-managed
  * acb_mat_t `out` that the caller has init'd to the right shape (asserted), the
@@ -234,6 +235,36 @@ void aic_adv_chan_carrier_dropout(aic_ucp_kraus *out, slong d, double gap,
  * `out` is aic_ucp_kraus_init'd HERE (dim_K=dim_H=N=k*d, r=2k; caller clears it). */
 void aic_adv_chan_blockalg(aic_ucp_kraus *out, slong k, slong d, double t,
                            slong prec);
+
+/* fam-NC — NON-COMMUTATIVE eta->1/4 boundary (docs/adversarial/README.md:57, the
+ * tranche-3 "non-commutative calibrated eta->1/4" item; tex:347-349 cb-norm
+ * ampliation-invariance, tex:366-388/378 the measure-prepare closed form,
+ * tex:516-525 the theta(2Phi-1) basin). A UCP self-map on B(C^N), N = m*d, that
+ * is CALIBRATED to the eta < 1/4 boundary with a GENUINELY non-commutative image,
+ * unlike the COMMUTATIVE depolarizing 2A instance (aic_adv_chan_depol_boundary,
+ * image = scalars):
+ *   Phi = id_{M_m} (x) Psi_eta,   Kraus  1_m (x) K_a^{Psi},   r = d,
+ * where id_{M_m} is the IDENTITY channel on B(C^m) (exactly idempotent, fixed-
+ * point algebra = the full NON-ABELIAN M_m for m >= 2) and Psi_eta is the
+ * measure-prepare cb-norm example on B(C^d) (the family-1B generator
+ * aic_adv_chan_cb_op_gap, tex:366-388) with the CLOSED-FORM defect
+ * ||Psi_eta^2-Psi_eta||_cb = eta*sqrt(1-eta) (tex:378). cb-norm is AMPLIATION-
+ * INVARIANT (tex:347-349), so
+ *   eta_cb := ||Phi^2-Phi||_cb = ||Psi^2-Psi||_cb = eta*sqrt(1-eta)  (EXACT, m-indep).
+ * KNOB kappa in (0, 1/4): eta is the LOWER root of eta*sqrt(1-eta) = 1/4 - kappa
+ * (bisection on the rising branch [0,2/3]; the peak is 0.3849 so 1/4-kappa is
+ * reachable for all kappa>0). UNITAL for all kappa (tensor of unital UCP maps).
+ * Adversarial property (the NON-COMMUTATIVE boundary, distinct from G2): eta_cb =
+ * 1/4 - kappa EXACTLY at the theta(2Phi-1) basin edge, AND the image is NON-
+ * ABELIAN — the genuine fixed points B1 = E^{(m)}_{01}(x)1_d, B2 = E^{(m)}_{10}(x)1_d
+ * satisfy the star-product (tex:342) commutator ||B1*B2-B2*B1||_op = 1 != 0
+ * (the depolarizing 2A instance's abelian image gives 0). Asserts m>=2, d>=2,
+ * 0 < kappa < 1/4 (Rule 4, fail loud: target >= 1/4 is OUT of the eta<1/4
+ * hypothesis; target > peak 0.3849 has NO calibration root). `out` is
+ * aic_ucp_kraus_init'd HERE (dim_K=dim_H=N=m*d, r=d; caller aic_ucp_kraus_clears
+ * it). See aic_adversarial_noncomm.c for the full derivation. */
+void aic_adv_chan_noncomm_boundary(aic_ucp_kraus *out, slong m, slong d,
+                                   double kappa, slong prec);
 
 #ifdef __cplusplus
 }

@@ -1220,6 +1220,216 @@ static void test_fam3d_bijective_eta(void)
     }
 }
 
+/* ---- fam-NC: NON-COMMUTATIVE eta->1/4 boundary (README:57, tex:347/378/516).
+ * The SIXTH channel generator's self-test, and the NON-COMMUTATIVE counterpart of
+ * fam2A (depolarizing, commutative). Phi = id_{M_m} (x) Psi_eta, eta the lower
+ * root of eta*sqrt(1-eta) = 1/4 - kappa, so eta_cb = ||Phi^2-Phi||_cb = 1/4-kappa
+ * EXACTLY (closed form, ampliation-invariant). The named adversarial property is
+ * (a) the boundary calibration + (b) the NON-ABELIAN image, which the commutative
+ * G2 lacks.
+ *
+ * Teeth, in order of load-bearing weight:
+ *  (a) CALIBRATION AT THE BOUNDARY: the certified eig-free bracket
+ *      [||J||_F/N, 2||J||_F] CONTAINS the target 1/4 - kappa (lo <= target <= hi),
+ *      over a kappa sweep {0.10,0.05,0.02,0.01} (mild .. lethal toward the edge).
+ *      The bracket is loose (ratio 2N) so it cannot PIN eta_cb; the EXACT value is
+ *      the closed form eta*sqrt(1-eta) (tex:378 + ampliation-invariance tex:347),
+ *      which we ALSO assert lies in the bracket — the certified cross-check that
+ *      the closed-form cb-norm is consistent with the independent eig-free
+ *      certifier (CLAUDE.md cross-check ladder #4). g(eta)=eta*sqrt(1-eta) == target
+ *      to ~1e-12 pins the root-find. (b) NON-COMMUTATIVITY WITNESS: B1 =
+ *      E^{(m)}_{01}(x)1_d, B2 = E^{(m)}_{10}(x)1_d are GENUINE FIXED POINTS of Phi
+ *      (Psi unital => Psi(1_d)=1_d), and the Choi-Effros star-commutator (tex:342)
+ *      ||Phi(B1 B2)-Phi(B2 B1)||_op = ||[B1,B2]||_op = 1 != 0 — certified bounded
+ *      away from 0, the distinction from the commutative depol (whose abelian
+ *      image gives 0). (c) UNITAL: ||sum_a K_a^dag K_a - 1_N||_op < 1e-12.
+ *      (d) AMPLIATION-INVARIANCE: lo(m=2) == lo(m=3) at fixed kappa (cb-norm
+ *      unchanged by (x) id_{M_m} — the identity that makes eta_cb m-independent).
+ *
+ * MUTATIONS (Rule 7), confirmed RED then restored byte-identical:
+ *  M1 — break the calibration: in the generator use noncomm_calibrate_eta(target
+ *       + 0.05) (mis-calibrate the root) => eta_cb shifts off 1/4-kappa and the
+ *       SHARP tooth (a) lo*sqrt(2)==target goes RED ("ball 2.0e-1 not within
+ *       1e-9 of 1.5e-1" at kappa=0.10). [The loose "bracket contains target"
+ *       check alone does NOT catch this — ratio 2N is too wide — which is why the
+ *       sharp lo*sqrt(2) pin exists.]
+ *  M2 — swap the tensor order to K_a (x) 1_m (M_m corner moves to the second
+ *       slot, r and unitality preserved) => B1 = E^{(m)}_{01}(x)1_d is NO LONGER
+ *       a fixed point of Phi, so tooth (b)'s fixdef check (B1 must be in the
+ *       image for the star-commutator to witness the IMAGE algebra) goes RED
+ *       ("ball 1.07 not within 1e-12 of 0"). */
+static void test_fam_nc_noncomm_boundary(void)
+{
+    const slong m = 2, d = 2; /* M_2 corner (non-abelian) (x) cb_op_gap on C^2 */
+    double kappas[4] = {0.10, 0.05, 0.02, 0.01};
+    /* lower-root eta of eta*sqrt(1-eta) = 1/4 - kappa (mirrors the generator's
+     * bisection so the test independently re-derives the target). */
+    double lo_arr[4];
+
+    arb_t lob, hib;
+    arb_init(lob);
+    arb_init(hib);
+
+    for (int it = 0; it < 4; it++) {
+        double target = 0.25 - kappas[it];
+
+        aic_ucp_kraus phi;
+        aic_adv_chan_noncomm_boundary(&phi, m, d, kappas[it], PREC);
+        slong N = m * d;
+        AIC_CHECK_MSG(phi.dim_K == N && phi.dim_H == N && phi.r == d,
+                      "fam-NC kappa=%.2f: bad shape dim_K=%ld dim_H=%ld r=%ld "
+                      "(want %ld,%ld,%ld)", kappas[it], (long) phi.dim_K,
+                      (long) phi.dim_H, (long) phi.r, (long) N, (long) N,
+                      (long) d);
+
+        /* (c) UNITAL: tensor of unital UCP maps. */
+        arb_t ud;
+        arb_init(ud);
+        aic_ucp_unital_defect_kraus(ud, &phi, PREC);
+        check_ball_eq(ud, 0.0, 1e-12);
+        arb_clear(ud);
+
+        /* (a) CALIBRATION: certified bracket CONTAINS the target 1/4-kappa. The
+         * bracket is rigorous (arb balls), so arb_lower(lob) <= target <=
+         * arb_upper(hib) certifies eta_cb straddles the boundary. */
+        aic_cbnorm_eigfree_ball(lob, hib, &phi, PREC);
+        lo_arr[it] = arf_get_d(arb_midref(lob), ARF_RND_NEAR);
+        arb_t tgt;
+        arb_init(tgt);
+        arb_set_d(tgt, target);
+        AIC_CHECK_MSG(arb_le(lob, tgt) && arb_le(tgt, hib),
+                      "fam-NC kappa=%.2f: certified bracket [%.6f,%.6f] does NOT "
+                      "contain target 1/4-kappa=%.6f (boundary not reached)",
+                      kappas[it], lo_arr[it],
+                      arf_get_d(arb_midref(hib), ARF_RND_NEAR), target);
+        arb_clear(tgt);
+
+        /* (a) SHARP calibration pin (the mutation-catching tooth — the "contains"
+         * check is too loose at ratio 2N to catch a small miscalibration). For
+         * this construction at d=2 the eig-free lower bound is EXACTLY
+         * lo = ||J||_F/N = eta_cb / sqrt(2) (measured ratio 0.7071068, a fixed
+         * fingerprint of Choi(Psi^2-Psi) for the C^2 measure-prepare family; it is
+         * ampliation-invariant under (x) id_{M_m}). So lo*sqrt(2) == target =
+         * 1/4-kappa to ~1e-9. A miscalibrated eta moves lo off target/sqrt(2). */
+        if (d == 2) {
+            arb_t lo2;
+            arb_init(lo2);
+            arb_sqrt_ui(lo2, 2, PREC);
+            arb_mul(lo2, lo2, lob, PREC); /* lo * sqrt(2), still a certified ball */
+            check_ball_eq(lo2, target, 1e-9);
+            arb_clear(lo2);
+        }
+
+        /* (a) cont. EXACT closed form g(eta)=eta*sqrt(1-eta) == target (the
+         * generator's calibration), AND that closed form lies in the bracket. */
+        double a = 0.0, b = 2.0 / 3.0;
+        for (int j = 0; j < 200; j++) {
+            double mid = 0.5 * (a + b);
+            if (mid * sqrt(1.0 - mid) < target)
+                a = mid;
+            else
+                b = mid;
+        }
+        double eta = 0.5 * (a + b);
+        double cf = eta * sqrt(1.0 - eta);
+        AIC_CHECK_MSG(fabs(cf - target) < 1e-12,
+                      "fam-NC kappa=%.2f: closed form eta*sqrt(1-eta)=%.14f != "
+                      "target=%.14f (calibration root wrong)", kappas[it], cf,
+                      target);
+        arb_t cfb;
+        arb_init(cfb);
+        arb_set_d(cfb, cf);
+        AIC_CHECK_MSG(arb_le(lob, cfb) && arb_le(cfb, hib),
+                      "fam-NC kappa=%.2f: closed form eta_cb=%.6f outside "
+                      "certified bracket [%.6f,%.6f] (cb-norm certifier "
+                      "inconsistent with tex:378)", kappas[it], cf, lo_arr[it],
+                      arf_get_d(arb_midref(hib), ARF_RND_NEAR));
+        arb_clear(cfb);
+
+        /* (b) NON-COMMUTATIVITY WITNESS. B1 = E^{(m)}_{01}(x)1_d, B2 =
+         * E^{(m)}_{10}(x)1_d are genuine fixed points (Psi unital). Star product
+         * X*Y = Phi(XY) (tex:342); the commutator ||B1*B2 - B2*B1||_op == 1. */
+        acb_mat_t B1, B2, F, P12, P21, Dc;
+        acb_mat_init(B1, N, N);
+        acb_mat_init(B2, N, N);
+        acb_mat_init(F, N, N);
+        acb_mat_init(P12, N, N);
+        acb_mat_init(P21, N, N);
+        acb_mat_init(Dc, N, N);
+        for (slong c = 0; c < d; c++) {
+            acb_set_si(acb_mat_entry(B1, 0 * d + c, 1 * d + c), 1); /* E01(x)1_d */
+            acb_set_si(acb_mat_entry(B2, 1 * d + c, 0 * d + c), 1); /* E10(x)1_d */
+        }
+        /* B1, B2 are fixed points: ||Phi(B1)-B1||_op ~ 0 (certifies the witness
+         * elements really are in the algebra, so the star-commutator IS the
+         * algebra commutator). */
+        aic_ucp_apply(F, &phi, B1, PREC);
+        acb_mat_sub(F, F, B1, PREC);
+        arb_t fd;
+        arb_init(fd);
+        aic_mat_opnorm(fd, F, PREC);
+        check_ball_eq(fd, 0.0, 1e-12);
+        /* star-commutator */
+        acb_mat_mul(F, B1, B2, PREC);  /* B1 B2 */
+        aic_ucp_apply(P12, &phi, F, PREC);
+        acb_mat_mul(F, B2, B1, PREC);  /* B2 B1 */
+        aic_ucp_apply(P21, &phi, F, PREC);
+        acb_mat_sub(Dc, P12, P21, PREC);
+        arb_t comm;
+        arb_init(comm);
+        aic_mat_opnorm(comm, Dc, PREC);
+        /* certified == 1 (||(E00-E11)(x)1_d||_op = 1), bounded WELL away from 0 —
+         * the commutative depol gives 0 here. */
+        check_ball_eq(comm, 1.0, 1e-12);
+        arb_t half;
+        arb_init(half);
+        arb_set_d(half, 0.5);
+        AIC_CHECK_MSG(arb_gt(comm, half),
+                      "fam-NC kappa=%.2f: star-commutator %.6f not > 0.5 (image "
+                      "NOT non-commutative — would match the commutative G2)",
+                      kappas[it],
+                      arf_get_d(arb_midref(comm), ARF_RND_NEAR));
+        arb_clear(half);
+        arb_clear(comm);
+        arb_clear(fd);
+        acb_mat_clear(Dc);
+        acb_mat_clear(P21);
+        acb_mat_clear(P12);
+        acb_mat_clear(F);
+        acb_mat_clear(B2);
+        acb_mat_clear(B1);
+        aic_ucp_kraus_clear(&phi);
+    }
+
+    /* (d) AMPLIATION-INVARIANCE: eta_cb is independent of the M_m factor size, so
+     * the eig-free lo (= ||J||_F/N) is IDENTICAL for m=2 and m=3 at fixed kappa.
+     * This is the certified fingerprint of the cb-norm ampliation-invariance
+     * identity eta_cb = ||Psi^2-Psi||_cb (tex:347-349) that makes the boundary
+     * m-independent. */
+    aic_ucp_kraus phi2, phi3;
+    aic_adv_chan_noncomm_boundary(&phi2, 2, d, 0.01, PREC);
+    aic_adv_chan_noncomm_boundary(&phi3, 3, d, 0.01, PREC);
+    aic_cbnorm_eigfree_ball(lob, hib, &phi2, PREC);
+    double lo_m2 = arf_get_d(arb_midref(lob), ARF_RND_NEAR);
+    aic_cbnorm_eigfree_ball(lob, hib, &phi3, PREC);
+    double lo_m3 = arf_get_d(arb_midref(lob), ARF_RND_NEAR);
+    AIC_CHECK_MSG(fabs(lo_m2 - lo_m3) < 1e-12 * (1.0 + lo_m2),
+                  "fam-NC: lo(m=2)=%.12f != lo(m=3)=%.12f (cb-norm NOT ampliation-"
+                  "invariant; eta_cb should be m-independent, tex:347-349)",
+                  lo_m2, lo_m3);
+    aic_ucp_kraus_clear(&phi3);
+    aic_ucp_kraus_clear(&phi2);
+
+    printf("  fam-NC noncomm-boundary: eta_cb=1/4-kappa via id(M2)(x)cb_op_gap. "
+           "kappa=0.10 lo=%.6f ; 0.05 lo=%.6f ; 0.02 lo=%.6f ; 0.01 lo=%.6f "
+           "(bracket contains target). star-commutator=1.0 (NON-ABELIAN, vs G2 "
+           "abelian); ampliation-invariant lo(m=2)==lo(m=3)=%.6f\n",
+           lo_arr[0], lo_arr[1], lo_arr[2], lo_arr[3], lo_m2);
+
+    arb_clear(hib);
+    arb_clear(lob);
+}
+
 int main(void)
 {
     test_gen1_jordan();
@@ -1235,6 +1445,7 @@ int main(void)
     test_fam1c_carrier_dropout();
     test_fam3d_blockalg();
     test_fam3d_bijective_eta();   /* aic-66n wrapper-collapse regression (prec=256) */
+    test_fam_nc_noncomm_boundary();  /* NON-COMMUTATIVE eta->1/4 boundary (aic-cxo) */
 
     aic_test_report("test_adversarial");
     printf("OK test_adversarial\n");

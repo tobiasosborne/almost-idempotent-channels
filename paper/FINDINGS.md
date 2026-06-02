@@ -792,6 +792,40 @@ with the concrete evidence from where they bit.
   U_A-based output re-assertion then catches `‖U_A−P‖=0.0004`). Confirms BOTH the audition AND the
   `U_A`-not-`1_n` choice are load-bearing.
 
+### C17. The cb-norm `eta_cb = ||Phi^2-Phi||_cb` DOES reach the `1/4` boundary for a NON-COMMUTATIVE channel — resolving the question §C15 left open (rho stays `<1/4`, but the cb-norm is a DIFFERENT quantity that CAN hit `1/4-kappa`)
+- **Status:** RESOLVED (bead **aic-cxo**, the MED "non-commutative calibrated eta->1/4" item;
+  `tests/aic_adversarial_noncomm.c` + `tests/test_adversarial.c::test_fam_nc_noncomm_boundary`,
+  mutation-proven). Closes the feasibility question §C15 explicitly punted on.
+- **The §C15 gap.** §C15 proved `make_mixconj`'s SPECTRAL radius `rho(S_Phi^2-S_Phi)` stays `<1/4`
+  (measured `rho<=0.165`) for ALL `t`, so it never trips the prop_P basin guard — but `rho` is NOT
+  `eta_cb`. The cb-norm (= diamond norm for the Herm-preserving `Phi^2-Phi`, `tex:347-352`) satisfies
+  `rho <= ||.||_op <= ||.||_cb`, so `rho<1/4` says NOTHING about whether `eta_cb` reaches `1/4`. §C15
+  left open: "Do NOT presume make_mixconj achieves eta_cb=1/4 — verify it ... a DIFFERENT construction
+  is likely needed."
+- **The resolution (a different, ampliation-driven construction).** `Phi = id_{M_m} (x) Psi_eta` where
+  `id_{M_m}` is the IDENTITY channel on `B(C^m)` (exactly idempotent, NON-ABELIAN fixed-point algebra
+  `M_m` for `m>=2`) and `Psi_eta` is the measure-prepare cb-example on `B(C^d)` with the CLOSED-FORM
+  defect `||Psi^2-Psi||_cb = eta*sqrt(1-eta)` (`tex:378`). cb-norm is AMPLIATION-INVARIANT (`tex:347-349`
+  — the sup over `n` already ranges over all `(x)id_{M_n}`), so `Phi^2-Phi = id_{M_m}(x)(Psi^2-Psi)` gives
+  `eta_cb = ||Psi^2-Psi||_cb = eta*sqrt(1-eta)` EXACTLY, `m`-INDEPENDENT. The peak `g(2/3)=0.3849 > 1/4`,
+  so `eta_cb = 1/4-kappa` is REACHABLE: bisection-calibrate `eta` to the lower root of
+  `eta*sqrt(1-eta) = 1/4-kappa`.
+- **Measured (prec=256, m=2,d=2, N=4), the certified eig-free bracket `[||J||_F/N, 2||J||_F]` CONTAINS
+  the target:** `kappa=0.10` -> `[0.106066,0.848528]` ni `0.150`; `0.05` -> `[0.141421,1.131371]` ni `0.200`;
+  `0.02` -> `[0.162635,1.301076]` ni `0.230`; `0.01` -> `[0.169706,1.357645]` ni `0.240`. The eig-free
+  `lo = ||J||_F/N` is INVARIANT under `(x)id_{M_m}` (identical for m=1,2,3 — the ampliation-invariance
+  fingerprint) and at `d=2` equals `eta_cb/sqrt(2)` EXACTLY (the SHARP calibration pin
+  `lo*sqrt(2)==1/4-kappa` to ~1e-9; the loose 2N bracket alone cannot pin it). NON-COMMUTATIVITY
+  WITNESS: `B1=E^{(m)}_{01}(x)1_d`, `B2=E^{(m)}_{10}(x)1_d` are genuine fixed points (Psi unital =>
+  `Psi(1_d)=1_d`), and the Choi-Effros star-commutator (`tex:342`) `||Phi(B1 B2)-Phi(B2 B1)||_op = 1`
+  (vs `0` for the abelian depolarizing G2).
+- **Takeaway.** `eta_cb` and the spectral `rho` are GENUINELY different at the boundary: a construction
+  can be IN the prop_P spectral basin (`rho<1/4`) yet sit on the cb-norm hypothesis boundary
+  (`eta_cb=1/4-kappa`). The depolarizing G2 happens to have `rho = eta_cb = p(1-p)` coincide (its defect
+  superoperator is normal), but in general they differ; calibrate on `eta_cb` (the cb-norm), never on
+  `rho`. The tensor-with-identity trick is the general recipe to lift ANY commutative boundary channel
+  to a non-commutative one at the SAME `eta_cb`.
+
 ---
 
 ## D. Open questions / escalations (unresolved)
