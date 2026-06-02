@@ -60,6 +60,7 @@
 #include "aic/aic_latd.h"
 #include "aic/aic_mat.h"
 #include "aic/aic_projection.h"
+#include "aic_adversarial.h"   /* aic_adv_proj_near_trivial, aic_adv_chan_blockalg */
 #include "aic_test.h"
 #include "aic_watchdog.h"
 #include "aic/aic_ucp.h"
@@ -677,6 +678,267 @@ static void test_t6(void)
     t6_one(s2, 3, "{-2,-1,3}", prec);
 }
 
+/* ============ ADVERSARIAL CORPUS RETROFIT (bead aic-dbo.4) ==============
+ * Policy (the corpus-payoff retrofit): every adversarial draw asserts EITHER a
+ * certified bound HOLDS (deliver) OR the routine FAILS LOUD (refuse). "Passes on
+ * nice inputs" is NOT tested. The projection finder realizes lem_nontriv_projection
+ * (tex:931). The two adversarial generators (aic_adversarial.h):
+ *   - aic_adv_proj_near_trivial : a BARE two-cluster Hermitian with a tunable
+ *     largest interior gap == gap_spec (T7 DELIVER at the bare-Hermitian Step-3
+ *     level; T8 REFUSE at gap_spec=0). FINDINGS §D1: the tunable SMALL gap lives
+ *     ONLY here — no genuine 2+-dim algebra presents one (its SVD basis always has
+ *     an O(1)-gap near-projector), so the gap->0 refuse is exercisable ONLY at this
+ *     bare-Hermitian level, not at the channel level.
+ *   - aic_adv_chan_blockalg : a UCP map whose assoc eps-C* algebra is (+)_j M_d,
+ *     dim_A = k*d^2, eta tunable by t (t=0 EXACTLY idempotent). T9 (eta>0 DELIVER +
+ *     O(eta) bound + §C16 unit-aware nontriviality) and T10 (eta=0 exact-idempotent
+ *     ORACLE, Rule 6). These stop at aic_projection_nontrivial — a DIRECT, lighter
+ *     finder call, NOT the full cstar_build master loop of test_fam3d_bijective_eta.
+ *
+ * eta IS THE BOUND DENOMINATOR (FINDINGS §C11): the lemma's eps:=eta, NOT the
+ * ~700x-smaller assoc defect. The eta computation REUSES this file's own eta_proxy
+ * (line 99: ||S_Phi^2 - S_Phi||_op on the assoc-superop midpoints), which is the
+ * identical op-norm idempotence-defect formula as test_adversarial.c's static
+ * fam3d_eta_proxy (verified line-for-line). */
+
+/* T7 — 3C bare-Hermitian DELIVER (cheap, sub-second). For gap_spec well above the
+ * round-off floor (~1e-9*max(1,spread); spread ~ 2*gap_spec << 1 here, so floor
+ * ~1e-9 and all of {1e-2,3e-3,1.5e-3,1e-3} clear it by >=6 orders), build the
+ * two-cluster Hermitian H (ASYMMETRIC n=5, k=2: lower cluster ~0 size 2, upper
+ * cluster ~gap_spec size n-k=3, inter-cluster gap == gap_spec == the LARGEST interior
+ * gap). The asymmetry is deliberate: the split rank m=n-k=3 != k=2, so the m-check
+ * genuinely disambiguates (at n=4,k=2 both clusters have size 2 and the check is
+ * vacuous). aic_projection_gap must DELIVER (no abort) with the gap KNOB tracking;
+ * aic_projection_ambient builds an EXACT ambient idempotent (prop_P sgn, tex:524-533).
+ * BOUND-HOLDS. */
+static void test_t7(void)
+{
+    const slong prec = 256, n = 5, k = 2;
+    /* gap_spec at ratios {10,3,1.5,1.0} times the round-off floor 1e-3 (>> 1e-9). */
+    const double gaps[] = {1e-2, 3e-3, 1.5e-3, 1e-3};
+    printf("T7 3C bare-Hermitian DELIVER (gap knob tracks; exact ambient snap):\n");
+    for (int gi = 0; gi < 4; gi++) {
+        double gs = gaps[gi];
+        acb_mat_t H;
+        acb_mat_init(H, n, n);
+        aic_adv_proj_near_trivial(H, n, k, gs, prec);
+
+        /* Route A Step 3: largest-interior-gap pick. DELIVER (no abort). */
+        double t = 0, g = 0, lmin = 0, lmax = 0;
+        slong m = 0;
+        aic_projection_gap(&t, &g, &lmin, &lmax, &m, H, prec);
+        /* the gap knob tracks: chosen gap == gap_spec (the construction pin). */
+        AIC_CHECK_MSG(fabs(g - gs) < 1e-12, "T7(gap=%.4e): chosen gap=%.6e != "
+                      "gap_spec=%.6e (knob not tracking)", gs, g, gs);
+        /* m = # eigenvalues >= t = the UPPER-cluster (+1-side) size n-k=3. With the
+         * asymmetric n=5,k=2 this is 3 != k=2, so an off-by-one m=best_i+1=k would FAIL
+         * here (at n=4,k=2 it would silently pass). The lower cluster (~0) is the -1
+         * side, the upper the +1 side. */
+        AIC_CHECK_MSG(m == n - k, "T7(gap=%.4e): m=%ld != upper-cluster size %ld",
+                      gs, (long) m, (long) (n - k));
+
+        /* aic_projection_ambient: builds P_amb = (I+sgn(s(H-tI)))/2 and ASSERTS the
+         * prop_P basin ||Y^2-I||<1 (tex:516,520). DELIVER (no basin abort). */
+        acb_mat_t Pamb, PP, D;
+        acb_mat_init(Pamb, n, n);
+        acb_mat_init(PP, n, n);
+        acb_mat_init(D, n, n);
+        aic_projection_ambient(Pamb, H, t, lmin, lmax, prec);   /* basin asserted */
+        /* P_amb is an EXACT ambient idempotent: ||P_amb*P_amb - P_amb||_op ~ 0
+         * (plain product, exact in the genuine C* algebra M_n). */
+        acb_mat_mul(PP, Pamb, Pamb, prec);
+        acb_mat_sub(D, PP, Pamb, prec);
+        double snap = mid_opnorm_d(D, prec);
+        printf("  gap=%.4e: chosen_gap=%.4e t=%.4e m=%ld ambient_snap=%.3e\n",
+               gs, g, t, (long) m, snap);
+        AIC_CHECK_MSG(snap < 1e-9, "T7(gap=%.4e): ambient snap defect=%.3e not "
+                      "machine-zero (prop_P sgn did not snap an exact idempotent)",
+                      gs, snap);
+        acb_mat_clear(D); acb_mat_clear(PP); acb_mat_clear(Pamb);
+        acb_mat_clear(H);
+    }
+}
+
+/* T8 — 3C REFUSE (cheap, fail-loud). gap_spec=0 collapses the whole spectrum to a
+ * single cluster (all eigenvalues equal): NO positive interior gap, so
+ * aic_projection_gap fires the aic-3qv "NO positive interior spectral gap" abort
+ * (the central documented escalation). Via the shared fork+SIGALRM watchdog: the
+ * child must finish in time, NOT exit clean (a silently near-trivial split would be
+ * the bug), die by SIGABRT, and the captured output (stdout+stderr) name the guard. */
+static void t8_nogap_child(void)
+{
+    const slong prec = 256, n = 4, k = 2;
+    acb_mat_t H;
+    acb_mat_init(H, n, n);
+    aic_adv_proj_near_trivial(H, n, k, 0.0, prec);   /* single cluster (all eq) */
+    double t = 0, g = 0, lmin = 0, lmax = 0;
+    slong m = 0;
+    aic_projection_gap(&t, &g, &lmin, &lmax, &m, H, prec);   /* MUST abort */
+    acb_mat_clear(H);   /* unreached (the abort fires first); kept ASan-clean */
+    _exit(0);
+}
+static void test_t8(void)
+{
+    printf("T8 3C REFUSE (gap_spec=0, single cluster): aic-3qv no-gap abort:\n");
+    aic_watchdog_assert_failloud(t8_nogap_child, 20, "T8 3C REFUSE gap_spec=0",
+                                 "NO positive interior spectral gap");
+    printf("  REFUSE: child SIGABRT; output CONTAINS the aic-3qv message\n");
+}
+
+/* Cross-dimension anchor: T9 (dim_A=8) stashes its C=delta/eta here so T11 (dim_A=12)
+ * can assert the projection O(eta) constant does NOT GROW with dim (the tex:484 naive-
+ * route failure). T9 runs before T11 in main(), so the stash is set when T11 reads it. */
+static double t9_C = -1.0;
+
+/* T9 — 3D blockalg DELIVER + O(eta) bound + §C16 unit-aware nontriviality. A UCP
+ * map whose assoc eps-C* algebra is A = (+)_2 M_2 (dim_A = k*d^2 = 8), eta tunable
+ * by t=0.05. Compute eta = the op-norm idempotence defect via this file's eta_proxy
+ * (== fam3d_eta_proxy). Run aic_projection_nontrivial DIRECTLY (a lighter finder
+ * call than the cstar_build master loop). BOUND-HOLDS: C = delta/eta < 1 (the O(eta)
+ * star defect, eps:=eta per FINDINGS §C11, dimension-independent), delta > 1e-12
+ * (non-vacuous at eta>0 — the "test that cannot fail" guard), and §C16 unit-aware
+ * nontriviality ||P||>0.3 AND ||U_A - P||>0.3 (P is neither 0 nor the algebra unit
+ * U_A = Phi_tilde(1_n)). lem_nontriv_projection, tex:931. */
+static void test_t9(void)
+{
+    const slong prec = 256, k = 2, d = 2;
+    aic_ucp_kraus phi;
+    aic_adv_chan_blockalg(&phi, k, d, 0.05, prec);   /* eta>0, dim_A = k*d^2 = 8 */
+    double eta = eta_proxy(&phi, prec);
+    AIC_CHECK_MSG(eta > 1e-4, "T9: blockalg eta=%.3e not genuinely > 0 (vacuous)",
+                  eta);
+    aic_assoc_ecstar ae;
+    aic_assoc_ecstar_from_phi(&ae, &phi, prec);
+    AIC_CHECK_MSG(ae.A.dim_A == k * d * d, "T9: dim_A=%ld != k*d^2=%ld",
+                  (long) ae.A.dim_A, (long) (k * d * d));
+    slong n = ae.A.n;
+
+    acb_mat_t P;
+    arb_t delta, Pn, IPn;
+    acb_mat_init(P, n, n);
+    arb_init(delta); arb_init(Pn); arb_init(IPn);
+    aic_projection_witness w;
+    aic_projection_nontrivial(P, delta, Pn, IPn, &ae.A, &w, prec);
+
+    double del = dd(delta), C = del / eta;
+    printf("T9 blockalg(k=%ld,d=%ld,t=0.05) DELIVER: dim_A=%ld eta=%.4e delta=%.4e "
+           "C=delta/eta=%.4f ||P||=%.6f ||U_A-P||=%.6f gap=%.4f\n", (long) k,
+           (long) d, (long) ae.A.dim_A, eta, del, C, dd(Pn), dd(IPn), w.gap);
+    /* (BOUND-HOLDS) delta = O(eta): C < 1 dimension-independent (FINDINGS §C11
+     * eps:=eta; catches an O(1)-defect regression, the Frobenius route had C~15). */
+    AIC_CHECK_MSG(C < 1.0, "T9: C=delta/eta=%.4f exceeds 1 -- star defect not O(eta) "
+                  "(Frobenius-projection regression? should use Phi_tilde)", C);
+    t9_C = C;   /* stash for the T11 cross-dimension (dim8 vs dim12) coupling */
+    /* non-vacuous: delta genuinely > 0 at eta>0 (a "test that cannot fail" guard;
+     * if delta~0 the star==plain or Pi_A is not load-bearing). */
+    AIC_CHECK_MSG(del > 1e-12, "T9: delta=%.3e ~0 at eta>0 -- star defect vacuous",
+                  del);
+    /* (§C16 unit-aware nontriviality) ||P|| and ||U_A - P|| both bounded away from
+     * 0: P is neither 0 nor the ALGEBRA unit U_A = Phi_tilde(1_n) (tex:929). */
+    AIC_CHECK_MSG(dd(Pn) > 0.3, "T9: ||P||=%.4f <= 0.3 (P near 0, trivial)", dd(Pn));
+    AIC_CHECK_MSG(dd(IPn) > 0.3, "T9: ||U_A-P||=%.4f <= 0.3 (P near the algebra "
+                  "unit, trivial)", dd(IPn));
+
+    arb_clear(IPn); arb_clear(Pn); arb_clear(delta);
+    acb_mat_clear(P);
+    aic_assoc_ecstar_clear(&ae);
+    aic_ucp_kraus_clear(&phi);
+}
+
+/* T10 — 3D eta=0 ORACLE (the cleanest ground truth, cross-check ladder #3 / Rule 6).
+ * blockalg(k=2,d=2,t=0.0) is EXACTLY idempotent (eta=0): out = the k-block
+ * conditional expectation Phi0, defect 0. The finder must return an EXACT
+ * star-projection (delta machine-zero, since at eta=0 Phi_tilde=id so P=P_amb is an
+ * exact ambient idempotent ALREADY in A, FINDINGS §C3), still nontrivial (§C16). */
+static void test_t10(void)
+{
+    const slong prec = 256, k = 2, d = 2;
+    aic_ucp_kraus phi;
+    aic_adv_chan_blockalg(&phi, k, d, 0.0, prec);   /* EXACTLY idempotent, eta=0 */
+    /* non-vacuity the other way: confirm this draw really IS eta=0 (oracle valid). */
+    double eta = eta_proxy(&phi, prec);
+    AIC_CHECK_MSG(eta < 1e-9, "T10: blockalg t=0 eta=%.3e not ~0 (oracle invalid)",
+                  eta);
+    aic_assoc_ecstar ae;
+    aic_assoc_ecstar_from_phi(&ae, &phi, prec);
+    AIC_CHECK_MSG(ae.A.dim_A == k * d * d, "T10: dim_A=%ld != k*d^2=%ld",
+                  (long) ae.A.dim_A, (long) (k * d * d));
+    slong n = ae.A.n;
+
+    acb_mat_t P;
+    arb_t delta, Pn, IPn;
+    acb_mat_init(P, n, n);
+    arb_init(delta); arb_init(Pn); arb_init(IPn);
+    aic_projection_nontrivial(P, delta, Pn, IPn, &ae.A, NULL, prec);
+
+    double del = dd(delta);
+    printf("T10 blockalg(k=%ld,d=%ld,t=0.0) ORACLE: dim_A=%ld eta=%.3e delta=%.3e "
+           "||P||=%.6f ||U_A-P||=%.6f\n", (long) k, (long) d, (long) ae.A.dim_A,
+           eta, del, dd(Pn), dd(IPn));
+    /* (ORACLE) EXACT star-projection at eta=0: zero star defect (Rule 6). */
+    AIC_CHECK_MSG(del < 1e-9, "T10: delta=%.3e not machine-zero at eta=0 (exact "
+                  "star-projection expected, FINDINGS §C3)", del);
+    /* still nontrivial (§C16 unit-aware): neither 0 nor the algebra unit. */
+    AIC_CHECK_MSG(dd(Pn) > 0.3, "T10: ||P||=%.4f <= 0.3 (P near 0, trivial)",
+                  dd(Pn));
+    AIC_CHECK_MSG(dd(IPn) > 0.3, "T10: ||U_A-P||=%.4f <= 0.3 (P near the algebra "
+                  "unit, trivial)", dd(IPn));
+
+    arb_clear(IPn); arb_clear(Pn); arb_clear(delta);
+    acb_mat_clear(P);
+    aic_assoc_ecstar_clear(&ae);
+    aic_ucp_kraus_clear(&phi);
+}
+
+/* T11 — 3D second dimension (k=3,d=2,t=0.05; dim_A = k*d^2 = 12). Asserts the same
+ * C<1 O(eta) bound AND COUPLES C to T9's value (dim_A=8): C(dim12)/C(dim8) < 1.5, a
+ * real cross-dimension tooth catching a constant that GROWS with dim (the tex:484
+ * naive-route failure this project must avoid). This pins blockalg-family dimension-
+ * independence AT THE PROJECTION-FINDER level (T3 owns it for the mixconj family;
+ * test_fam3d_bijective_eta + test_dbo3 own the full cstar_build dim-sweep). */
+static void test_t11(void)
+{
+    const slong prec = 256, k = 3, d = 2;
+    aic_ucp_kraus phi;
+    aic_adv_chan_blockalg(&phi, k, d, 0.05, prec);   /* dim_A = k*d^2 = 12 */
+    double eta = eta_proxy(&phi, prec);
+    AIC_CHECK_MSG(eta > 1e-4, "T11: blockalg eta=%.3e not genuinely > 0 (vacuous)",
+                  eta);
+    aic_assoc_ecstar ae;
+    aic_assoc_ecstar_from_phi(&ae, &phi, prec);
+    AIC_CHECK_MSG(ae.A.dim_A == k * d * d, "T11: dim_A=%ld != k*d^2=%ld",
+                  (long) ae.A.dim_A, (long) (k * d * d));
+    slong n = ae.A.n;
+
+    acb_mat_t P;
+    arb_t delta, Pn, IPn;
+    acb_mat_init(P, n, n);
+    arb_init(delta); arb_init(Pn); arb_init(IPn);
+    aic_projection_nontrivial(P, delta, Pn, IPn, &ae.A, NULL, prec);
+
+    double del = dd(delta), C = del / eta;
+    printf("T11 blockalg(k=%ld,d=%ld,t=0.05) DELIVER: dim_A=%ld eta=%.4e delta=%.4e "
+           "C=delta/eta=%.4f ||P||=%.6f ||U_A-P||=%.6f\n", (long) k, (long) d,
+           (long) ae.A.dim_A, eta, del, C, dd(Pn), dd(IPn));
+    AIC_CHECK_MSG(C < 1.0, "T11: C=delta/eta=%.4f exceeds 1 at dim_A=%ld -- bound "
+                  "grows with dim? (tex:484)", C, (long) ae.A.dim_A);
+    /* the REAL dimension-independence tooth: C must not grow dim8 (T9) -> dim12. A
+     * constant ~linear in dim would give ratio ~1.5 (=12/8); measured 0.0097/0.0145 =
+     * 0.67 (it DECREASES), so <1.5 clears with margin and trips on linear-or-worse
+     * growth -- the tex:484 stop-condition, at the projection-finder level. */
+    AIC_CHECK_MSG(t9_C > 0.0 && C / t9_C < 1.5, "T11: C(dim12)/C(dim8)=%.3f >= 1.5 -- "
+                  "the projection O(eta) constant GROWS with dim (tex:484 stop-cond)",
+                  t9_C > 0.0 ? C / t9_C : -1.0);
+    AIC_CHECK_MSG(del > 1e-12, "T11: delta=%.3e ~0 at eta>0 -- vacuous", del);
+    AIC_CHECK_MSG(dd(Pn) > 0.3 && dd(IPn) > 0.3, "T11: P trivial (||P||=%.4f, "
+                  "||U_A-P||=%.4f)", dd(Pn), dd(IPn));
+
+    arb_clear(IPn); arb_clear(Pn); arb_clear(delta);
+    acb_mat_clear(P);
+    aic_assoc_ecstar_clear(&ae);
+    aic_ucp_kraus_clear(&phi);
+}
+
 int main(void)
 {
     test_t1();
@@ -685,6 +947,11 @@ int main(void)
     test_t4();
     test_t5();
     test_t6();
+    test_t7();
+    test_t8();
+    test_t9();
+    test_t10();
+    test_t11();
     aic_test_report("test_projection");
     printf("OK test_projection\n");
     return 0;
