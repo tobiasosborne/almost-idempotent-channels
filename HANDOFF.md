@@ -1,57 +1,47 @@
 # HANDOFF.md — almost-idempotent-channels
 
-## ▶▶ LATEST (2026-06-02c, ORCHESTRATING the Julia package epic aic-exa)
+## ▶▶ LATEST (2026-06-02d): Julia package `AlmostIdempotentChannels.jl` DELIVERED (aic-exa epic — .1–.12 + aic-obc CLOSED; only the .13 C-domain bug open)
 
-**User directive:** orchestrate the Julia package (`aic-exa`) into something engaging, beautiful, Julia-idiomatic,
-with effortless ergonomics — a joy for agents AND humans. Autonomous through compaction; escalate only on
-serious blockers. Bar: "what would a senior expert C/Julia engineer demand?"
+**The deliverable.** A joyful, idiomatic, MOSEK-OPTIONAL Julia surface over the libaic C/arb core, with a
+showpiece README. The whole headline pipeline is now reachable from Julia, **solver-free by default**, and
+documented. master GREEN + pushed (HEAD `89d0b38`). 12 commits this session (`53280aa`..`89d0b38`), each
+hostile-reviewed/verified, every increment pushed.
 
-**HARD CONSTRAINTS (load-bearing):**
-- **Serialize ALL Julia execution** — never two `julia` precompile/test/build at once, and never a `julia`
-  agent while a `cmake` build touches `build/`/`libaic.so`. Non-Julia work (research, design, C, docs prose)
-  may overlap; Julia may not.
-- **MOSEK must be OPTIONAL** — move `Mosek`/`MosekTools` to `[weakdeps]`+`[extensions]`; the core package must
-  work and test GREEN with no solver (the C eig-free certified bracket + the full C pipeline). MOSEK-hang is
-  the one live escalation risk (folds in `aic-jhe`/`aic-ssu`).
-- **Deliver incrementally** — the package stays coherent + releasable at every bead boundary.
-- Delegate every step to a subagent (Opus = coding/heavy design w/ thinking scaled to task; Sonnet =
-  summarize/code-query/web-search). Commit+push+update beads after each.
+**The API (reads like the paper; all docstring'd, all certified):**
+`UCPMap(kraus)` → `certified_defect(Φ)::CertifiedBracket` (rigorous ‖Φ²−Φ‖_cb, NO solver, the default) →
+`associated_algebra(Φ)::EpsCStarAlgebra` → `main_isomorphism(Φ)::MainIsomorphism` →
+`factorize(Φ)::ChannelFactorization` (extends `LinearAlgebra.factorize`) → `encode(F)`/`decode(F)::CPMap`
+(rectangular CPTP duals). MOSEK extension adds `idempotency_defect(Φ)` (exact value) + `certified_defect(Φ;
+tight=true)` (~12 orders tighter). `choi`/`kraus`/`isunital`/`iscptp`/`algebra`/`delups_defect`/`upsdel_defect`.
 
-**THE GRANULAR PLAN (children of `aic-exa`, dep-ordered):**
-`aic-exa.1` [R] research (su2-fft idioms + modern Julia C-wrapper best practice) → `aic-exa.2` [D] master
-design doc (`docs/research/julia_package_design.md`) → `{aic-exa.3 [C] extend libaic ABI for headline
-artifacts + C tests, aic-exa.4 [J1] Project.toml: MOSEK→weakdeps+ext, Preferences libpath}` →
-`aic-exa.5 [J2] type system + Base.show` → `aic-exa.6 [J3] @ccall layer over the new ABI (handles+finalizers)`
-→ `aic-exa.7 [J4] high-level API (the joy layer)` → `{aic-exa.8 [J5] MOSEK ext, aic-exa.9 [T] tests + Aqua/JET,
-aic-exa.10 [X] docs+DX}` → `aic-obc` (umbrella, closes when J4/T/X done).
+**What landed (per bead):** `.3`[C] cf7ebc8 — C2–C5 flat-double ABI shims + the rigorous
+`aic_cbnorm_eigfree_ball_choi_rect` core (FINDINGS §C22); `.4`[J1] 8ba846b — MOSEK→`[weakdeps]`+`AICMosekExt`,
+Preferences libpath (`src/libaic.jl`); `.5`[J2] 2958cfb — value types + `Base.show`; `.6`[J3] db397d6 —
+`@ccall` layer (41-check Rule-6 cross-check vs the C oracle on byte-identical Kraus); `.7`[J4] 413a68c — the
+joy API + `CPMap` + basin guards (no SIGABRT); `.8`[J5] 4c71da7 — MOSEK extension (T5 strong-duality pins
+intact, gap 1.23e-11); `.9`[T] 3b9409b — solver-free core suite + Aqua + mutation-proof; `.10`[X] a9b64ac —
+showpiece README (animated `demo.svg` + 4 CairoMakie plots, one Tokyo-Night-Storm palette, AGPL-3.0) +
+Documenter site; `.11` 89d0b38 — split types.jl into ≤200-LOC files. Design: `docs/research/julia_package_design.md`
+(+ orchestrator Appendix **B1–B10**, the ground-truthed corrections). Frozen ABI: `bd show aic-exa.6` notes.
 
-**Current package reality (the gap this epic closes):** the C constructive pipeline (all 5 headline results)
-is COMPLETE+GREEN, but only **6 flat-double ccall shims** exist (`aic_ucp_choi_diff_d`, `aic_cbnorm_eigfree_d`,
-`aic_cbnorm_certify_d`, `aic_factorize_choi_shim_d`, `aic_opspace_choi_shim_d`, `aic_gk_d`). The Julia pkg
-today exposes only `eta_idempotence`/`eta_eigfree`/`choi_diff` + the Watrous SDP, and hard-depends on MOSEK.
-The headline pipeline (`factorize→B/Δ/Υ`, `associated_algebra`, `certified_defect`) is NOT reachable from Julia.
-`aic_factorize_choi_shim_d` already rebuilds the whole pipeline internally — [C] extends it to emit artifacts.
+**Tests:** `Pkg.test()` **219/219** with MOSEK; **153 pass / 0 fail solver-free** (SDP `@test_skip`); Aqua 11/11
+(piracies + deps_compat; `factorize` extension clean). C suite still **46/46** (the new shims). Mutation-proven
+(enc/dec swap → RED; the η=0 oracle is blind, obliques are the teeth). Invariants: `names(AIC)∩names(Base)==[]`,
+`∩LinearAlgebra==[:factorize]` (shared binding); `decode(F)` is O(η)-TP (the cb round-trip brackets are the
+certificate, NOT `iscptp@1e-9`).
 
-**PROGRESS (2026-06-02c):** `aic-exa.1`[R]✓ `.2`[D]✓ (`docs/research/julia_package_design.md` + orchestrator
-Appendix B1–B10) `.3`[C]✓ (cf7ebc8 — C2–C5 shims + rigorous `aic_cbnorm_eigfree_ball_choi_rect`, FINDINGS §C22)
-`.4`[J1]✓ (8ba846b — MOSEK→weakdeps+ext, Preferences libpath) `.5`[J2]✓ (2958cfb — value types + `show`;
-`ChannelFactorization` renamed off the `LinearAlgebra.Factorization` clash) `.6`[J3]✓ (db397d6 — `@ccall`
-layer, 41-check Rule-6 cross-check vs C oracle) `.7`[J4]✓ (413a68c — the joy API: `certified_defect`,
-`associated_algebra`, `main_isomorphism`, `factorize` (extends `LinearAlgebra.factorize`), `encode`/`decode`
-via the rectangular `CPMap` type; basin guards so no SIGABRT). **NOW:** `aic-exa.8`[J5] MOSEK ext → then
-`.9`[T] tests → `.10`[X] docs.
+**⚠ THE ONE OPEN ITEM — `aic-exa.13` (P1 bug, the only thing not done):** `factorize`→`aic_factorize_upsilon_build`
+→`aic_funcalc_xpow` ABORTS (SIGABRT) for `ρ(Φ²−Φ) ≳ 0.1`, FAR tighter than the prop_P basin (¼); the C
+factorize tests never exercised this (they use η≈0.01–0.03). The Julia layer is SAFE — `factorize` pre-checks
+`_FACTORIZE_RHO_MAX=0.10` in-Julia and throws a clean `ArgumentError` (no crash); `certified_defect`/
+`associated_algebra`/`main_isomorphism` are unaffected. **Proper fix (C-side, needs a decision):** (a) extend
+the `aic_funcalc_xpow` convergence domain (a funcalc algorithm audition — the MANDATE), or (b) make the
+factorize artifact shims return an error code instead of `abort()`ing at the ABI boundary, or (c) characterize
+the exact xpow domain and pre-check it in C. Touches the funcalc core (Law 2) — flagged for the user.
 
-**Frozen ABI** (consumed by [J3]): `bd show aic-exa.6` notes. **Open follow-ups:** `.11` (split 484-LOC
-types.jl), `.12` ([T] η-membership slack), **`.13` (P1 bug: `factorize`→`aic_funcalc_xpow` SIGABRTs beyond
-ρ(Φ²−Φ)≲0.1, far tighter than the prop_P basin; the C factorize tests never exercised it; J4 added an interim
-Julia guard `_FACTORIZE_RHO_MAX=0.10`; proper fix = extend the xpow domain or graceful ABI error-return).**
-
-**Key invariants now true:** core loads + tests intent solver-free; `names(AIC) ∩ names(Base)==[]`, `∩
-LinearAlgebra==[:factorize]`; `decode(F)` is O(η)-TP (round-trip cb brackets are the certificate, not iscptp@1e-9);
-the whole headline pipeline is reachable solver-free over flat doubles.
-
-**RECOVERY AFTER COMPACTION:** read CLAUDE.md → this section → `bd show aic-exa` (+ open children) →
-`bd ready` → resume the lowest-open `aic-exa.N`. ABI frozen in `bd show aic-exa.6`. Memory:
+**RECOVERY AFTER COMPACTION:** the Julia package epic is DONE. Read CLAUDE.md → this section. The package is at
+`julia/AlmostIdempotentChannels.jl/`; build the C core (`cmake -S . -B build && cmake --build build`) then
+`Pkg.test()`. Only `aic-exa.13` remains (the C xpow-domain bug above) — `bd show aic-exa.13`. Memory:
 `project_julia_epic_orchestration`.
 
 ---
