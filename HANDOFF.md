@@ -32,8 +32,15 @@ today exposes only `eta_idempotence`/`eta_eigfree`/`choi_diff` + the Watrous SDP
 The headline pipeline (`factorize→B/Δ/Υ`, `associated_algebra`, `certified_defect`) is NOT reachable from Julia.
 `aic_factorize_choi_shim_d` already rebuilds the whole pipeline internally — [C] extends it to emit artifacts.
 
+**PROGRESS (2026-06-02c):** `aic-exa.1`[R]✓ `aic-exa.2`[D]✓ (`docs/research/julia_package_design.md` +
+orchestrator Appendix B) `aic-exa.3`[C]✓ (commit cf7ebc8 — C2–C5 flat-double shims + the new rigorous
+`aic_cbnorm_eigfree_ball_choi_rect` core; full suite 46/46, fast 22/22, ASan clean, hostile-reviewed no
+blockers, FINDINGS §C22; frozen ABI signatures are in `bd show aic-exa.6` notes). **NOW:** `aic-exa.4`[J1].
+The whole headline pipeline is reachable solver-free over flat doubles.
+
 **RECOVERY AFTER COMPACTION:** read CLAUDE.md → this section → `bd show aic-exa` (+ its open children) →
-`bd ready` → resume the lowest-open `aic-exa.N`. Memory: `project_julia_epic_orchestration`.
+`bd ready` → resume the lowest-open `aic-exa.N`. The [C] ABI is frozen in `bd show aic-exa.6`. Memory:
+`project_julia_epic_orchestration`.
 
 ---
 

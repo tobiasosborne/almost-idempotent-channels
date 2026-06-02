@@ -1,32 +1,46 @@
 name = "AlmostIdempotentChannels"
 uuid = "6bf14b85-acf1-40b3-a7a0-aef96f56c734"
 authors = ["Tobias Osborne <tobias.j.osborne@gmail.com>"]
-version = "0.1.0"
+version = "0.2.0"
 
-# Julia ccall surface over the C/arb UCP + cb-norm cores (build/libaic.so), plus
-# the Watrous diamond-norm SDP (Convex.jl + MOSEK). Reusable eta_idempotence(kraus)
-# = ||Phi^2-Phi||_diamond value entry point (bead aic-m24, increment 2b). Mirrors
-# the ../su2-fft/julia ccall-C package pattern. NO PYTHON (user directive).
-#
-# Convex 0.16 + Mosek 11 + MosekTools 0.15/0.16 are PINNED to match the fixture
-# generator (julia/env), so the SDP value here equals the committed golden master.
+# Julia bindings for the libaic C/arb cores (build/libaic.so). The headline
+# pipeline (certified_defect, associated_algebra, main_isomorphism, factorize)
+# is SOLVER-FREE and lives in the core package. The EXACT cb-norm value
+# (idempotency_defect, the Watrous diamond-norm SDP) needs MOSEK and lives ONLY
+# in the package extension AICMosekExt — so the core precompiles, loads, and
+# tests green with NO solver installed. Libpath discovery is via Preferences
+# (replacing the old deps/deps.jl). Mirrors the ../su2-fft ccall-C pattern.
+# NO PYTHON (user directive). Design: docs/research/julia_package_design.md §3.
 
 [deps]
-Convex = "f65535da-76fb-5f13-bab9-19810c17039a"
-Libdl = "8f399da3-3557-5675-b5ff-fb832c97cbdb"
+Libdl         = "8f399da3-3557-5675-b5ff-fb832c97cbdb"
 LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
-Mosek = "6405355b-0ac2-5fba-af84-adbd65488c0e"
+Preferences   = "21216c6a-2e73-6563-6e65-726566657250"
+
+[weakdeps]
+Convex     = "f65535da-76fb-5f13-bab9-19810c17039a"
+Mosek      = "6405355b-0ac2-5fba-af84-adbd65488c0e"
 MosekTools = "1ec41992-ff65-5c91-ac43-2df89e9693a4"
 
+[extensions]
+AICMosekExt = ["Convex", "Mosek", "MosekTools"]
+
 [compat]
-Convex = "0.16"
-Mosek = "11"
-MosekTools = "0.15, 0.16"
-julia = "1.10"
+julia       = "1.10"
+Preferences = "1"
+Convex      = "0.16"
+Mosek       = "11"
+MosekTools  = "0.15, 0.16"
 
 [extras]
-Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
+Test   = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
+Aqua   = "4c88cf16-eb10-579e-8560-4a9242c79595"
+# the weakdeps are ALSO listed in extras so Pkg.test installs them and the
+# extension activates during the (optional) SDP test pass:
+Convex     = "f65535da-76fb-5f13-bab9-19810c17039a"
+Mosek      = "6405355b-0ac2-5fba-af84-adbd65488c0e"
+MosekTools = "1ec41992-ff65-5c91-ac43-2df89e9693a4"
 
 [targets]
-test = ["Test", "Random"]
+test = ["Test", "Random", "Aqua", "Convex", "Mosek", "MosekTools"]

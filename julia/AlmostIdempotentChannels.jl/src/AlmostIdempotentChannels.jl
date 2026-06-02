@@ -1,75 +1,47 @@
 """
     AlmostIdempotentChannels
 
-Julia bindings for the libaic C/arb cores — the reusable eta-idempotence value
-entry point of Kitaev, *Almost-idempotent quantum channels and approximate
-C*-algebras* (arXiv:2405.02434). The headline quantity is the idempotency defect
+Julia bindings for the libaic C/arb cores — the constructive Kitaev pipeline of
+Kitaev, *Almost-idempotent quantum channels and approximate C*-algebras*
+(arXiv:2405.02434). The headline quantity is the idempotency defect
 
     eta = ||Phi^2 - Phi||_cb = ||Phi^2 - Phi||_diamond     (approximate_algebras.tex:347-354)
 
 of a UCP self-map Phi: B(H) -> B(H) given by Kraus operators K_a (Heisenberg
-picture, Phi(X) = sum_a K_a^dag X K_a). Downstream modules (assoc_ecsa,
-factorize) consume `eta_idempotence(kraus) -> Float64`.
+picture, Phi(X) = sum_a K_a^dag X K_a).
 
-Architecture (Route B, bead aic-d24/aic-m24): the certified Choi matrix
-J = Choi(Phi^2 - Phi) is built in the C/arb core via the flat-double ccall shim
-(`aic_ucp_choi_diff_d` in build/libaic.so), then the Watrous 2012 diamond-norm
-SDP is solved in Julia + MOSEK (src/sdp.jl). A second shim
-(`aic_cbnorm_eigfree_d`) returns a RIGOROUS eig-free bracket [lo, hi] on eta with
-no solver, used to cross-check the SDP value.
+SOLVER-FREE BY DEFAULT. The core package precompiles, loads, and works with NO
+solver installed:
+  * `choi_diff`   — J = Choi(Phi^2 - Phi), Convention-A, via aic_ucp_choi_diff_d.
+  * `eta_eigfree` — a RIGOROUS eig-free two-sided bracket [lo, hi] on eta, via
+                    aic_cbnorm_eigfree_d. No SDP, no eigendecomposition.
+The EXACT cb-norm VALUE (`eta_idempotence` / `idempotency_defect`, the Watrous
+diamond-norm SDP) needs Convex + Mosek + MosekTools and lives ONLY in the
+package extension AICMosekExt; without it the value entry points throw a helpful
+install hint (src/sdp_stubs.jl) rather than a MethodError or a missing-solver
+crash.
 
-Mirrors the ../su2-fft/julia ccall-C package pattern (dlopen + dlsym). NO PYTHON.
-Bead: aic-m24, increment 2b.
+Architecture: the native-library lifecycle (Preferences libpath discovery, the
+dlopen'd handle, the dlsym'd symbol table, __init__ with the load-bearing libgmp
+preload + RTLD_DEEPBIND) lives in src/libaic.jl. Mirrors the ../su2-fft ccall-C
+package pattern. NO PYTHON. Design: docs/research/julia_package_design.md §3, §6.
 """
 module AlmostIdempotentChannels
 
-using Libdl
-using Convex, Mosek, MosekTools, LinearAlgebra
+using LinearAlgebra
 
-# Load LIBAIC (absolute path to build/libaic.so, set by deps/build.jl).
-const DEPS_FILE = joinpath(@__DIR__, "..", "deps", "deps.jl")
-if !isfile(DEPS_FILE)
-    error("AlmostIdempotentChannels: deps.jl not found at $DEPS_FILE. " *
-          "Run `Pkg.build(\"AlmostIdempotentChannels\")` first.")
-end
-include(DEPS_FILE)
+# Native-library lifecycle: Preferences libpath, dlopen handle, dlsym'd symbol
+# table, __init__ (libgmp preload + RTLD_DEEPBIND), the MethodError hint.
+# Exports nothing itself; defines libaic_path, set_libaic_path!, the _SYM_* Refs.
+include("libaic.jl")
 
-# The Watrous diamond-norm SDP (verbatim from tools/gen_fixtures_d24.jl).
-include("sdp.jl")
+# Solver-gated public surface (idempotency_defect + diamond_*) as helpful-error
+# stubs; the AICMosekExt extension adds the real methods.
+include("sdp_stubs.jl")
 
-# Module-private handle to the dlopen'd libaic.so and dlsym'd shim symbols.
-# RTLD flags copied from ../su2-fft/julia/src/SU2FFT.jl: RTLD_DEEPBIND so
-# libaic's transitive deps (libflint, libgmp) resolve against the system search
-# order, not Julia's pre-loaded symbol table.
-const _LIBAIC_HANDLE       = Ref{Ptr{Cvoid}}(C_NULL)
-const _SYM_CHOI_DIFF_D     = Ref{Ptr{Cvoid}}(C_NULL)
-const _SYM_CBNORM_EIGFREE_D = Ref{Ptr{Cvoid}}(C_NULL)
-
-function __init__()
-    # Pre-load the SYSTEM libgmp.so.10 with RTLD_GLOBAL before libaic/libflint
-    # are mapped. This works around the Julia bundled-libgmp ABI mismatch: on
-    # this system RTLD_DEEPBIND on libaic alone was insufficient because libflint
-    # resolves __gmpn_* symbols against the already-loaded Julia-bundled libgmp;
-    # pre-loading the system libgmp keeps its definitions in the global symbol
-    # table first (the exact issue ../su2-fft handles, bead su2fft-e5z).
-    try
-        Libdl.dlopen("/lib/x86_64-linux-gnu/libgmp.so.10",
-                     Libdl.RTLD_NOW | Libdl.RTLD_GLOBAL)
-    catch
-        try
-            Libdl.dlopen("libgmp.so.10", Libdl.RTLD_NOW | Libdl.RTLD_GLOBAL)
-        catch
-            # silently ignore on systems without a discoverable system libgmp
-        end
-    end
-    flags = Libdl.RTLD_NOW | Libdl.RTLD_GLOBAL | Libdl.RTLD_DEEPBIND
-    _LIBAIC_HANDLE[]        = Libdl.dlopen(LIBAIC, flags)
-    _SYM_CHOI_DIFF_D[]      = Libdl.dlsym(_LIBAIC_HANDLE[], :aic_ucp_choi_diff_d)
-    _SYM_CBNORM_EIGFREE_D[] = Libdl.dlsym(_LIBAIC_HANDLE[], :aic_cbnorm_eigfree_d)
-end
-
-export choi_diff, eta_eigfree, eta_idempotence, diamond_norm_watrous,
-       diamond_norm_watrous_primal, diamond_norm_dual, libaic_path
+export choi_diff, eta_eigfree, eta_idempotence, idempotency_defect,
+       diamond_norm_watrous, diamond_norm_watrous_primal, diamond_norm_dual,
+       libaic_path, set_libaic_path!
 
 # ----- marshalling helpers (Julia ComplexF64 matrices <-> flat C arrays) -----
 
@@ -93,7 +65,7 @@ function _flatten_kraus(kraus::Vector{Matrix{ComplexF64}}, n::Int, r::Int)
     return kr, ki
 end
 
-# ----- ccall wrappers -----
+# ----- ccall wrappers (read the dlsym'd symbol Refs from libaic.jl) -----
 
 """
     choi_diff(kraus::Vector{Matrix{ComplexF64}}, n::Int; prec::Int=106) -> Matrix{ComplexF64}
@@ -113,7 +85,7 @@ function choi_diff(kraus::Vector{Matrix{ComplexF64}}, n::Int; prec::Int = 106)::
     N = n * n
     choi_re = Vector{Float64}(undef, N * N)
     choi_im = Vector{Float64}(undef, N * N)
-    rc = ccall(_SYM_CHOI_DIFF_D[], Cint,
+    rc = GC.@preserve kr ki choi_re choi_im ccall(_SYM_CHOI_DIFF_D[], Cint,
                (Ptr{Cdouble}, Ptr{Cdouble}, Ptr{Cdouble}, Ptr{Cdouble},
                 Cint, Cint, Cint),
                choi_re, choi_im, kr, ki, n, r, prec)
@@ -136,7 +108,8 @@ Certified eig-free two-sided bracket on eta = ||Phi^2-Phi||_cb, via
 shim rounds the arb balls outward with FLOOR/CEIL to keep the bracket rigorous
 after the double conversion). No SDP, no eigendecomposition. The bracket is loose
 by design (ratio hi/lo ~ 2n); it certifies the MOSEK value rather than competing
-with it. See ALGORITHM.md module cbnorm.
+with it. SOLVER-FREE — the package default for the idempotency defect. See
+ALGORITHM.md module cbnorm.
 """
 function eta_eigfree(kraus::Vector{Matrix{ComplexF64}}; prec::Int = 106)::Tuple{Float64, Float64}
     n = size(kraus[1], 1)
@@ -146,7 +119,7 @@ function eta_eigfree(kraus::Vector{Matrix{ComplexF64}}; prec::Int = 106)::Tuple{
     kr, ki = _flatten_kraus(kraus, n, r)
     lo = Ref{Cdouble}(0.0)
     hi = Ref{Cdouble}(0.0)
-    rc = ccall(_SYM_CBNORM_EIGFREE_D[], Cint,
+    rc = GC.@preserve kr ki ccall(_SYM_CBNORM_EIGFREE_D[], Cint,
                (Ptr{Cdouble}, Ptr{Cdouble}, Ptr{Cdouble}, Ptr{Cdouble},
                 Cint, Cint, Cint),
                lo, hi, kr, ki, n, r, prec)
@@ -157,31 +130,13 @@ end
 """
     eta_idempotence(kraus::Vector{Matrix{ComplexF64}}) -> Float64
 
-The eta-idempotence defect eta = ||Phi^2 - Phi||_cb = ||Phi^2 - Phi||_diamond
+The EXACT eta-idempotence defect eta = ||Phi^2 - Phi||_cb = ||Phi^2 - Phi||_diamond
 (approximate_algebras.tex:347-354) of the UCP self-map Phi given by `kraus`
-(Heisenberg picture, Phi(X) = sum_a K_a^dag X K_a). Builds J = Choi(Phi^2-Phi)
-in the certified arb core (`choi_diff`), then solves the Watrous 2012 diamond-norm
-SDP in Julia + MOSEK (`diamond_norm_watrous`). This is the reusable value entry
-point downstream modules (assoc_ecsa, factorize) call.
-
-Fails loud (assert) if the SDP status is not OPTIMAL.
+(Heisenberg picture). The exact VALUE needs the Watrous diamond-norm SDP and so
+requires the MOSEK extension (Convex + Mosek + MosekTools); without it this
+throws a helpful install hint. The SOLVER-FREE rigorous bracket is `eta_eigfree`.
+Back-compat alias of `idempotency_defect`.
 """
-function eta_idempotence(kraus::Vector{Matrix{ComplexF64}})::Float64
-    n = size(kraus[1], 1)
-    J = choi_diff(kraus, n)
-    val, status = diamond_norm_watrous(J, n)
-    status == "OPTIMAL" || error("Watrous SDP not OPTIMAL (status=$status)")
-    return val
-end
-
-# ----- diagnostics -----
-
-"""
-    libaic_path() -> String
-
-Absolute path to the dynamically-loaded build/libaic.so, as recorded by
-deps/build.jl. For debugging linkage.
-"""
-libaic_path() = LIBAIC
+eta_idempotence(kraus::Vector{Matrix{ComplexF64}}) = idempotency_defect(kraus)
 
 end # module AlmostIdempotentChannels
