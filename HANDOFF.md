@@ -1,6 +1,43 @@
 # HANDOFF.md — almost-idempotent-channels
 
-## ▶▶ LATEST (2026-06-02b, orchestrated, laptop): aic-8de watchdog unification COMPLETE+CLOSED; dbo.4 retrofit COMPLETE (all 5 modules); aic-ynu (Artin-Wedderburn/prop_Gamma) COMPLETE+CLOSED (I1-I4); nla-5b Kahan gen; 4-way PARALLEL batch demonstrated; FINDINGS §C19/C20/C21
+## ▶▶ LATEST (2026-06-02c, ORCHESTRATING the Julia package epic aic-exa)
+
+**User directive:** orchestrate the Julia package (`aic-exa`) into something engaging, beautiful, Julia-idiomatic,
+with effortless ergonomics — a joy for agents AND humans. Autonomous through compaction; escalate only on
+serious blockers. Bar: "what would a senior expert C/Julia engineer demand?"
+
+**HARD CONSTRAINTS (load-bearing):**
+- **Serialize ALL Julia execution** — never two `julia` precompile/test/build at once, and never a `julia`
+  agent while a `cmake` build touches `build/`/`libaic.so`. Non-Julia work (research, design, C, docs prose)
+  may overlap; Julia may not.
+- **MOSEK must be OPTIONAL** — move `Mosek`/`MosekTools` to `[weakdeps]`+`[extensions]`; the core package must
+  work and test GREEN with no solver (the C eig-free certified bracket + the full C pipeline). MOSEK-hang is
+  the one live escalation risk (folds in `aic-jhe`/`aic-ssu`).
+- **Deliver incrementally** — the package stays coherent + releasable at every bead boundary.
+- Delegate every step to a subagent (Opus = coding/heavy design w/ thinking scaled to task; Sonnet =
+  summarize/code-query/web-search). Commit+push+update beads after each.
+
+**THE GRANULAR PLAN (children of `aic-exa`, dep-ordered):**
+`aic-exa.1` [R] research (su2-fft idioms + modern Julia C-wrapper best practice) → `aic-exa.2` [D] master
+design doc (`docs/research/julia_package_design.md`) → `{aic-exa.3 [C] extend libaic ABI for headline
+artifacts + C tests, aic-exa.4 [J1] Project.toml: MOSEK→weakdeps+ext, Preferences libpath}` →
+`aic-exa.5 [J2] type system + Base.show` → `aic-exa.6 [J3] @ccall layer over the new ABI (handles+finalizers)`
+→ `aic-exa.7 [J4] high-level API (the joy layer)` → `{aic-exa.8 [J5] MOSEK ext, aic-exa.9 [T] tests + Aqua/JET,
+aic-exa.10 [X] docs+DX}` → `aic-obc` (umbrella, closes when J4/T/X done).
+
+**Current package reality (the gap this epic closes):** the C constructive pipeline (all 5 headline results)
+is COMPLETE+GREEN, but only **6 flat-double ccall shims** exist (`aic_ucp_choi_diff_d`, `aic_cbnorm_eigfree_d`,
+`aic_cbnorm_certify_d`, `aic_factorize_choi_shim_d`, `aic_opspace_choi_shim_d`, `aic_gk_d`). The Julia pkg
+today exposes only `eta_idempotence`/`eta_eigfree`/`choi_diff` + the Watrous SDP, and hard-depends on MOSEK.
+The headline pipeline (`factorize→B/Δ/Υ`, `associated_algebra`, `certified_defect`) is NOT reachable from Julia.
+`aic_factorize_choi_shim_d` already rebuilds the whole pipeline internally — [C] extends it to emit artifacts.
+
+**RECOVERY AFTER COMPACTION:** read CLAUDE.md → this section → `bd show aic-exa` (+ its open children) →
+`bd ready` → resume the lowest-open `aic-exa.N`. Memory: `project_julia_epic_orchestration`.
+
+---
+
+## ▶▶ PRIOR (2026-06-02b, orchestrated, laptop): aic-8de watchdog unification COMPLETE+CLOSED; dbo.4 retrofit COMPLETE (all 5 modules); aic-ynu (Artin-Wedderburn/prop_Gamma) COMPLETE+CLOSED (I1-I4); nla-5b Kahan gen; 4-way PARALLEL batch demonstrated; FINDINGS §C19/C20/C21
 
 **State:** master FULLY GREEN, clean, pushed (HEAD `059005e`, up to date with origin). `ctest -L fast` 19/19
 (~8s). Full `ctest` includes the heavier slow drivers (test_cstar_build now ~247s with the new blockalg
