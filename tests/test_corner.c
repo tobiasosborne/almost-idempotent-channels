@@ -46,10 +46,8 @@
  */
 #include <complex.h>
 #include <math.h>
-#include <signal.h>
 #include <stdio.h>
-#include <sys/wait.h>
-#include <unistd.h>
+#include <unistd.h>               /* _exit() in the watchdog-child fixtures */
 
 #include <flint/acb.h>
 #include <flint/acb_mat.h>
@@ -60,6 +58,7 @@
 #include "aic/aic_ecstar.h"
 #include "aic/aic_mat.h"
 #include "aic_test.h"
+#include "aic_watchdog.h"
 #include "aic/aic_ucp.h"
 #include "test_idemp.h"
 
@@ -1271,47 +1270,54 @@ static void t9_eta_pos(slong prec)
  * out-of-hypothesis input is fail-loud (Rule 4) -- that is the tooth. This test
  * uses ||P1 P2|| = 0.707 (gross), so prop_P fires here. Forked child (mirrors
  * test_idemp). */
-static void test_t9_failloud(void)
+/* The watchdog child: build the GROSS-overlap fixture and call into the corner
+ * construction, which MUST abort. The body is self-contained (every object is
+ * created locally), so it hoists cleanly to a file-static void(void). */
+static void t9_failloud_child(void)
 {
     const slong prec = 256, n = 4;
-    pid_t pid = fork();
-    if (pid == 0) {
-        aic_ucp_kraus phi;
-        make_identity(&phi, n);
-        aic_assoc_ecstar ae;
-        aic_assoc_ecstar_from_phi(&ae, &phi, prec);
-        acb_mat_t Pp[2], Qp[1], P, Q;
-        diag_proj_at(Pp[0], n, 0);                    /* |e0><e0| */
-        double v01[4] = {0.70710678118654752, 0.70710678118654752, 0, 0};
-        rank1_proj(Pp[1], n, v01);                    /* |v><v|, overlaps P_0 */
-        diag_proj_at(Qp[0], n, 2);
-        /* P = P_0 + P_1 is NOT a clean delta-projection (overlap); build it anyway
-         * (the construction's fail-loud is what we are testing). */
-        acb_mat_init(P, n, n);
-        acb_mat_add(P, Pp[0], Pp[1], prec);
-        acb_mat_init(Q, n, n);
-        acb_set_si(acb_mat_entry(Q, 2, 2), 1);
-        slong N, dPQ;
-        /* aic_corner_alpha_dims itself builds Co_{P,P}, so the prop_P basin assert
-         * fires HERE (the earliest hypothesis check) on this overlapping P. */
-        aic_corner_alpha_dims(&N, &dPQ, &ae.A, (const acb_mat_t *) Pp, 2, P,
-                              (const acb_mat_t *) Qp, 1, Q, prec);
-        acb_mat_t alpha;
-        acb_mat_init(alpha, dPQ, N);
-        arb_t ng;
-        arb_init(ng);
-        slong N2, dPQ2;
-        aic_corner_alpha(alpha, NULL, NULL, NULL, ng, NULL, &N2, &dPQ2, &ae.A,
-                         (const acb_mat_t *) Pp, 2, P, (const acb_mat_t *) Qp, 1,
-                         Q, prec);    /* (or here: ||gamma||>=1 / dim mismatch) */
-        _exit(0);                     /* reached only if NOT aborted */
-    }
-    int status = 0;
-    waitpid(pid, &status, 0);
-    AIC_CHECK_MSG(WIFSIGNALED(status) && WTERMSIG(status) == SIGABRT,
-                  "T9(iii): overlapping projectors did not abort via SIGABRT "
-                  "(WIFSIGNALED=%d, WTERMSIG=%d)", WIFSIGNALED(status),
-                  WIFSIGNALED(status) ? WTERMSIG(status) : -1);
+    aic_ucp_kraus phi;
+    make_identity(&phi, n);
+    aic_assoc_ecstar ae;
+    aic_assoc_ecstar_from_phi(&ae, &phi, prec);
+    acb_mat_t Pp[2], Qp[1], P, Q;
+    diag_proj_at(Pp[0], n, 0);                    /* |e0><e0| */
+    double v01[4] = {0.70710678118654752, 0.70710678118654752, 0, 0};
+    rank1_proj(Pp[1], n, v01);                    /* |v><v|, overlaps P_0 */
+    diag_proj_at(Qp[0], n, 2);
+    /* P = P_0 + P_1 is NOT a clean delta-projection (overlap); build it anyway
+     * (the construction's fail-loud is what we are testing). */
+    acb_mat_init(P, n, n);
+    acb_mat_add(P, Pp[0], Pp[1], prec);
+    acb_mat_init(Q, n, n);
+    acb_set_si(acb_mat_entry(Q, 2, 2), 1);
+    slong N, dPQ;
+    /* aic_corner_alpha_dims itself builds Co_{P,P}, so the prop_P basin assert
+     * fires HERE (the earliest hypothesis check) on this overlapping P. */
+    aic_corner_alpha_dims(&N, &dPQ, &ae.A, (const acb_mat_t *) Pp, 2, P,
+                          (const acb_mat_t *) Qp, 1, Q, prec);
+    acb_mat_t alpha;
+    acb_mat_init(alpha, dPQ, N);
+    arb_t ng;
+    arb_init(ng);
+    slong N2, dPQ2;
+    aic_corner_alpha(alpha, NULL, NULL, NULL, ng, NULL, &N2, &dPQ2, &ae.A,
+                     (const acb_mat_t *) Pp, 2, P, (const acb_mat_t *) Qp, 1,
+                     Q, prec);    /* (or here: ||gamma||>=1 / dim mismatch) */
+    _exit(0);                     /* reached only if NOT aborted */
+}
+
+static void test_t9_failloud(void)
+{
+    /* Shared fork + SIGALRM watchdog (aic_watchdog.h): asserts SIGABRT within the
+     * timeout (the bare fork this replaced had NO hang backstop) and — a NEW
+     * strengthening over the bare-SIGABRT check — that the captured output names
+     * the prop_P basin guard. For this GROSS overlap (||P1 P2||=0.707) prop_P is
+     * the earliest hypothesis check that fires (see the block comment above), so
+     * "aic_prop_P" is the stable needle. */
+    aic_watchdog_assert_failloud(t9_failloud_child, 20,
+                                 "T9(iii) overlapping-projectors fail-loud",
+                                 "aic_prop_P");
     printf("T9(iii) fail-loud: overlapping P_1,P_2 (||P1 P2||=0.707, GROSS) "
            "rejected via SIGABRT (prop_P basin gates gross overlap; ||gamma||<1 is "
            "the load-bearing invertibility guard for borderline inputs)\n");
@@ -1494,8 +1500,8 @@ static void t9_entry_oracle(double col_scale, int transpose_mut, slong prec)
     aic_ucp_kraus_clear(&phi);
 }
 
-/* T9(iv) MUTATION-PROOF: fork children that run t9_entry_oracle with a mutation
- * and confirm SIGABRT (one of (a)/(b) goes RED). Mirrors test_t9_failloud. Also
+/* T9(iv) MUTATION-PROOF: watchdog children that run t9_entry_oracle with a
+ * mutation and confirm SIGABRT (one of (a)/(b) goes RED). Mirrors test_t9_failloud. Also
  * re-confirms the beta->1.5 beta mutation (which the round-trip was BLIND to) is
  * now caught at the ENTRY level: a beta scale changes alpha (its columns are
  * <D_l, Co_{P,Q}(C)>_F, computed from beta's blocks... ) -- but beta does NOT feed
@@ -1503,22 +1509,23 @@ static void t9_entry_oracle(double col_scale, int transpose_mut, slong prec)
  * itself (col_scale / transpose). The beta->1.5 beta soundness is instead covered
  * by the ||gamma|| guard (FIX 2 certified) + the round-trip's surjectivity role;
  * the entry oracle's job is to catch alpha-entry corruption the round-trip misses. */
-static void t9_entry_check_aborts(double col_scale, int transpose_mut,
-                                  const char *what)
+/* The two entry-oracle mutation children. t9_entry_oracle takes its mutation
+ * parameters directly and shares no mutable state, so each mutation hoists to a
+ * parameter-free void(void) thunk with its constants baked in:
+ *   (a) col0 scale 1.5 breaks orthonormality -> "not orthonormal" guard fires;
+ *   (b) swap cols 0,1 breaks reconstruction  -> "NOT reconstructed" guard fires.
+ * Each MUST abort; the watchdog needle confirms the INTENDED check fired (a NEW
+ * strengthening over the old bare-SIGABRT fork — which could not tell the two
+ * mutations apart). */
+static void t9_entry_child_colscale(void)
 {
-    pid_t pid = fork();
-    if (pid == 0) {
-        t9_entry_oracle(col_scale, transpose_mut, 256);
-        _exit(0);                /* reached only if NOT aborted */
-    }
-    int status = 0;
-    waitpid(pid, &status, 0);
-    AIC_CHECK_MSG(WIFSIGNALED(status) && WTERMSIG(status) == SIGABRT,
-                  "T9(iv) mutation %s did not abort via SIGABRT (WIFSIGNALED=%d, "
-                  "WTERMSIG=%d)", what, WIFSIGNALED(status),
-                  WIFSIGNALED(status) ? WTERMSIG(status) : -1);
-    printf("T9(iv) mutation %s rejected via SIGABRT (entry oracle has teeth)\n",
-           what);
+    t9_entry_oracle(1.5, 0, 256);
+    _exit(0);                    /* reached only if NOT aborted */
+}
+static void t9_entry_child_transpose(void)
+{
+    t9_entry_oracle(1.0, 1, 256);
+    _exit(0);                    /* reached only if NOT aborted */
 }
 
 static void test_t9(void)
@@ -1536,8 +1543,13 @@ static void test_t9(void)
     test_t9_failloud();
     /* (iv) INDEPENDENT eta=0 entry oracle (FIX 1) + its mutation-proof. */
     t9_entry_oracle(1.0, 0, prec);                 /* no mutation: GREEN */
-    t9_entry_check_aborts(1.5, 0, "col0 scale 1.5 (breaks orthonormality (a))");
-    t9_entry_check_aborts(1.0, 1, "swap cols 0,1 (breaks reconstruction (b))");
+    aic_watchdog_assert_failloud(t9_entry_child_colscale, 20,
+                                 "T9(iv) col0 scale 1.5 (breaks orthonormality (a))",
+                                 "not orthonormal");
+    aic_watchdog_assert_failloud(t9_entry_child_transpose, 20,
+                                 "T9(iv) swap cols 0,1 (breaks reconstruction (b))",
+                                 "NOT reconstructed");
+    printf("T9(iv) mutations rejected via SIGABRT (entry oracle has teeth)\n");
 }
 
 /* ===================== Increment 2b: §7 one-dimensional-Q machinery ======== *

@@ -41,15 +41,13 @@
  * (the Makefile adds it only on bench compiles, so define it here for T4's
  * stderr-capture fork helper). Must precede all system includes. */
 #ifndef _POSIX_C_SOURCE
-#define _POSIX_C_SOURCE 200809L
+#define _POSIX_C_SOURCE 200809L   /* _exit() in the watchdog-child fixtures */
 #endif
 #include <math.h>
-#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/wait.h>
-#include <unistd.h>
+#include <unistd.h>               /* _exit() */
 
 #include <flint/acb.h>
 #include <flint/acb_mat.h>
@@ -63,6 +61,7 @@
 #include "aic/aic_mat.h"
 #include "aic/aic_projection.h"
 #include "aic_test.h"
+#include "aic_watchdog.h"
 #include "aic/aic_ucp.h"
 #include "test_idemp.h"
 
@@ -517,47 +516,16 @@ static void test_t3(void)
 }
 
 /* =========================== T4: fail-loud (message-checked) ============ */
-/* Run `child` in a forked process with stderr captured to a temp file; after it
- * exits, assert (1) it died by SIGABRT and (2) the captured stderr CONTAINS
- * `expect`. The message-grep is what gives the fail-loud tests teeth: deleting
- * the INTENDED guard (and falling through to a different abort, or none) changes
- * the message, turning the test RED. SIGABRT-only would stay green if any other
- * guard happened to fire. The temp file (stderr is unbuffered, and glibc abort()
- * flushes) survives the child's abort. */
-static void expect_abort_with_msg(void (*child)(void), const char *expect,
-                                  const char *name)
-{
-    char tmpl[] = "/tmp/aic_proj_failXXXXXX";
-    int fd = mkstemp(tmpl);
-    AIC_CHECK_MSG(fd >= 0, "%s: mkstemp failed", name);
-    pid_t pid = fork();
-    AIC_CHECK_MSG(pid >= 0, "%s: fork failed", name);
-    if (pid == 0) {
-        dup2(fd, STDERR_FILENO);   /* child's stderr -> temp file */
-        close(fd);
-        child();
-        _exit(0);   /* reached only if NO abort fired (a test failure) */
-    }
-    int status = 0;
-    waitpid(pid, &status, 0);
-    close(fd);
-    int aborted = WIFSIGNALED(status) && WTERMSIG(status) == SIGABRT;
-    /* read the captured stderr. */
-    char buf[4096];
-    size_t got = 0;
-    FILE *f = fopen(tmpl, "r");
-    if (f) { got = fread(buf, 1, sizeof(buf) - 1, f); fclose(f); }
-    buf[got] = '\0';
-    unlink(tmpl);
-    int has_msg = (strstr(buf, expect) != NULL);
-    printf("%s: child %s; stderr %s expected substring \"%s\"\n", name,
-           aborted ? "SIGABRT" : "did NOT abort (WRONG)",
-           has_msg ? "CONTAINS" : "MISSING", expect);
-    AIC_CHECK_MSG(aborted, "%s: child did not abort via SIGABRT", name);
-    AIC_CHECK_MSG(has_msg, "%s: captured stderr does NOT contain the expected "
-                  "guard message \"%s\" (got: %.200s) -- the INTENDED guard did "
-                  "not fire (deleted/wrong guard?)", name, expect, buf);
-}
+/* The fail-loud abort assertions below run each `child` through the shared
+ * fork + SIGALRM watchdog (aic_watchdog_assert_failloud, tests/aic_watchdog.h):
+ * it asserts the child finished within the timeout (a HANG now fails loud rather
+ * than wedging the gate — the local helper this replaced had no SIGALRM backstop),
+ * did NOT exit cleanly, died by SIGABRT, and the captured output CONTAINS the
+ * needle. The message-grep is what gives the tests teeth: deleting the INTENDED
+ * guard (and falling through to a different abort, or none) changes the message,
+ * turning the test RED. The shared helper captures BOTH stdout and stderr (a
+ * strict superset of the old stderr-only capture), so a flint_printf/flint_abort
+ * message on stdout now matches too. */
 
 /* trace_replace(k): A = scalars, dim_A = 1. lem_nontriv_projection requires
  * dim A > 1, so the finder must ABORT via the dim-1 guard. */
@@ -599,10 +567,11 @@ static void t4_nogap_child(void)
 static void test_t4(void)
 {
     /* (a) dim A == 1: the dim-1 guard, message-checked. */
-    expect_abort_with_msg(t4_dim1_child, "dim A = 1 <= 1", "T4(a) dim-1");
+    aic_watchdog_assert_failloud(t4_dim1_child, 20, "T4(a) dim-1",
+                                 "dim A = 1 <= 1");
     /* (b) aic-3qv: no positive interior gap (degenerate spectrum), message-checked. */
-    expect_abort_with_msg(t4_nogap_child, "NO positive interior spectral gap",
-                          "T4(b) no-gap aic-3qv");
+    aic_watchdog_assert_failloud(t4_nogap_child, 20, "T4(b) no-gap aic-3qv",
+                                 "NO positive interior spectral gap");
 }
 
 /* =========================== T5: double vs arb@53 ======================= */

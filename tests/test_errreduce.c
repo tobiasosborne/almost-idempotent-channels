@@ -41,16 +41,14 @@
 /* mkstemp / fork / waitpid (T6 stderr-capture fork helper). Must precede all
  * system includes. */
 #ifndef _POSIX_C_SOURCE
-#define _POSIX_C_SOURCE 200809L
+#define _POSIX_C_SOURCE 200809L   /* _exit() in the watchdog-child fixture */
 #endif
 #include <complex.h>
 #include <math.h>
-#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/wait.h>
-#include <unistd.h>
+#include <unistd.h>               /* _exit() */
 
 #include <flint/acb.h>
 #include <flint/acb_mat.h>
@@ -62,6 +60,7 @@
 #include "aic/aic_errreduce.h"
 #include "aic/aic_mat.h"
 #include "aic_test.h"
+#include "aic_watchdog.h"
 #include "aic/aic_ucp.h"
 #include "test_idemp.h"
 
@@ -358,42 +357,15 @@ static double mb_errreduce(const slong *dims, slong nblk, double t, double delta
     return c0v;
 }
 
-/* Run `child` in a forked process with stderr captured to a temp file; after it
- * exits, assert it died by SIGABRT and the captured stderr CONTAINS `expect`
- * (mirrors test_projection.c expect_abort_with_msg; the message-grep gives the
- * fail-loud test teeth — a DIFFERENT guard firing changes the message -> RED). */
-static void expect_abort_with_msg(void (*child)(void), const char *expect,
-                                  const char *name)
-{
-    char tmpl[] = "/tmp/aic_errreduce_failXXXXXX";
-    int fd = mkstemp(tmpl);
-    AIC_CHECK_MSG(fd >= 0, "%s: mkstemp failed", name);
-    pid_t pid = fork();
-    AIC_CHECK_MSG(pid >= 0, "%s: fork failed", name);
-    if (pid == 0) {
-        dup2(fd, STDERR_FILENO);
-        close(fd);
-        child();
-        _exit(0);   /* reached only if NO abort fired (a test failure) */
-    }
-    int status = 0;
-    waitpid(pid, &status, 0);
-    close(fd);
-    int aborted = WIFSIGNALED(status) && WTERMSIG(status) == SIGABRT;
-    char buf[4096];
-    size_t got = 0;
-    FILE *f = fopen(tmpl, "r");
-    if (f) { got = fread(buf, 1, sizeof(buf) - 1, f); fclose(f); }
-    buf[got] = '\0';
-    unlink(tmpl);
-    int has_msg = (strstr(buf, expect) != NULL);
-    printf("%s: child %s; stderr %s expected substring \"%s\"\n", name,
-           aborted ? "SIGABRT" : "did NOT abort (WRONG)",
-           has_msg ? "CONTAINS" : "MISSING", expect);
-    AIC_CHECK_MSG(aborted, "%s: child did not abort via SIGABRT", name);
-    AIC_CHECK_MSG(has_msg, "%s: captured stderr does NOT contain \"%s\" (got: "
-                  "%.200s) -- the INTENDED guard did not fire", name, expect, buf);
-}
+/* The fail-loud abort assertion below runs `child` through the shared fork +
+ * SIGALRM watchdog (aic_watchdog_assert_failloud, tests/aic_watchdog.h): it
+ * asserts the child finished within the timeout (a HANG fails loud rather than
+ * wedging the gate — the local helper this replaced had no SIGALRM backstop), did
+ * NOT exit cleanly, died by SIGABRT, and the captured output CONTAINS the needle.
+ * The message-grep gives the test teeth — a DIFFERENT guard firing changes the
+ * message -> RED. The shared helper captures BOTH stdout and stderr (a strict
+ * superset of the old stderr-only capture), so a flint_abort message on stdout
+ * now matches too. */
 
 /* Build the reviewer's COLLAPSING-v fixture (the F1 BLOCKER witness).
  *   B = C (+) C  (dims {1,1}, dim_B = 2),  A = M_2 (identity channel, dim_A = 4).
@@ -481,8 +453,8 @@ static void test_collapse_guard(void)
     aic_ucp_kraus_clear(&phi);
 
     /* the guard must ABORT on this fixture (fail-loud, message grep). */
-    expect_abort_with_msg(t6_collapse_child, "NOT a delta-inclusion",
-                          "T6 collapse-abort");
+    aic_watchdog_assert_failloud(t6_collapse_child, 20, "T6 collapse-abort",
+                                 "NOT a delta-inclusion");
 }
 
 /* ====================================================================== T1 */

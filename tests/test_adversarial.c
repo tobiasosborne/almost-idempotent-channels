@@ -15,15 +15,13 @@
  * aic_mat_frobenius_norm, aic_mat_singular_values, aic_mat_herm_max_eig); a property
  * claimed sharp that produced a straddling ball fails loud (Rule 4).
  */
-#define _POSIX_C_SOURCE 200809L
+#define _POSIX_C_SOURCE 200809L   /* _exit() in the watchdog-child fixtures */
 #include <complex.h>
 #include <math.h>
-#include <signal.h>
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
-#include <unistd.h>
-#include <sys/wait.h>
+#include <unistd.h>               /* _exit() */
 
 #include <flint/acb.h>
 #include <flint/acb_mat.h>
@@ -42,6 +40,7 @@
 #include "aic/aic_projection.h"
 #include "../src/aic_projection_internal.h"   /* aic_projection_gap/_ambient/_into_A (fam3C) */
 #include "aic_test.h"
+#include "aic_watchdog.h"
 
 static const slong PREC = 256;
 
@@ -975,55 +974,6 @@ static void test_fam1c_carrier_dropout(void)
  * a stricter prec > P trips the relative Hermiticity assert on the prec-P
  * rounding asymmetry (FINDINGS §D7n; the bug this self-test hit during impl). */
 #define V5F_STRADDLE_PREC 53     /* small-cluster ball straddles thr here */
-#define V5F_WATCH_S 20           /* watchdog: a child alive past this is a HANG */
-
-/* SIGALRM watchdog (mirror of tests/test_xo0_failloud.c / test_eigvec.c): run a
- * void(void) child in a fork, capture its stderr, bound it with a SIGALRM, and
- * return the raw wait status + whether it finished (1) or was killed for hanging
- * (0). Lets a Rule-4 abort() be asserted without crashing this test binary. */
-typedef void (*v5f_child_fn)(void);
-static volatile pid_t v5f_watch_pid = 0;
-static volatile sig_atomic_t v5f_timed_out = 0;
-static void v5f_alarm(int sig)
-{
-    (void) sig;
-    v5f_timed_out = 1;
-    if (v5f_watch_pid > 0) kill(v5f_watch_pid, SIGKILL);
-}
-static int v5f_run_child(v5f_child_fn fn, int *status, char *err, size_t errsz)
-{
-    char tmpl[] = "/tmp/aic_v5f_err_XXXXXX";
-    int efd = mkstemp(tmpl);
-    AIC_CHECK_MSG(efd >= 0, "v5f_run_child: mkstemp failed");
-    fflush(NULL);
-    pid_t pid = fork();
-    AIC_CHECK_MSG(pid >= 0, "v5f_run_child: fork failed");
-    if (pid == 0) {
-        dup2(efd, STDERR_FILENO);
-        close(efd);
-        fn();
-        _exit(0);                 /* reached only if fn did NOT abort */
-    }
-    v5f_watch_pid = pid;
-    v5f_timed_out = 0;
-    struct sigaction sa = {0}, old;
-    sa.sa_handler = v5f_alarm;
-    sigaction(SIGALRM, &sa, &old);
-    alarm(V5F_WATCH_S);
-    int st = 0;
-    pid_t w;
-    do { w = waitpid(pid, &st, 0); } while (w < 0 && !v5f_timed_out);
-    alarm(0);
-    sigaction(SIGALRM, &old, NULL);
-    if (w < 0) waitpid(pid, &st, 0);
-    lseek(efd, 0, SEEK_SET);
-    ssize_t r = read(efd, err, errsz - 1);
-    err[(r > 0) ? (size_t) r : 0] = '\0';
-    close(efd);
-    unlink(tmpl);
-    *status = st;
-    return v5f_timed_out ? 0 : 1;
-}
 
 /* The straddle child: build the dense carrier at gap=1e-16, prec=53, and call
  * aic_ucp_carrier_rank — which must ABORT ("STRADDLES"). The d=3 dimension and
@@ -1142,33 +1092,15 @@ static void test_fam1c_carrier_dense(void)
     }
 
     /* (2) STRADDLE (near thr) at prec=53: aic_ucp_carrier_rank must FAIL LOUD. The
-     * fork+SIGALRM watchdog lets the abort be asserted without crashing this binary.
-     * The diagonal 1C could NOT reach this (its gap eig is a point ball). */
-    {
-        char err[4096];
-        int status = 0;
-        int finished = v5f_run_child(v5f_child_straddle, &status, err, sizeof err);
-        AIC_CHECK_MSG(finished,
-                      "fam1C-dense straddle: aic_ucp_carrier_rank HUNG on the "
-                      "densified carrier at prec=53 (watchdog killed it after %d s)",
-                      V5F_WATCH_S);
-        int aborted = WIFSIGNALED(status) && WTERMSIG(status) == SIGABRT;
-        AIC_CHECK_MSG(aborted,
-                      "fam1C-dense straddle: aic_ucp_carrier_rank did NOT fail loud "
-                      "on the densified carrier at prec=53 — the small-cluster ball "
-                      "STRADDLES thr (it must abort, not silently return a rank). "
-                      "(signaled=%d sig=%d exited=%d code=%d). stderr:\n%s",
-                      WIFSIGNALED(status),
-                      WIFSIGNALED(status) ? WTERMSIG(status) : -1,
-                      WIFEXITED(status), WIFEXITED(status) ? WEXITSTATUS(status) : -1,
-                      err);
-        AIC_CHECK_MSG(strstr(err, "STRADDLES") != NULL,
-                      "fam1C-dense straddle: abort message does not name the "
-                      "STRADDLE (expected the aic_mat_certified_rank message). "
-                      "Got:\n%s", err);
-        printf("  fam1C-dense STRADDLE: prec=53 gap=1e-16 -> carrier_rank SIGABRT "
-               "(\"STRADDLES\"); the no-straddle gap the diagonal 1C could not reach\n");
-    }
+     * shared fork+SIGALRM watchdog (aic_watchdog.h) asserts the abort without
+     * crashing this binary: finishes within timeout, NOT clean-exit, SIGABRT, and
+     * the captured output names the STRADDLE. The diagonal 1C could NOT reach this
+     * (its gap eig is a point ball). */
+    aic_watchdog_assert_failloud(v5f_child_straddle, 20,
+                                 "fam1C-dense straddle: aic_ucp_carrier_rank @prec=53",
+                                 "STRADDLES");
+    printf("  fam1C-dense STRADDLE: prec=53 gap=1e-16 -> carrier_rank SIGABRT "
+           "(\"STRADDLES\"); the no-straddle gap the diagonal 1C could not reach\n");
 
     /* (3) CONVENTION-SENSITIVE: ||sum K K^dag - sum K^dag K||_op > 0 (the non-normal
      * Kraus distinguishes the two carrier conventions; the diagonal Hermitian 1C
@@ -2107,8 +2039,9 @@ static void test_fam2b_conc_defect(void)
  *    projector (the O(eps/g) header bound is loose here; FINDINGS §D1).
  *  (REFUSE) at gap_spec=0 (the exactly-degenerate single-cluster witness):
  *    aic_projection_gap FAIL-LOUD-ABORTS with "NO positive interior spectral gap"
- *    (the aic-3qv stop condition), exercised through the fork+SIGALRM watchdog
- *    (v5f_run_child) so this binary survives. The finder MUST NOT return a
+ *    (the aic-3qv stop condition), exercised through the shared fork+SIGALRM
+ *    watchdog (aic_watchdog_assert_failloud) so this binary survives. The finder
+ *    MUST NOT return a
  *    silently near-trivial P — it aborts. (The double-vs-arb distinction: the gap
  *    selection is the double path; at gap_spec=0 the double-path eigenvalues
  *    coincide to round-off and the floor 1e-9*max(1,spread) catches it — the
@@ -2323,30 +2256,15 @@ static void test_fam3c_proj_near_trivial(void)
     aic_ucp_kraus_clear(&phi);
 
     /* (REFUSE) gap_spec=0 (degenerate single cluster): aic_projection_gap MUST
-     * fail-loud-abort with the aic-3qv no-gap message. Via the fork+SIGALRM
-     * watchdog so this binary survives (mirror test_xo0_failloud.c). */
+     * fail-loud-abort with the aic-3qv no-gap message. Via the shared fork+SIGALRM
+     * watchdog (aic_watchdog.h) so this binary survives: finished within timeout,
+     * NOT clean-exit (a silently near-trivial P would be the bug 3C guards
+     * against), SIGABRT, and the captured output names the aic-3qv guard. */
     printf("--- fam3C REFUSE (g->0): aic-3qv no-gap abort ---\n");
-    {
-        int status = 0;
-        char err[4096];
-        int finished = v5f_run_child(fam3c_child_nogap, &status, err, sizeof err);
-        int aborted = WIFSIGNALED(status) && WTERMSIG(status) == SIGABRT;
-        int has_msg = strstr(err, "NO positive interior spectral gap") != NULL;
-        printf("  REFUSE: child %s; %s; stderr %s the aic-3qv message\n",
-               finished ? "finished" : "HUNG (watchdog killed)",
-               aborted ? "SIGABRT" : "did NOT abort (WRONG)",
-               has_msg ? "CONTAINS" : "MISSING");
-        AIC_CHECK_MSG(finished,
-                      "fam3C REFUSE: child HUNG (watchdog killed after %d s) -- the "
-                      "degenerate-spectrum path did not terminate", V5F_WATCH_S);
-        AIC_CHECK_MSG(aborted,
-                      "fam3C REFUSE: child did NOT SIGABRT at gap_spec=0 -- the "
-                      "finder returned a silently near-trivial P (the bug 3C "
-                      "guards against)");
-        AIC_CHECK_MSG(has_msg,
-                      "fam3C REFUSE: stderr lacks 'NO positive interior spectral "
-                      "gap' (got: %.200s) -- the aic-3qv guard did not fire", err);
-    }
+    aic_watchdog_assert_failloud(fam3c_child_nogap, 20,
+                                 "fam3C REFUSE: aic_projection_gap @gap_spec=0",
+                                 "NO positive interior spectral gap");
+    printf("  REFUSE: child SIGABRT; stderr CONTAINS the aic-3qv message\n");
 }
 
 int main(void)
