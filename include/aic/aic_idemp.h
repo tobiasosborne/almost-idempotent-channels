@@ -162,6 +162,78 @@ void aic_idemp_psi_choi(acb_mat_t C, const aic_idemp_decomp *d, slong prec);
  * initialised. */
 void aic_idemp_defect_wG_eq_CML(arb_t out, const aic_idemp_decomp *d, slong prec);
 
+/* --- Artin-Wedderburn / multiplicity decomposition of A (bead aic-ynu, I1) ---
+ *
+ * prop_hom_structure (.tex:259-272) + prop_Gamma (.tex:2106). The *-homomorphism
+ * w : A = Img Phi -> B(M) (column k of d->w is vec(w(B_k)), the m x m matrix
+ * w(B_k) = J_M^dag B_k J_M, m = dim_M) has image a *-subalgebra W <= B(M). By
+ * Artin-Wedderburn it is isomorphic to (+)_j B(L_j) acting on
+ *     M = (+)_j L_j (x) E_j,    w(B) = sum_j W_j^dag (A_j (x) 1_{E_j}) W_j,
+ * where A_j is B's component in the j-th block and W = (W_1,...,W_m) : M ->
+ * (+)_j (L_j (x) E_j) is UNITARY (.tex:259-272). This struct holds that data:
+ * num_blocks m, the block (matrix) dims dim L_j, the multiplicity dims dim E_j,
+ * and the per-block isometries W_j : M -> L_j (x) E_j (each (dim L_j * dim E_j) x
+ * dim_M; sum_j (dim L_j * dim E_j) = dim_M, so W stacked is dim_M x dim_M unitary).
+ *
+ * TENSOR LAYOUT (load-bearing, matches aic_mat.h left-major Kronecker). Within a
+ * block, L_j is the LEFT/MAJOR factor: W_j row index t = a*dim_E_j + c with a in
+ * [0,dim L_j) the L_j (matrix) index and c in [0,dim E_j) the E_j (multiplicity)
+ * index, so (A_j (x) 1_{E_j})[a*dim_E_j+c, a'*dim_E_j+c'] = A_j[a,a'] delta_{cc'}
+ * (aic_mat_kronecker convention). The w-reconstruction invariant (below) pins this
+ * order together with the sizes and the W_j entries at once.
+ *
+ * SCOPE (I1). At eta=0 the random-Hermitian simple-spectrum extraction handles
+ * BOTH distinct AND equal block sizes: distinct sizes (block_cond_exp(5,2) =
+ * M_2 (+) M_3), EQUAL sizes (block_cond_exp(2k,k) = M_k (+) M_k, including the
+ * 12x12 M_6 (+) M_6), single blocks with nontrivial multiplicity
+ * (noiseless_subsystem), single trivial blocks (identity), and the fully-diagonal
+ * M_1^n (dephasing). The generic random H_W separates equal-size blocks almost
+ * surely; the re-draw budget covers the measure-zero collision set. The routine
+ * FAILS LOUD (Rule 4) only on a genuinely-unresolvable spectrum (no clean split in
+ * the budget) or a failed arb certification — it does NOT return garbage.
+ *
+ * GAUGE. W_j is unique only up to a unitary on each L_j and on each E_j (and the
+ * per-block carrier scaling of w). The w-reconstruction residual is gauge-invariant
+ * and is the correctness specification. */
+typedef struct {
+    slong dim_M;        /* dim of the carrier M (= sum_j dim_L[j]*dim_E[j])       */
+    slong dim_A;        /* dim of A (= sum_j dim_L[j]^2)                          */
+    slong num_blocks;   /* m, the number of Wedderburn blocks                    */
+    slong *dim_L;       /* dim_L[0..m-1], the block (matrix) dimensions          */
+    slong *dim_E;       /* dim_E[0..m-1], the multiplicity dimensions            */
+    acb_mat_t *W_j;     /* m matrices, W_j[j] is (dim_L[j]*dim_E[j]) x dim_M      */
+} aic_idemp_wedderburn;
+
+/* Compute the Artin-Wedderburn decomposition of A = Img Phi from an exactly-
+ * idempotent decomposition `d` (the eta=0 case). `out` is OUTPUT: num_blocks,
+ * dim_L[], dim_E[] and the W_j[] are all allocated/filled here (caller must
+ * aic_idemp_wedderburn_clear it). `prec` is the arb working precision.
+ *
+ * ROUTE (commutant-eigendecomposition; src/aic_idemp_wedderburn.c). Reshape d->w
+ * into the m x m matrices {w(B_k)} (m = dim_M); they span the *-subalgebra
+ * W <= B(M). (1) Eigen-cluster a GENERIC RANDOM Hermitian H_W in W (drawn with a
+ * FIXED-SEED PRNG for reproducibility, then the double-path zheev
+ * aic_latd_eig_hermitian — NOT the certified-arb degenerate-eig machinery; the
+ * extraction is double, the defects are arb-certified, matching aic_idemp): each
+ * cluster projector lies in W and equals (v v^dag) (x) 1_{E_j} for an L_j
+ * eigenvector v, with multiplicity dim E_j. The randomness is load-bearing — a
+ * deterministic H_W manufactures a kernel spanning equal-size blocks; a degenerate
+ * draw triggers a re-draw (bounded budget). (2) Group clusters into blocks by
+ * W-connectivity (||Q_a w(B_k) Q_a'||_op > tol iff a, a' are in the same block);
+ * dim L_j = #clusters in the block, dim E_j = the common cluster multiplicity.
+ * (3) Build each W_j by aligning the E_j basis across the dim L_j reference
+ * subspaces via the connecting partial isometries in W. The output is then
+ * CERTIFIED IN ARB (dim identities + W-unitarity + the w-reconstruction
+ * correctness spec) before returning. Cites .tex:259, .tex:2106.
+ *
+ * Fails loud (Rule 4) ONLY for a genuinely-unresolvable spectrum: no draw in the
+ * re-draw budget yields a clean block split, or the assembled W fails the arb
+ * certification (dim identity, unitarity, or w-reconstruction). */
+void aic_idemp_wedderburn_decompose(aic_idemp_wedderburn *out,
+                                    const aic_idemp_decomp *d, slong prec);
+
+void aic_idemp_wedderburn_clear(aic_idemp_wedderburn *out);
+
 #ifdef __cplusplus
 }
 #endif
