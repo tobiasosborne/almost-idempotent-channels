@@ -889,6 +889,38 @@ with the concrete evidence from where they bit.
   a-priori guarantee is exactly what the paper needs Lefschetz for and is not proven
   constructively. The defect is `O(ε + ε/g)`, `=O(ε)` iff `g=Ω(1)`. Empirically the
   constant is dimension-independent (projection canary to d=9), but no proof.
+- **The "near-trivial-projection / small-gap" regime does NOT exist at the genuine
+  eps-C\* algebra level (2026-06-02, adversarial family 3C, `aic_adv_proj_near_trivial`,
+  bead aic-dbo.2).** Family 3C (domain.md:373-412) asks for a fixture whose Hermitian
+  basis elements cluster near {0,1} with a tunable SMALL interior gap, to drive the
+  projection finder's deliver-or-refuse boundary. MEASURED across the channel→
+  `aic_assoc_ecstar_from_phi` route (identity → `M_d`, 2-block conditional expectation,
+  dephasing, `make_compress_idemp`/`mixconj`): **every genuine 2+-dim eps-C\* algebra's
+  Frobenius-orthonormal SVD basis `{B_k}` contains an element whose Hermitian part
+  `H_k=(B_k+B_k^†)/2` is a near-projector with an `O(1)` interior gap** — a *gauge
+  artifact* of orthonormalization, not a tunable knob. Concretely the 2-block CE on
+  `C^n` always yields an `H_0` with spectrum `{0,…,0,1}` (gap 1.0), and the proj_ce
+  fixture's smallest gap shrinks only as `1/√(n−1)` (0.707→0.258 over n=3→16, never
+  small) while a unit-gap `H_0` persists. The audition (`aic_projection_audit`) ranges
+  over ALL `H_k` and picks the LARGEST gap, so **a genuine algebra ALWAYS DELIVERS at an
+  `O(1)` gap**; the small-gap regime exists only at `dim_A=1` (the T4 dim-1 refuse) or a
+  genuinely degenerate spectrum. CONSEQUENCE: the 3C "refuse when `gap_spec<ε`" contract
+  of domain.md:404-406 is NOT realizable as an algebra-level abort — the code's actual
+  refuse boundary is `gap < 1e-9·spread` (the round-off floor, the aic-3qv no-gap
+  abort), NOT `gap < ε`. So 3C is built as a **bare two-cluster Hermitian** fed to the
+  finder's Route-A-Step-3 primitives (`aic_projection_gap`/`aic_projection_ambient`)
+  directly (the op domain.md:392 names), with the tunable gap ON the Hermitian element.
+- **The `O(ε/g)` star defect is GAP-INVARIANT for a clean ambient projector (same
+  probes).** Building `P_amb` from the 3C Hermitian at gap `g` and projecting into a
+  genuine η>0 algebra (`mixconj(5,3,0.02)` η≈0.046, or `blockalg(2,2,0.05)` η≈0.048)
+  via `Φ̃`, the certified star defect `‖P⋆P−P‖` is `≈3.6e-3` (`mixconj`) / `≈1.7e-4`
+  (`blockalg`) — `O(η)` and **constant across `g∈{0.5,0.15,0.075,0.05,0.025}`** (knob
+  ratio 10→0.5), because `P_amb` is a clean rank-`k` ambient idempotent whose alignment
+  with the η-perturbation does not depend on `g`. So the `O(ε/g)` header bound
+  (`include/aic_projection.h:39`) is a LOOSE worst case, only tight as `g` drops *below*
+  the perturbation/within-cluster scale (i.e. into the refuse regime where `g` is no
+  longer the largest gap). The 3C self-test therefore asserts the deliver path produces
+  a finite `O(η)` defect (`C=δ/η≈0.004<1`), NOT an `O(ε/g)` growth.
 
 ### D2. The universal constant `c_0` (`cor_improvement`, `tex:1317`) is unstated
 - **Status:** OPEN (the ANALYTIC `c_0` defers to **aic-1bc** research). The

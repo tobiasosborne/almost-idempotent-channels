@@ -39,6 +39,8 @@
 #include "aic/aic_dhom.h"
 #include "aic/aic_ecstar.h"
 #include "aic/aic_errreduce.h"
+#include "aic/aic_projection.h"
+#include "../src/aic_projection_internal.h"   /* aic_projection_gap/_ambient/_into_A (fam3C) */
 #include "aic_test.h"
 
 static const slong PREC = 256;
@@ -2077,6 +2079,276 @@ static void test_fam2b_conc_defect(void)
     arb_clear(lo);
 }
 
+/* ---- fam3C: NEAR-TRIVIAL-PROJECTION deliver-or-refuse (domain.md:373-412, the
+ * Route-A spectral-split family, #7 on the merged lethal shortlist; tex:516-525
+ * prop_P basin / tex:931 lem_nontriv_projection). The EIGHTH generator's
+ * self-test, the FIRST that stresses the projection finder (aic_projection, the
+ * aic-66n unit-aware audition) directly across its DELIVER-OR-REFUSE boundary.
+ *
+ * The generator aic_adv_proj_near_trivial(n,k,gap_spec) is a BARE two-cluster
+ * Hermitian whose smallest INTER-cluster gap = the LARGEST interior gap =
+ * gap_spec (FINDINGS §D1: no genuine eps-C* algebra presents a tunable SMALL
+ * largest gap, so the knob lives on the Hermitian element the finder's Route-A-
+ * Step-3 primitives consume). Teeth, in load-bearing order:
+ *
+ *  (CAL) GAP CALIBRATION (the construction pin, the corpus-can't-go-toothless
+ *    monotone): the realized LARGEST interior gap of H == gap_spec to <= 1e-12,
+ *    over the full knob sweep gap_spec/eps in {10,3,1.5,1.0,0.5}, eps in
+ *    {0.01,0.05}, n in {4,9,16}. A generator whose gap did NOT track gap_spec
+ *    fails here. Confirms the gap is genuinely tunable across the boundary.
+ *  (DELIVER) at gap_spec >> floor: aic_projection_gap returns g == gap_spec; the
+ *    prop_P basin ||Y^2-I|| < 1 holds (asserted inside aic_projection_ambient);
+ *    aic_projection_ambient builds an EXACT ambient idempotent (||P_amb^2-P_amb||
+ *    machine-zero) that is NONTRIVIAL (rank k, so ||P_amb||=1 and ||I-P_amb||=1);
+ *    and projecting P_amb into a GENUINE eta>0 algebra (the fam3D blockalg
+ *    generator, eta~0.05) via aic_projection_into_A gives a FINITE certified star
+ *    defect — the deliver path produces a real projection, NOT a silently near-
+ *    trivial one. The star defect is O(eta) and ~gap-invariant for a clean ambient
+ *    projector (the O(eps/g) header bound is loose here; FINDINGS §D1).
+ *  (REFUSE) at gap_spec=0 (the exactly-degenerate single-cluster witness):
+ *    aic_projection_gap FAIL-LOUD-ABORTS with "NO positive interior spectral gap"
+ *    (the aic-3qv stop condition), exercised through the fork+SIGALRM watchdog
+ *    (v5f_run_child) so this binary survives. The finder MUST NOT return a
+ *    silently near-trivial P — it aborts. (The double-vs-arb distinction: the gap
+ *    selection is the double path; at gap_spec=0 the double-path eigenvalues
+ *    coincide to round-off and the floor 1e-9*max(1,spread) catches it — the
+ *    eig-free abort is what stops a silent near-trivial snap.)
+ *
+ * MUTATIONS (Rule 7), confirmed RED then restored byte-identical:
+ *  M1 — in the generator REPLACE the upper-cluster base w+gap_spec with w (drop
+ *       the gap): the two clusters merge, the realized largest gap collapses to
+ *       the within-cluster scale, and the (CAL) pin realized==gap_spec goes RED
+ *       (and the DELIVER fixture would hit the no-gap abort spuriously). Proves
+ *       the gap knob is load-bearing.
+ *  M2 — widen the REFUSE witness: pass gap_spec=0.3 (instead of 0) to the
+ *       watchdog child: aic_projection_gap then DELIVERS (no abort), the child
+ *       _exit(0)s instead of SIGABRT, and the watchdog's "child must SIGABRT"
+ *       assertion goes RED. Proves the refuse tooth actually requires the abort. */
+
+/* ||A||_op on ball midpoints (mirror of fam3d_eta_proxy's collapse: a near-zero
+ * difference matrix with wide accumulated balls false-fails the certified Gram
+ * check; collapse to midpoints when we only want the number). */
+static double fam3c_mid_opnorm(const acb_mat_t A, slong prec)
+{
+    slong r = acb_mat_nrows(A), c = acb_mat_ncols(A);
+    acb_mat_t M;
+    arb_t e;
+    acb_mat_init(M, r, c);
+    arb_init(e);
+    for (slong i = 0; i < r; i++)
+        for (slong j = 0; j < c; j++)
+            acb_get_mid(acb_mat_entry(M, i, j), acb_mat_entry(A, i, j));
+    aic_mat_opnorm(e, M, prec);
+    double v = arf_get_d(arb_midref(e), ARF_RND_NEAR);
+    arb_clear(e);
+    acb_mat_clear(M);
+    return v;
+}
+
+/* Realized LARGEST interior gap of a Hermitian H (the gap aic_projection_gap will
+ * pick), via double-path zheev — the construction-pin oracle for (CAL). */
+static double fam3c_largest_gap(const acb_mat_t H, slong n)
+{
+    double _Complex *Ha = malloc((size_t) n * n * sizeof(double _Complex));
+    double *ev = malloc((size_t) n * sizeof(double));
+    AIC_CHECK_MSG(Ha && ev, "fam3C: OOM");
+    aic_latd_from_acb_mat(Ha, H);
+    aic_latd_eig_hermitian(ev, NULL, Ha, n);
+    double mx = -1.0;
+    for (slong i = 0; i < n - 1; i++) {
+        double g = ev[i + 1] - ev[i];
+        if (g > mx) mx = g;
+    }
+    free(ev);
+    free(Ha);
+    return mx;
+}
+
+/* rank of a Hermitian acb_mat (count eigenvalues > 0.5; P_amb's are ~0 or ~1). */
+static slong fam3c_herm_rank_half(const acb_mat_t Pm, slong n)
+{
+    double _Complex *Pa = malloc((size_t) n * n * sizeof(double _Complex));
+    double *ev = malloc((size_t) n * sizeof(double));
+    AIC_CHECK_MSG(Pa && ev, "fam3C: OOM");
+    aic_latd_from_acb_mat(Pa, Pm);
+    aic_latd_eig_hermitian(ev, NULL, Pa, n);
+    slong r = 0;
+    for (slong i = 0; i < n; i++) if (ev[i] > 0.5) r++;
+    free(ev);
+    free(Pa);
+    return r;
+}
+
+/* REFUSE watchdog child: build the EXACTLY-degenerate witness (gap_spec=0, single
+ * cluster) and call aic_projection_gap — which MUST abort (aic-3qv no-gap). */
+static void fam3c_child_nogap(void)
+{
+    const slong prec = 256, n = 9, k = 4;
+    acb_mat_t H;
+    acb_mat_init(H, n, n);
+    aic_adv_proj_near_trivial(H, n, k, 0.0, prec);   /* all eigenvalues == 0 */
+    double t = 0, g = 0, lmin = 0, lmax = 0;
+    slong m = 0;
+    aic_projection_gap(&t, &g, &lmin, &lmax, &m, H, prec);   /* MUST abort */
+    acb_mat_clear(H);
+    _exit(0);
+}
+
+static void test_fam3c_proj_near_trivial(void)
+{
+    const slong prec = 256;
+    const slong ns[] = {4, 9, 16};
+    const slong ks[] = {2, 4, 8};
+    const double epss[] = {0.05, 0.01};
+    const double ratios[] = {10.0, 3.0, 1.5, 1.0, 0.5};
+
+    printf("--- fam3C near-trivial projection: gap calibration (CAL) ---\n");
+    double worst_relerr = 0.0;
+    for (int ni = 0; ni < 3; ni++) {
+        slong n = ns[ni], k = ks[ni];
+        for (int ei = 0; ei < 2; ei++) {
+            double eps = epss[ei];
+            for (int ri = 0; ri < 5; ri++) {
+                double gs = ratios[ri] * eps;
+                acb_mat_t H;
+                acb_mat_init(H, n, n);
+                aic_adv_proj_near_trivial(H, n, k, gs, prec);
+                double realized = fam3c_largest_gap(H, n);
+                double relerr = fabs(realized - gs) / gs;
+                if (relerr > worst_relerr) worst_relerr = relerr;
+                /* (CAL) the construction pin: realized largest gap == gap_spec. */
+                AIC_CHECK_MSG(relerr < 1e-12,
+                              "fam3C(n=%ld eps=%.2f ratio=%.1f): realized gap=%.6f "
+                              "!= gap_spec=%.6f (relerr=%.3e) -- gap knob not "
+                              "tracking (M1 mutation?)", (long) n, eps, ratios[ri],
+                              realized, gs, relerr);
+                acb_mat_clear(H);
+            }
+        }
+    }
+    printf("  CAL: realized largest interior gap == gap_spec to <= %.2e over "
+           "n in {4,9,16}, eps in {0.05,0.01}, ratio in {10,3,1.5,1.0,0.5}\n",
+           worst_relerr);
+
+    /* (DELIVER) gap_spec >> floor: the finder snaps a genuine nontrivial spectral
+     * projector; projecting into a genuine eta>0 algebra gives a finite star
+     * defect. We use n=4,k=2 (matches the blockalg eta>0 algebra dim N=4). */
+    printf("--- fam3C DELIVER (g=Omega(1)): gap-pick + prop_P snap + into-A "
+           "star defect O(eta) ---\n");
+    /* genuine eta>0 oblique algebra A = (+)_2 M_2 (N=4), eta~0.05 (blockalg). */
+    aic_ucp_kraus phi;
+    aic_adv_chan_blockalg(&phi, 2, 2, 0.05, prec);   /* k=2 blocks, d=2, t=0.05 */
+    double eta = fam3d_eta_proxy(&phi, prec);
+    AIC_CHECK_MSG(eta > 1e-4, "fam3C: blockalg eta=%.3e not > 0 (vacuous)", eta);
+    aic_assoc_ecstar ae;
+    aic_assoc_ecstar_from_phi(&ae, &phi, prec);
+    slong N = ae.A.n;   /* == 4 */
+
+    const double eps_d = 0.05;
+    const double deliver_ratios[] = {10.0, 3.0, 1.5, 1.0};   /* above the floor */
+    double prev_sd = -1.0;
+    for (int ri = 0; ri < 4; ri++) {
+        double gs = deliver_ratios[ri] * eps_d;
+        acb_mat_t H;
+        acb_mat_init(H, N, N);
+        aic_adv_proj_near_trivial(H, N, N / 2, gs, prec);
+
+        /* Route A Step 3: gap pick (DELIVER -- no abort). */
+        double t = 0, g = 0, lmin = 0, lmax = 0;
+        slong m = 0;
+        aic_projection_gap(&t, &g, &lmin, &lmax, &m, H, prec);
+        AIC_CHECK_MSG(fabs(g - gs) < 1e-12,
+                      "fam3C DELIVER(ratio=%.1f): chosen gap=%.6f != gap_spec=%.6f",
+                      deliver_ratios[ri], g, gs);
+        AIC_CHECK_MSG(m == N - N / 2,
+                      "fam3C DELIVER(ratio=%.1f): m=%ld != upper-cluster size %ld",
+                      deliver_ratios[ri], (long) m, (long) (N - N / 2));
+
+        /* prop_P snap: aic_projection_ambient asserts the basin ||Y^2-I||<1 and
+         * builds an EXACT ambient idempotent. */
+        acb_mat_t Pamb;
+        acb_mat_init(Pamb, N, N);
+        aic_projection_ambient(Pamb, H, t, lmin, lmax, prec);   /* basin asserted */
+        /* ambient snap defect ||P_amb^2 - P_amb|| (plain product, exact in M_N). */
+        acb_mat_t PP, D;
+        acb_mat_init(PP, N, N);
+        acb_mat_init(D, N, N);
+        acb_mat_mul(PP, Pamb, Pamb, prec);
+        acb_mat_sub(D, PP, Pamb, prec);
+        double snap = fam3c_mid_opnorm(D, prec);
+        AIC_CHECK_MSG(snap < 1e-30,
+                      "fam3C DELIVER(ratio=%.1f): ambient snap defect=%.3e not "
+                      "machine-zero (prop_P sgn did not snap an exact idempotent)",
+                      deliver_ratios[ri], snap);
+        /* NONTRIVIAL: rank == k (the lower cluster is the -1 side, upper the +1). */
+        slong rk = fam3c_herm_rank_half(Pamb, N);
+        AIC_CHECK_MSG(rk == m,
+                      "fam3C DELIVER(ratio=%.1f): rank(P_amb)=%ld != m=%ld "
+                      "(trivial projector -- rank 0 or N?)", deliver_ratios[ri],
+                      (long) rk, (long) m);
+        AIC_CHECK_MSG(rk > 0 && rk < N,
+                      "fam3C DELIVER(ratio=%.1f): rank(P_amb)=%ld trivial (0 or N)",
+                      deliver_ratios[ri], (long) rk);
+
+        /* into-A: project into the genuine eta>0 algebra; certify a FINITE star
+         * defect (the deliver path produces a real projection, not a silent
+         * near-trivial one). */
+        acb_mat_t P, SPP, SD;
+        acb_mat_init(P, N, N);
+        acb_mat_init(SPP, N, N);
+        acb_mat_init(SD, N, N);
+        aic_projection_into_A(P, &ae.A, Pamb, prec);
+        aic_ecstar_star(SPP, &ae.A, P, P, prec);   /* P * P (STAR) */
+        acb_mat_sub(SD, SPP, P, prec);
+        double sd = fam3c_mid_opnorm(SD, prec);
+        double C = sd / eta;
+        printf("  ratio=%.1f gap=%.4f: chosen_gap=%.4f rank(P_amb)=%ld snap=%.2e "
+               "star_defect=%.4e C=delta/eta=%.4f\n", deliver_ratios[ri], gs, g,
+               (long) rk, snap, sd, C);
+        /* delta = O(eta): C bounded (catches an O(1)-defect regression). */
+        AIC_CHECK_MSG(C < 1.0,
+                      "fam3C DELIVER(ratio=%.1f): C=delta/eta=%.4f exceeds 1 -- "
+                      "star defect not O(eta)", deliver_ratios[ri], C);
+        /* the defect is finite and genuinely > 0 at eta>0 (not vacuous). */
+        AIC_CHECK_MSG(sd > 1e-12 && isfinite(sd),
+                      "fam3C DELIVER(ratio=%.1f): star defect=%.3e vacuous/non-"
+                      "finite at eta>0", deliver_ratios[ri], sd);
+        prev_sd = sd;
+        acb_mat_clear(SD); acb_mat_clear(SPP); acb_mat_clear(P);
+        acb_mat_clear(D); acb_mat_clear(PP); acb_mat_clear(Pamb);
+        acb_mat_clear(H);
+    }
+    (void) prev_sd;
+    aic_assoc_ecstar_clear(&ae);
+    aic_ucp_kraus_clear(&phi);
+
+    /* (REFUSE) gap_spec=0 (degenerate single cluster): aic_projection_gap MUST
+     * fail-loud-abort with the aic-3qv no-gap message. Via the fork+SIGALRM
+     * watchdog so this binary survives (mirror test_xo0_failloud.c). */
+    printf("--- fam3C REFUSE (g->0): aic-3qv no-gap abort ---\n");
+    {
+        int status = 0;
+        char err[4096];
+        int finished = v5f_run_child(fam3c_child_nogap, &status, err, sizeof err);
+        int aborted = WIFSIGNALED(status) && WTERMSIG(status) == SIGABRT;
+        int has_msg = strstr(err, "NO positive interior spectral gap") != NULL;
+        printf("  REFUSE: child %s; %s; stderr %s the aic-3qv message\n",
+               finished ? "finished" : "HUNG (watchdog killed)",
+               aborted ? "SIGABRT" : "did NOT abort (WRONG)",
+               has_msg ? "CONTAINS" : "MISSING");
+        AIC_CHECK_MSG(finished,
+                      "fam3C REFUSE: child HUNG (watchdog killed after %d s) -- the "
+                      "degenerate-spectrum path did not terminate", V5F_WATCH_S);
+        AIC_CHECK_MSG(aborted,
+                      "fam3C REFUSE: child did NOT SIGABRT at gap_spec=0 -- the "
+                      "finder returned a silently near-trivial P (the bug 3C "
+                      "guards against)");
+        AIC_CHECK_MSG(has_msg,
+                      "fam3C REFUSE: stderr lacks 'NO positive interior spectral "
+                      "gap' (got: %.200s) -- the aic-3qv guard did not fire", err);
+    }
+}
+
 int main(void)
 {
     test_gen1_jordan();
@@ -2095,6 +2367,7 @@ int main(void)
     test_fam3d_bijective_eta();   /* aic-66n wrapper-collapse regression (prec=256) */
     test_fam_nc_noncomm_boundary();  /* NON-COMMUTATIVE eta->1/4 boundary (aic-cxo) */
     test_fam2b_conc_defect();        /* RANK-1 defect, near-degenerate subspace (aic-cxo, 2B) */
+    test_fam3c_proj_near_trivial();  /* NEAR-TRIVIAL PROJECTION deliver-or-refuse (aic-dbo.2, 3C) */
 
     aic_test_report("test_adversarial");
     printf("OK test_adversarial\n");

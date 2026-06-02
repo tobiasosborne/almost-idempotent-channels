@@ -34,6 +34,11 @@
  *   5 graded_diag       nla 5c               : dynamic range = condition number kappa
  *   6 boundary_x2I      nla 7a (lethal #5)   : ||X^2-I||=1 straddle, funcalc domain edge
  *   7 propP_delta       nla 7b               : ||P^2-P||=delta, prop_P basin edge 1/4
+ *   8 proj_near_trivial domain 3C (lethal #7), tex:516-525/931 : two-cluster
+ *                       Hermitian, tunable smallest INTER-cluster gap=gap_spec;
+ *                       the projection finder DELIVER (g=Omega(1)) -> REFUSE
+ *                       (g->0, aic-3qv no-gap abort) boundary. A BARE Hermitian
+ *                       (FINDINGS §D1: no genuine algebra has a tunable small gap).
  *
  * Channel/UCP-map generators (aic_ucp_kraus; Increment 2, tranche 1):
  *   chan_cb_op_gap      domain 1B, tex:366-388 : cb-norm vs operator-norm gap (measure-prepare)
@@ -332,6 +337,35 @@ void aic_adv_chan_noncomm_boundary(aic_ucp_kraus *out, slong m, slong d,
  * aic_adversarial_domain2.c for the full derivation. */
 void aic_adv_chan_conc_defect(aic_ucp_kraus *out, slong d, double eta,
                               double gap_sub, slong prec);
+
+/* fam3C — NEAR-TRIVIAL-PROJECTION two-cluster Hermitian (domain.md:373-412, the
+ * Route-A spectral-split-failure family, #7 on the merged lethal shortlist; the
+ * tex:516-525 prop_P basin / tex:931 lem_nontriv_projection). Unlike the channel
+ * generators above, this is a BARE Hermitian acb_mat_t (the gen3/gen4/gen6/gen7
+ * NLA convention): a diagonal real H on C^n whose spectrum is two clusters with a
+ * SMALLEST INTER-cluster separation tunable to EXACTLY `gap_spec`, the knob that
+ * sweeps the DELIVER-OR-REFUSE boundary of the nontrivial-projection finder
+ * (aic_projection, the aic-66n unit-aware audition). WHY a bare Hermitian and NOT
+ * an aic_ecstar/aic_ucp_kraus: MEASURED (FINDINGS §D1) that NO genuine 2+-dim
+ * eps-C* algebra can present a tunable SMALL largest-interior-gap to the finder —
+ * its Frobenius-orthonormal SVD basis always contains an H_k near-projector with
+ * an O(1) gap (a gauge artifact), so a genuine algebra ALWAYS DELIVERS at an O(1)
+ * gap; the tunable gap therefore lives on the Hermitian element the finder's
+ * Route-A-Step-3 primitives (aic_projection_gap, aic_projection_ambient) consume
+ * directly, exactly the op domain.md:392 names. CONSTRUCTION: k eigenvalues in
+ * [0, gap_spec/4] (lower) and (n-k) in [gap_spec/4 + gap_spec, gap_spec/2 +
+ * gap_spec] (upper), so within-cluster gaps <= gap_spec/4 < gap_spec and the
+ * inter-cluster gap = the LARGEST interior gap = EXACTLY gap_spec (the realized
+ * gap == gap_spec to <= 2.8e-16, MEASURED). KNOB gap_spec >= 0 (sweep
+ * gap_spec = ratio*eps, ratio in {10,3,1.5,1.0,0.5}; eps in {0.01,0.05}; n in
+ * {4,9,16}). gap_spec=0 is the EXACTLY-DEGENERATE refuse witness (single cluster,
+ * no interior gap -> aic_projection_gap fires the aic-3qv "NO positive interior
+ * spectral gap" abort). Asserts n>=2, 0<k<n (interior split), gap_spec>=0
+ * (Rule 4, fail loud). `out` must be init'd n x n (caller clears it). See
+ * aic_adversarial_projsplit.c for the full derivation and the output-type
+ * decision. */
+void aic_adv_proj_near_trivial(acb_mat_t out, slong n, slong k, double gap_spec,
+                               slong prec);
 
 #ifdef __cplusplus
 }
