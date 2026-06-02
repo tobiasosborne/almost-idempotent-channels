@@ -69,13 +69,30 @@ generators on top of the 3D blockalg (which closed the tex:484 thread above):
 The LOW mixconj corpus-unification item was folded into `aic-f9u.1` (shared corpus). The
 adversarial channel families (1B/1C/1D/2A/2B/3D + noncomm) all now have certified generators.
 
-**NEXT (orchestrated):** `aic-v5f` (densified near-degenerate carrier — clean, de-risked, uses
-the aic-4td certified-rank machinery, closes the 1C diagonal-carrier no-straddle gap); then the
+**ALSO LANDED — `aic-v5f` (P2) CLOSED: densified non-normal carrier generator** (commit
+`e294c9e`, `tests/aic_adversarial_carrier_dense.c`). `K_0=U diag(1,..,√gap) V†`, U≠V (distinct
+rational Givens chains) ⟹ non-diagonal carrier `Q` (off-diag 0.156) + convention-sensitive
+`‖ΣKK†−ΣK†K‖=0.223` (vs 3.3e-77 diagonal 1C). Closes both F3-review gaps: STRADDLE (gap=1e-16
+prec=53 ⟹ zero-cluster ball straddles thr ⟹ `aic_ucp_carrier_rank` aborts, fork/SIGALRM
+watchdog-tested) + CONVENTION (non-normal K catches the K-marginal bug). FINDINGS §D7n.
+
+**ADVERSARIAL CORPUS STATUS (for the next agent):** CHANNEL gens (domain.md) — DONE: 1B,1C,
+1C-dense,1D,2A,2A-noncomm,2B,3D (8). REMAINING prioritized: **3C** (near-trivial proj / Route-A
+split failure — would give adversarial regression coverage for the aic-66n fix), **5B** (high-mult
+block / degenerate eig merging — stresses the D5n/aic-4td certified-eig wall), 6A (worst-case
+composite O(η)), 6B (lem_RC near-failure ‖C_j‖→0), 1A (extremal min-Kraus-rank), 3B/4A/4B/4C/5A.
+MATRIX gens (nla.md) — DONE ~7/24 (1a t^1/3, 2a/2c non-normal, 4a/4b degenerate, 5c graded, 7a/7b
+boundary). REMAINING: Jordan 1b/1c, Grcar 2b, Kahan 5b, Hilbert 5a, near-singular 3a-3c,
+nearly-commuting 4c, companion/Frank/Toeplitz 6a-6c, contraction 7c, precision-saturation 8a-8c.
+`aic-dbo.2` (umbrella generator bead) stays OPEN (prioritized shortlist not exhausted).
+
+**NEXT (orchestrated):** continue the lethal-shortlist generators (3C/5B are the highest-value —
+they stress the session's two central walls: projection finder + degenerate-eig); then the
 higher-leverage `aic-dbo.4` (retrofit: every module's tests draw adversarial instances,
-bound-holds OR fail-loud) + `aic-f9u.1` (shared-corpus unification incl. mixconj); the d≥3/k≥5
-projection-coverage + dbo3-widen + d>2-noncomm-pin follow-up beads; `aic-jhe`/`aic-ssu` (Julia
-cb-distance / certified-bracket wrappers); Julia packaging (`aic-obc`/`aic-95g.2`); `aic-w4o.2`
-(full acb SVD). The tex:484 thread + the adversarial channel corpus are COMPLETE.
+bound-holds OR fail-loud — depends on dbo.2) + `aic-f9u.1` (shared-corpus unification incl.
+mixconj); the d≥3/k≥5 projection-coverage + dbo3-widen + d>2-noncomm-pin + driver-split follow-up
+beads; `aic-jhe`/`aic-ssu` (Julia wrappers); Julia packaging (`aic-obc`/`aic-95g.2`); `aic-w4o.2`
+(full acb SVD). The tex:484 thread + the core adversarial CHANNEL corpus (1B–3D) are COMPLETE.
 
 ---
 
