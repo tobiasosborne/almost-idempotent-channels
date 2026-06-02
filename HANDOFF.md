@@ -34,17 +34,25 @@ contraction constant is `gamma=||V^{-1} d_x f - 1||` (tex:567/569), so `f=c*x` w
 `1-c` (FAST near c=1 -> toothless cap test); the correct map is `f(x)=(1-c)*x` (rate exactly `c`). Hostile
 review verified the derivation vs tex:567 and PROVED the suite pins the fix (reverting to f=c*x goes RED).
 
-**RESEARCHED+PLANNED — `aic-ynu` (the next consequential bead):** the constructive Artin-Wedderburn block
-decomposition of A=Img Phi (eta=0) realizing **prop_Gamma** (tex:2106) + the Delta/Gamma Kraus reps. THE
-MANDATE; pure C, NO MOSEK/Julia risk. The FULL granular plan (the precise gap, the PRIMARY commutant-eig
-route vs the ALT cstar_build-reuse route, increments I1-I4, the test oracles, the reusable primitives) is
-in the **bead design** — run `bd show aic-ynu`. In one line: `aic_idemp_decompose` already gives the `w` +
-`Gamma` matrices; aic-ynu adds num_blocks / dim L_j / dim E_j + the block-diagonalizing `W` + the explicit
-`Tr_{E_j}` prop_Gamma form + the Kraus reps. NOT blocked (degenerate-eig resolved via aic-4td).
+**LANDED — `aic-ynu` I1 (the constructive Artin-Wedderburn decomposition):** new `src/aic_idemp_wedderburn.*`
+(3 .c + _internal.h) + `aic_idemp_wedderburn` struct + `aic_idemp_wedderburn_decompose` +
+`tests/test_wedderburn.c` (the 20th fast test, ~1.5s). Computes num_blocks / dim L_j / dim E_j + the
+block-diagonalizing isometries W_j of A=Img Phi (eta=0), realizing prop_hom_structure (tex:259) — the basis
+for prop_Gamma + the Delta/Gamma Kraus reps. Route: a random FIXED-SEED generic Hermitian in W=Im(w), zheev
+eig, union-find blocks via commutant connectivity, connecting-isometry E_j alignment; dims + W-unitarity +
+the **w-reconstruction correctness spec are arb-certified IN PRODUCTION** (a misaligned-but-unitary W
+fail-louds, Rule 4). Hostile review round 1 BLOCKED a deterministic-H_W kernel collision on M_6(+)M_6
+(dim_M>=12); REPAIRED (random H_W + re-draw budget + the production w-recon cert), mutation-proven BOTH ways
+(L<->E swap aborts in production; cos-seed revert -> M_6(+)M_6 RED), ASan-clean, full suite 42/42.
+**Insight: the I1/I2 degenerate-equal-size boundary DISSOLVED** — a random H_W separates equal-size blocks
+a.s.; no genuine I2 degenerate eta=0 case remains. **Remaining: I3** (the explicit prop_Gamma `Tr_{E_j}`
+Kraus form, verify == d.Gamma) + **I4** (the Delta Kraus reps, verify == d.Lambda + UCP). Full plan in
+`bd show aic-ynu`. THE MANDATE; pure C, NO MOSEK/Julia risk.
 
-**NEXT (orchestrated):** (1) **implement aic-ynu I1-I4** (plan in the bead; start with I1 = the new
-`aic_idemp_wedderburn` struct + the commutant-eig block split, tested vs `make_block_cond_exp(5,2)` +
-`make_noiseless_subsystem(2,2)`). (2) the **Julia deliverable** (aic-ssu/aic-jhe/aic-obc — SERIAL Julia;
+**NEXT (orchestrated):** (1) **finish aic-ynu I3-I4** (I1 = the block decomposition + W is DONE; I3 = the
+explicit prop_Gamma `Tr_{E_j}` Kraus form built from the W_j + the gamma_j density matrices, verified
+against the stored `d.Gamma`; I4 = the Delta Kraus reps verified against `d.Lambda` + UCP; plan in the
+bead). (2) the **Julia deliverable** (aic-ssu/aic-jhe/aic-obc — SERIAL Julia;
 MOSEK risk: the eig-free `aic-ssu` bracket avoids MOSEK, the tight `aic-jhe` needs it — gate carefully,
 a MOSEK hang is the one escalation risk). (3) the remaining **~16 nla matrix gens** (Kahan 5b
 catastrophic-cancellation is the classic arb-justifier) + **`aic-dbo.5`** near-boundary fail-loud stress
