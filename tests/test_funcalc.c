@@ -78,14 +78,8 @@
  * inflated tol, or dropping the ||YX-XY|| arm) would let a non-sign pass — recorded
  * RED by hand. Restored; suite GREEN.
  */
-/* _POSIX_C_SOURCE: test_out_of_basin_failloud (test 6 teeth) still forks
- * in-line (fork/waitpid/WIF*). The reusable fork+SIGALRM watchdog moved to
- * tests/aic_watchdog.{h,c} (bead aic-8de), which carries its own macro. */
-#define _POSIX_C_SOURCE 200809L
-#include <signal.h>
-#include <string.h>
-#include <sys/wait.h>
-#include <unistd.h>
+#include <string.h>   /* the suite's last private fork is gone (aic-8de);
+                       * all fork/SIGALRM machinery now lives in aic_watchdog.c */
 
 #include <flint/acb.h>
 #include <flint/acb_mat.h>
@@ -99,6 +93,7 @@
 #include "aic/aic_mat.h"
 #include "aic_adversarial.h"        /* the adversarial corpus (bead aic-dbo.4) */
 #include "aic_test.h"
+#include "aic_watchdog.h"           /* the shared fork+SIGALRM fail-loud watchdog */
 
 static void set_tol(arb_t tol, double t) { arb_set_d(tol, t); }
 
@@ -437,35 +432,32 @@ static void test_wide_radius(void)
 
 /* Teeth: a genuinely OUT-of-basin X (||X^2-I||_op = 3 > 1) must FAIL LOUD even
  * with a seeded wide radius — the midpoint fix must NOT mask a real out-of-basin
- * input (the basin guard / Gelfand precondition / certificate still abort).
- * Forked child (mirrors test_corner T9): the child SIGABRTs, the parent asserts. */
+ * input (the basin guard / Gelfand precondition / certificate still abort). */
+static void fc_child_out_of_basin(void)
+{
+    const slong prec = 256, n = 3;
+    acb_mat_t X, S;
+    acb_mat_init(X, n, n);
+    acb_mat_init(S, n, n);
+    acb_mat_zero(X);
+    acb_set_d(acb_mat_entry(X, 0, 0), 2.0);    /* X = diag(2,-2,0.5) */
+    acb_set_d(acb_mat_entry(X, 1, 1), -2.0);   /* X^2 = diag(4,4,0.25), */
+    acb_set_d(acb_mat_entry(X, 2, 2), 0.5);    /* ||X^2-I||_op = 3 > 1 */
+    mag_t r;
+    mag_init(r);
+    mag_set_d(r, 2.7e-70);
+    acb_mat_add_error_mag(X, r);               /* same wide radius */
+    mag_clear(r);
+    aic_sgn(S, X, prec);                       /* must abort (out of basin) */
+}
+
+/* The last private fork in the suite, now on the shared aic_watchdog (aic-8de):
+ * gains the SIGALRM hang-backstop + the silent-exit-0 check the bare fork lacked,
+ * and pins the abort REASON via a needle (was a bare SIGABRT-only check). */
 static void test_out_of_basin_failloud(void)
 {
-    pid_t pid = fork();
-    if (pid == 0) {
-        const slong prec = 256, n = 3;
-        acb_mat_t X, S;
-        acb_mat_init(X, n, n);
-        acb_mat_init(S, n, n);
-        acb_mat_zero(X);
-        acb_set_d(acb_mat_entry(X, 0, 0), 2.0);    /* X = diag(2,-2,0.5) */
-        acb_set_d(acb_mat_entry(X, 1, 1), -2.0);   /* X^2 = diag(4,4,0.25), */
-        acb_set_d(acb_mat_entry(X, 2, 2), 0.5);    /* ||X^2-I||_op = 3 > 1 */
-        mag_t r;
-        mag_init(r);
-        mag_set_d(r, 2.7e-70);
-        acb_mat_add_error_mag(X, r);               /* same wide radius */
-        mag_clear(r);
-        aic_sgn(S, X, prec);                       /* must abort (out of basin) */
-        _exit(0);                                  /* reached only if NOT aborted */
-    }
-    int status = 0;
-    waitpid(pid, &status, 0);
-    AIC_CHECK_MSG(WIFSIGNALED(status) && WTERMSIG(status) == SIGABRT,
-                  "test_out_of_basin_failloud: out-of-basin X did not abort via "
-                  "SIGABRT (WIFSIGNALED=%d, WTERMSIG=%d) — the midpoint fix "
-                  "masked a real out-of-basin input", WIFSIGNALED(status),
-                  WIFSIGNALED(status) ? WTERMSIG(status) : -1);
+    aic_watchdog_assert_failloud(fc_child_out_of_basin, 20,
+                                 "aic_sgn out-of-basin (||X^2-I||=3)", "rho(I-X^2)");
 }
 
 /* ===================================================================== *
@@ -483,9 +475,6 @@ static void test_out_of_basin_failloud(void)
  * unifies the nine former private copies. The in-basin "bound holds" half is
  * asserted inline per instance (the certified arb identities/bounds), since the
  * certified quantity differs per routine. */
-
-/* The fork+SIGALRM fail-loud watchdog is now the canonical shared helper. */
-#include "aic_watchdog.h"
 
 /* --- 7a. gen6 boundary_x2I: the deliver-vs-fail-loud pair for sgn/theta --- */
 
