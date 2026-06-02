@@ -39,6 +39,12 @@
  *                       the projection finder DELIVER (g=Omega(1)) -> REFUSE
  *                       (g->0, aic-3qv no-gap abort) boundary. A BARE Hermitian
  *                       (FINDINGS §D1: no genuine algebra has a tunable small gap).
+ *   9 kahan             nla 5b, FINDINGS §C21 : Kahan catastrophic-cancellation
+ *                       matrix (gallery('kahan') form K[i][i]=c^i, K[i][j]=-s c^i);
+ *                       QR-pivoting-invariant, sigma_min exponentially below the
+ *                       smallest diagonal. KNOB theta (mild c~1 -> lethal c~0).
+ *                       In aic_adversarial_kahan.c (the nla_*.c files are at the
+ *                       ~200 LOC cap).
  *
  * Channel/UCP-map generators (aic_ucp_kraus; Increment 2, tranche 1):
  *   chan_cb_op_gap      domain 1B, tex:366-388 : cb-norm vs operator-norm gap (measure-prepare)
@@ -130,6 +136,32 @@ void aic_adv_boundary_x2I(acb_mat_t out, slong n, double s, slong prec);
  * 0 <= delta <= 1/4). Adversarial property: certified ||P^2-P||_op = delta within
  * tol — the prop_P / assoc_ecsa basin edge delta < 1/4 (tex:525). */
 void aic_adv_propP_delta(acb_mat_t out, slong n, double delta, slong prec);
+
+/* gen-kahan — Kahan catastrophic-cancellation matrix (nla 5b, docs/adversarial/
+ * nla.md:619-664; the classic rank-revealing-QR stressor). Upper-triangular K(theta)
+ * in the MATLAB gallery('kahan') convention (NOT the nla.md 5b "Math" formula —
+ * see paper/FINDINGS.md §C21):
+ *   c = cos(theta), s = sin(theta),   0-indexed,
+ *   K[i][i] = c^i,   K[i][j] = -s * c^i  (j > i),   K[i][j] = 0  (j < i).
+ * c^i is a certified arb power so the diagonal grading is exact to `prec`.
+ * KNOB theta in (0, pi/2): SMALL theta (c -> 1) is MILD (well-conditioned); theta
+ * -> pi/2 (c -> 0) is LETHAL (kappa explodes). This matches nla.md's PROSE knob
+ * direction; the nla.md "Math" formula K[i][i]=s^i instead grades by sin and gives
+ * sigma_min ~ smallest diagonal (no catastrophic separation) — a convention bug in
+ * the catalog, recorded in FINDINGS §C21; the constructive route takes the
+ * genuinely-pathological gallery form. `out` must be n x n (asserted, n>=2).
+ * Adversarial property: K is invariant under QR-with-column-pivoting, so a
+ * column-pivoting rank estimate reads the smallest pivot = smallest diagonal entry
+ * c^{n-1}, but the true sigma_min(K) is exponentially SMALLER. MEASURED (n=6,
+ * prec=256): theta=0.3 (mild) sigma_min=0.353, kappa=3.56, sigma_min/c^5=0.44;
+ * theta=1.4 (lethal) sigma_min=7.96e-6, kappa=3.05e5, sigma_min/c^5=0.056 (the
+ * smallest singular value is ~18x below the smallest diagonal — the catastrophic
+ * cancellation). At theta=1.4 the singular values stay DISTINCT through n=12 (arb
+ * simple-Gram SVD resolves sigma_min to ~3e-12); pushing theta->pi/2 with larger n
+ * clusters them and aic_mat_singular_values fail-loud-ABORTS (Rule 4, "raise prec").
+ * theta -> 0 REDUCTION: c -> 1, s -> 0, K -> I (identity), kappa -> 1, sigma_min
+ * -> 1 (the well-conditioned oracle). */
+void aic_adv_kahan(acb_mat_t out, slong n, double theta, slong prec);
 
 /* ---- Domain / channel generators (Increment 2) ---------------------------
  * The FIRST generators producing a UCP map (aic_ucp_kraus), not a bare matrix.

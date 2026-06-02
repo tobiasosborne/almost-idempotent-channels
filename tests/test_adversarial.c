@@ -452,6 +452,109 @@ static void test_gen7_propP(void)
            "||P^2-P||=%.4f (basin edge 1/4=0.25)\n", def[0], def[1]);
 }
 
+/* ---- gen-kahan: Kahan catastrophic-cancellation matrix (nla 5b, FINDINGS §C21).
+ * Property, as theta sweeps mild (c~1) -> lethal (c~0): (i) sigma_min(K) plummets
+ * SHARPLY (the rank-revealing failure), (ii) the condition number kappa explodes,
+ * and (iii) at the lethal end sigma_min << the smallest diagonal entry c^{n-1} —
+ * the catastrophic cancellation a column-pivoting QR (which reads the diagonal as
+ * the pivots) cannot see. sigma_min is measured the certified arb way
+ * (aic_mat_singular_values, distinct for these n,theta) and CROSS-CHECKED against
+ * the double LAPACK SVD (aic_latd_singular_values) — both resolve it at n=6, the
+ * rung-2 double-vs-arb anchor.
+ *
+ * MUTATION: drop the knob — set the diagonal grading to c^0=1 regardless of i (i.e.
+ * skip the `arb_mul(ci, ci, c, prec)` advance in aic_adv_kahan, so K[i][i]=1 and
+ * K[i][j]=-s for all rows, a fixed unit-diagonal triangular matrix INDEPENDENT of
+ * the lethal grading) => sigma_min no longer collapses with theta and stays O(1)
+ * => the "sigma_min(lethal) << sigma_min(mild)" and the "sigma_min << c^{n-1}"
+ * checks both go RED. Confirmed RED, restored byte-identical. */
+static void test_gen_kahan(void)
+{
+    /* measured (prec=256, n=6): mild theta=0.3, lethal theta=1.4
+     *   theta=0.3 : sigma_min=0.353,   kappa=3.56,    mindiag=c^5=0.796, ratio 0.44
+     *   theta=1.4 : sigma_min=7.96e-6, kappa=3.05e5,  mindiag=c^5=1.42e-4, ratio 0.056
+     *   theta->0  : K -> I, sigma_min -> 1, kappa -> 1 (well-conditioned reduction) */
+    const slong n = 6;
+    double thetas[2] = {0.3, 1.4}; /* mild, lethal */
+    double smin[2], kappa[2], mindiag[2];
+
+    for (int it = 0; it < 2; it++) {
+        double theta = thetas[it];
+        double c = cos(theta);
+        acb_mat_t K;
+        acb_mat_init(K, n, n);
+        aic_adv_kahan(K, n, theta, PREC);
+
+        /* certified singular values (DESCENDING); distinct for these n,theta so the
+         * simple-Gram arb SVD applies. sigma_min = last, sigma_max = first. */
+        arb_ptr sv = _arb_vec_init(n);
+        aic_mat_singular_values(sv, K, PREC);
+        smin[it] = arf_get_d(arb_midref(sv + n - 1), ARF_RND_NEAR);
+        double smax = arf_get_d(arb_midref(sv + 0), ARF_RND_NEAR);
+        kappa[it] = smax / smin[it];
+        mindiag[it] = pow(c, (double) (n - 1)); /* smallest diagonal entry c^{n-1} */
+
+        AIC_CHECK_MSG(smin[it] > 0.0,
+                      "gen-kahan theta=%.2f: sigma_min=%.3e not > 0", theta, smin[it]);
+
+        /* CROSS-CHECK (rung 2): certified arb sigma_min == double LAPACK sigma_min.
+         * Both routines resolve it at n=6; this pins the construction AND that the
+         * value is real (a wrong Kahan would disagree between the two paths). */
+        double _Complex *Ka = malloc((size_t) (n * n) * sizeof(double _Complex));
+        aic_latd_from_acb_mat(Ka, K);
+        double svd[6];
+        aic_latd_singular_values(svd, Ka, n, n);
+        AIC_CHECK_MSG(fabs(svd[n - 1] - smin[it]) <= 1e-9 * (1.0 + smin[it]),
+                      "gen-kahan theta=%.2f: LAPACK sigma_min=%.6e != arb sigma_min "
+                      "=%.6e (double-vs-arb disagreement)", theta, svd[n - 1],
+                      smin[it]);
+        free(Ka);
+        _arb_vec_clear(sv, n);
+        acb_mat_clear(K);
+    }
+
+    /* (1) the rank-revealing failure: sigma_min plummets SHARPLY mild->lethal. A
+     * 1e4x condition-number jump (measured 3.56 -> 3.05e5) must be backed by a
+     * sigma_min collapse of comparable magnitude (>= 1000x here, measured ~4.4e4x). */
+    AIC_CHECK_MSG(smin[1] < smin[0] / 1000.0,
+                  "gen-kahan: sigma_min not collapsing mild->lethal (mild=%.3e "
+                  "lethal=%.3e, expected >= 1000x drop)", smin[0], smin[1]);
+    /* (2) condition number explodes toward the lethal end (the kappa blowup). */
+    AIC_CHECK_MSG(kappa[1] > 1e4 && kappa[1] > kappa[0] * 1000.0,
+                  "gen-kahan: kappa not exploding toward pi/2 (mild=%.3e lethal=%.3e)",
+                  kappa[0], kappa[1]);
+    /* (3) THE catastrophic cancellation: at the lethal theta sigma_min is FAR below
+     * the smallest diagonal entry c^{n-1} (what a column-pivoting QR reads as the
+     * smallest pivot). MEASURED ratio 0.056 << 1; assert sigma_min < c^{n-1}/5. The
+     * mild end does NOT have this collapse (ratio 0.44, sigma_min ~ mindiag). */
+    AIC_CHECK_MSG(smin[1] < mindiag[1] / 5.0,
+                  "gen-kahan lethal: sigma_min=%.3e not << smallest diagonal "
+                  "c^%ld=%.3e (no catastrophic cancellation)", smin[1],
+                  (long) (n - 1), mindiag[1]);
+
+    /* theta -> 0 REDUCTION oracle: K -> I, sigma_min -> 1, kappa -> 1. */
+    {
+        acb_mat_t K;
+        acb_mat_init(K, n, n);
+        aic_adv_kahan(K, n, 1e-6, PREC);
+        arb_ptr sv = _arb_vec_init(n);
+        aic_mat_singular_values(sv, K, PREC);
+        double smin0 = arf_get_d(arb_midref(sv + n - 1), ARF_RND_NEAR);
+        double kappa0 = arf_get_d(arb_midref(sv + 0), ARF_RND_NEAR) / smin0;
+        AIC_CHECK_MSG(fabs(smin0 - 1.0) < 1e-3 && fabs(kappa0 - 1.0) < 1e-3,
+                      "gen-kahan theta->0: not reducing to I (sigma_min=%.6f "
+                      "kappa=%.6f, want ~1)", smin0, kappa0);
+        _arb_vec_clear(sv, n);
+        acb_mat_clear(K);
+    }
+
+    printf("  gen-kahan: theta=0.3 (mild) sigma_min=%.4e kappa=%.4e sigma_min/c^5=%.4f"
+           " ; theta=1.4 (lethal) sigma_min=%.4e kappa=%.4e sigma_min/c^5=%.4f "
+           "(<< 1: QR-pivot can't see it); theta->0 => K=I\n",
+           smin[0], kappa[0], smin[0] / mindiag[0], smin[1], kappa[1],
+           smin[1] / mindiag[1]);
+}
+
 /* ---- fam1B: cb-norm vs operator-norm gap (domain.md:75-123, tex:366-388).
  * The FIRST channel generator's self-test. The named property: the certified
  * idempotence defect ||Phi^2-Phi||_cb = eta*sqrt(1-eta) (tex:378) is STRICTLY
@@ -2276,6 +2379,7 @@ int main(void)
     test_gen5_graded();
     test_gen6_boundary();
     test_gen7_propP();
+    test_gen_kahan();             /* Kahan catastrophic cancellation (aic-dbo.2, 5b) */
     test_fam1b_cb_op_gap();
     test_fam2a_depol_boundary();
     test_fam1d_unital_defect();
