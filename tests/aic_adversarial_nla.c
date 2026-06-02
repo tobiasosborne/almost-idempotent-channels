@@ -21,6 +21,7 @@
 #include <flint/acb_mat.h>
 #include <flint/arb.h>
 
+#include "aic/aic_contraction.h"
 #include "aic_adversarial.h"
 
 /* One LCG step -> a fixed rational in [-1, 1] with denominator 2^16. Deterministic
@@ -111,4 +112,69 @@ void aic_adv_propP_delta(acb_mat_t out, slong n, double delta, slong prec)
     arb_set(acb_realref(acb_mat_entry(out, 0, 0)), p);
     arb_clear(disc);
     arb_clear(p);
+}
+
+/* ---- gen-7c — scalar slow contraction (nla 7c, docs/adversarial/nla.md
+ * "7c Contraction Constant c Near 1"; lem_invfun tex:564-592) ---------------
+ * The 1x1 scalar contraction with V=I, x0=1, y=0, r=2 and KNOB c (the lemma's
+ * contraction constant, tex:569). The MAP IS f(x) = (1-c)*x, NOT f(x) = c*x:
+ * the lemma's contraction constant is the iteration rate of g_y, which is
+ *   gamma = ||V^{-1} d_x f - 1|| = |(1-c) - 1| = c   (EXACTLY, tex:569),
+ * and the Picard iteration itself runs at that rate
+ *   g_y(x) = x + V^{-1}(y - f(x)) = x + (0 - (1-c)x) = c*x,   x_n = c^n -> 0.
+ * So the iteration RATIO equals the knob c (NOT 1-c). That is the whole point of
+ * the §7c family: c near 1 is SLOW (n ~ 1/(1-c) steps), so a tight max_iter cap
+ * fires while the math still converges — the "slow contraction vs no contraction"
+ * trap. (The docs/adversarial/nla.md recipe literally writes "f(x)=(1-eps_c)*x",
+ * i.e. f(x)=(1-c)*x with eps_c=1-c; its own "c=0.9 -> ~230 iters" expected
+ * behaviour is ONLY reproduced by this f, not by f(x)=c*x — see paper/FINDINGS.md
+ * §C19. f(x)=c*x would give ratio 1-c, i.e. c=0.9 -> ~13 iters, FAST: the wrong,
+ * toothless instance.) The two static callbacks below are the solver's f and
+ * V^{-1}; they read the caller-owned aic_adv_cedge_ctx so the same compiled fns
+ * serve every knob c. */
+
+/* f(x) = (1-c)*x (scalar, 1x1): out[0][0] = (1 - ctx->c) * x[0][0]. The lemma
+ * contraction constant is then |d_x f - 1| = |(1-c)-1| = c (the knob). */
+static void cedge_f(acb_mat_t out, const acb_mat_t x, void *ctx, slong prec)
+{
+    const aic_adv_cedge_ctx *p = ctx;
+    acb_t a;
+    acb_init(a);
+    acb_set_d(a, 1.0 - p->c);   /* slope 1-c, so g_y contracts at rate c */
+    acb_mul(acb_mat_entry(out, 0, 0), acb_mat_entry(x, 0, 0), a, prec);
+    acb_clear(a);
+}
+
+/* V^{-1}(r) = r (V = I, the identity preconditioner): out = r. */
+static void cedge_Vinv(acb_mat_t out, const acb_mat_t r, void *ctx, slong prec)
+{
+    (void) ctx;
+    (void) prec;
+    acb_mat_set(out, r);
+}
+
+void aic_adv_contraction_cedge(aic_contraction_opts *o, aic_adv_cedge_ctx *ctx,
+                               acb_mat_t x0_out, acb_mat_t y_out,
+                               double c, double tol, slong max_iter, slong prec)
+{
+    assert(acb_mat_nrows(x0_out) == 1 && acb_mat_ncols(x0_out) == 1 &&
+           "aic_adv_contraction_cedge: x0_out must be 1x1");
+    assert(acb_mat_nrows(y_out) == 1 && acb_mat_ncols(y_out) == 1 &&
+           "aic_adv_contraction_cedge: y_out must be 1x1");
+    assert(c >= 0.0 && "aic_adv_contraction_cedge: need c >= 0 (a contraction "
+           "constant; c>=1 is the fail-loud case the solver guard catches)");
+    ctx->c = c;
+    acb_mat_one(x0_out);   /* x0 = [[1]] */
+    acb_mat_zero(y_out);   /* y  = [[0]] */
+    o->f = cedge_f;
+    o->apply_Vinv = cedge_Vinv;
+    o->ctx = ctx;
+    o->x0 = x0_out;
+    o->y = y_out;
+    o->r = 2.0;            /* tex:586-590 ball B_2(1): |x*-1|=1 < 2 */
+    o->c = c;              /* lemma const ||V^{-1} d_x f - 1|| = |(1-c)-1| = c
+                            * (tex:569); NOT ||d_x f|| = 1-c. See FINDINGS C19. */
+    o->tol = tol;
+    o->max_iter = max_iter;
+    o->prec = prec;
 }

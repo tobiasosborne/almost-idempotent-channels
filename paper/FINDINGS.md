@@ -881,6 +881,39 @@ with the concrete evidence from where they bit.
 
 ---
 
+### C19. The §7c contraction generator must use `f(x) = (1-c)*x`, NOT `f(x) = c*x` — only the former makes the ITERATION RATE (and the lemma constant) equal the knob `c`; `f(x)=c*x` is the toothless fast instance
+- **Status:** RESOLVED (bead **aic-dbo.2**, gen-7c `aic_adv_contraction_cedge` in
+  `tests/aic_adversarial_nla.c`; self-tested by `tests/test_contraction.c::test_cedge_*`, mutation-proven).
+  A catalogue recipe whose stated map contradicts its own stated expected-behaviour numbers — fixed by
+  taking the map that makes the numbers true (Law 3: constructivize from the bound, not the literal line).
+- **The §7c recipe is internally inconsistent.** `docs/adversarial/nla.md` "7c" writes the map two ways:
+  the recipe block says `f(x) = (1 - eps_c)*x` with `c = 1 - eps_c` (so literally `f(x) = c*x`), but its
+  Expected-behaviour says "`c=0.9` -> ~230 iters" and "`c=0.5` -> 33 iters" (SLOW as `c -> 1`). Those two
+  cannot both hold: for the lemma `f: B -> B`, `V: B -> B`, the Picard map is `g_y(x) = x + V^{-1}(y - f(x))`
+  and the iteration RATE is `gamma = ||V^{-1} d_x f - 1||` (= the lemma's `c`, `tex:569,591`), NOT
+  `||d_x f||`. With `V = I` and `f(x) = a*x`: `g_y(x) = (1 - a) x`, rate `= |1-a|`.
+- **The two candidate maps (MEASURED, 1x1 scalar, x0=1, y=0, tol=1e-12):**
+  - `f(x) = c*x`  (`a=c`): rate `= |1-c| = 1-c`. `c=0.9 -> 13 iters` (FAST), `c=0.5 -> 40`. The lemma
+    constant is also `|c-1| = 1-c`, NOT `c` — so even calling the knob "`c`" is wrong. TOOTHLESS: a tight
+    cap never fires near `c=1`; the §7c "slow vs no convergence" trap is absent.
+  - `f(x) = (1-c)*x`  (`a=1-c`): rate `= |1-(1-c)| = c`. `c=0.9 -> 242 iters` (SLOW), `c=0.5 -> 40`. The
+    lemma constant is `|(1-c)-1| = c` = the knob. SELF-CONSISTENT: rate == lemma `c` == knob, and the
+    Expected-behaviour "~230 iters at c=0.9" is reproduced (242, the discrepancy is the doc's `4 ln10/(1-c)`
+    estimate vs the exact `ceil(ln(tol(1-c)/c)/ln c)`). This is the shipped map.
+- **Why it matters / the trap it preserves.** The whole §7c family is "distinguish a GENUINE slow
+  contraction from a non-contraction": the Picard `max_iter` cap must FAIL LOUD (`tex:591`,
+  `aic_contraction_picard: no convergence in`) on a true `c<1` map that just needs more steps than the cap,
+  rather than silently returning a non-converged iterate (Rule 4). That trap only exists when the rate is
+  `c` (near 1 -> slow). With `f(x)=c*x` the rate is `1-c` (near 1 -> instant), so the cap never fires and
+  the lethal half of the dbo.4 retrofit would be a test that cannot fail. The fix is a one-line slope flip
+  (`1-c` not `c`) anchored to the lemma's `gamma = ||V^{-1} d_x f - 1||`, `tex:569`.
+- **Takeaway.** When a generator recipe states a map AND its expected iteration counts, DERIVE the rate
+  from the realized iteration (`g_y`, not `f`) and keep the one that makes the bound's promised numbers
+  true. The lemma constant is `||V^{-1} d_x f - 1||`, which for a scalar `V=I` map is `1 - slope` — so to
+  make it equal the knob, the slope must be `1 - knob`.
+
+---
+
 ## D. Open questions / escalations (unresolved)
 
 ### D1. Does a dimension-independent spectral gap (`Ω(1)`) always exist for `dim A>1`?

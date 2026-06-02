@@ -64,6 +64,7 @@
 #include <flint/acb_mat.h>
 
 #include "aic/aic_ucp.h"
+#include "aic/aic_contraction.h"  /* gen-7c fills an aic_contraction_opts */
 
 #ifdef __cplusplus
 extern "C" {
@@ -366,6 +367,47 @@ void aic_adv_chan_conc_defect(aic_ucp_kraus *out, slong d, double eta,
  * decision. */
 void aic_adv_proj_near_trivial(acb_mat_t out, slong n, slong k, double gap_spec,
                                slong prec);
+
+/* ---- Contraction-solver generator (gen-7c; bead aic-dbo.2) ----------------
+ * The first generator that fills an aic_contraction_opts (not a bare matrix /
+ * Kraus map): it is consumed DIRECTLY by the Banach contraction solver
+ * (lem_invfun, approximate_algebras.tex:564-592). Reusable by the dbo.4
+ * retrofit (tests/test_contraction.c) AND by the later sub-ULP c->1^- straddle
+ * (bead aic-dbo.5). */
+
+/* Context carried by the gen-7c callbacks: the single knob c (the exact
+ * Lipschitz / contraction constant of f). The caller owns this struct; the gen
+ * sets ->c and wires o->ctx to it, so it must OUTLIVE every solver call. */
+typedef struct { double c; } aic_adv_cedge_ctx;
+
+/* gen-7c (nla 7c, docs/adversarial/nla.md "7c Contraction Constant c Near 1").
+ * The scalar contraction on 1x1 acb_mat: f(x) = (1-c)*x, V = I, x0 = [[1]],
+ * y = [[0]], r = 2. The Picard iteration is then g_y(x) = x + (y - f(x)) =
+ * x + (0 - (1-c)x) = c*x, so x_n = c^n -> x* = 0 at iteration rate EXACTLY c,
+ * and the lemma's contraction constant is gamma = ||V^{-1} d_x f - 1|| =
+ * |(1-c) - 1| = c EXACTLY (tex:569). NB the map is f(x)=(1-c)x, NOT c*x: only
+ * this makes both the iteration rate AND the lemma constant equal the knob c
+ * (paper/FINDINGS.md §C19; f(x)=c*x gives the toothless FAST rate 1-c). Fills
+ * *o so a solver call (aic_contraction_picard/anderson/solve) consumes it
+ * directly: for c < 1 it DELIVERS x* = 0 at geometric rate c (tex:591) — SLOW
+ * as c -> 1, so a tight max_iter cap fires the §7c "slow vs no convergence"
+ * trap; for c >= 1 the c-hypothesis guard fires (aic_contraction_assert_c,
+ * tex:569).
+ *
+ * OWNERSHIP (explicit, leak-free — Rule 4 / ASan-clean):
+ *   - ctx, x0_out, y_out are CALLER-OWNED. The caller inits x0_out, y_out as
+ *     1x1 acb_mat BEFORE the call and clears them AFTER (matching the corpus
+ *     convention: the gen only SETS values, never inits/clears the outputs).
+ *   - The gen sets ctx->c, writes x0_out = [[1]] and y_out = [[0]], and wires
+ *     o->ctx = ctx, o->x0 = x0_out, o->y = y_out, o->f/apply_Vinv to static fns
+ *     in aic_adversarial_nla.c. All three caller-owned objects must OUTLIVE the
+ *     solver call.
+ * Asserts c >= 0 (Rule 4; c < 0 is not a contraction constant). tol/max_iter/
+ * prec are passed straight through to *o (the caller picks them: a large
+ * max_iter to DELIVER near c=1, a small cap to provoke the fail-loud). */
+void aic_adv_contraction_cedge(aic_contraction_opts *o, aic_adv_cedge_ctx *ctx,
+                               acb_mat_t x0_out, acb_mat_t y_out,
+                               double c, double tol, slong max_iter, slong prec);
 
 #ifdef __cplusplus
 }

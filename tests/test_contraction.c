@@ -41,7 +41,9 @@
 #include "aic/aic_contraction.h"
 #include "aic/aic_funcalc.h"
 #include "aic/aic_mat.h"
+#include "aic_adversarial.h"   /* gen-7c scalar contraction f(x)=c*x (bead aic-dbo.2) */
 #include "aic_test.h"
+#include "aic_watchdog.h"      /* shared fork+SIGALRM fail-loud watchdog (aic-8de) */
 
 /* ---- shared problem: f(x) = V x + eps * N(x), N(x)_i = sin-like cubic ----
  * V is a fixed, well-conditioned invertible matrix; N is a mild entrywise
@@ -308,6 +310,119 @@ static void test_precision_ladder(void)
     prob_clear(&p256); prob_clear(&p53);
 }
 
+/* ===================================================================== *
+ * --- 7. ADVERSARIAL §7c: slow contraction c -> 1 (beads aic-dbo.2/.4) - *
+ * ===================================================================== *
+ *
+ * Draws the corpus generator aic_adv_contraction_cedge (gen-7c, the 1x1 scalar
+ * contraction f(x)=(1-c)x, V=I, x0=1, y=0, r=2; lem_invfun tex:564-592,
+ * docs/adversarial/nla.md "7c Contraction Constant c Near 1"). The retrofit IS
+ * the generator's self-test and exercises BOTH ends of the dbo.4 bound-holds-OR-
+ * fail-loud policy:
+ *   - DELIVER (c<1, large enough cap): Picard converges to x*=0 at geometric
+ *     rate c (tex:580-591); we read back the stats and confirm the geometric
+ *     envelope st.max_step <= r (the c^0=1 envelope, mirroring
+ *     test_convergence_rate) and that the recovered ball contains 0 within tol.
+ *   - FAIL-LOUD #1 (c>=1): the c-hypothesis guard fires BEFORE any iteration
+ *     (aic_contraction_assert_c, tex:569).
+ *   - FAIL-LOUD #2 (genuine c<1 but the cap is too small): the §7c punishment —
+ *     a TRUE contraction that the Picard cap correctly refuses rather than
+ *     silently returning a non-converged iterate (Rule 4, fail loud not silent-
+ *     wrong). The needle pins it is the cap message, NOT the c-hypothesis one.
+ * The c<1 fixed point of g_y(x)=c*x is exactly x*=0 (FINDINGS §C19: the iteration
+ * RATE equals the knob c precisely because f's slope is 1-c). */
+
+/* The 0-ball the recovered fixed point must contain within tol. */
+static void check_cedge_fixed_point(const acb_mat_t x, double tol)
+{
+    acb_mat_t zero;
+    acb_mat_init(zero, 1, 1);
+    acb_mat_zero(zero);
+    arb_t t; arb_init(t); set_tol(t, tol);
+    AIC_CHECK_ACB_MAT_CLOSE(x, zero, t);    /* x* = 0 within tol */
+    arb_clear(t);
+    acb_mat_clear(zero);
+}
+
+/* --- 7a. DELIVER: c=0.9 near the edge (slow but converges in ~242 iters) --- */
+static void test_cedge_deliver(slong prec)
+{
+    aic_adv_cedge_ctx ctx;
+    aic_contraction_opts o;
+    acb_mat_t x0, y, x;
+    acb_mat_init(x0, 1, 1); acb_mat_init(y, 1, 1); acb_mat_init(x, 1, 1);
+
+    /* c=0.9: rate-c=0.9 iteration, needs ~242 steps to tol=1e-12 (cap 400). */
+    aic_adv_contraction_cedge(&o, &ctx, x0, y, 0.9, 1e-12, 400, prec);
+    aic_contraction_stats st;
+    aic_contraction_solve(x, &o, &st);                 /* default = Picard */
+
+    AIC_CHECK_MSG(st.last_step < o.tol, "cedge c=0.9 did not converge to tol");
+    check_cedge_fixed_point(x, 1e-11);                 /* x* = 0 */
+    /* geometric-rate envelope (tex:591), mirroring test_convergence_rate: the
+     * first (largest) step is 1-c=0.1 <= r c^0 = r. */
+    AIC_CHECK_MSG(st.max_step <= o.r * (1.0 + 1e-6),
+                  "cedge max step exceeded the r c^0 = r envelope");
+    AIC_CHECK_MSG(st.iters > 200 && st.iters < 400,
+                  "cedge c=0.9 iteration count off (expected ~242)");
+
+    /* Second, milder point c=0.5 (~40 iters): also delivers. */
+    aic_adv_cedge_ctx ctx2; aic_contraction_opts o2; aic_contraction_stats st2;
+    aic_adv_contraction_cedge(&o2, &ctx2, x0, y, 0.5, 1e-12, 200, prec);
+    aic_contraction_solve(x, &o2, &st2);
+    AIC_CHECK_MSG(st2.last_step < o2.tol, "cedge c=0.5 did not converge");
+    check_cedge_fixed_point(x, 1e-11);
+    AIC_CHECK_MSG(st2.iters > 20 && st2.iters < 80,
+                  "cedge c=0.5 iteration count off (expected ~40)");
+
+    /* Comparative (catalogue Picard-vs-Anderson note): Anderson reaches the same
+     * x*=0 in FEWER g_y evaluations than Picard at the stiff c=0.9. */
+    aic_adv_cedge_ctx ctxa; aic_contraction_opts oa; aic_contraction_stats sa;
+    acb_mat_t xa; acb_mat_init(xa, 1, 1);
+    aic_adv_contraction_cedge(&oa, &ctxa, x0, y, 0.9, 1e-12, 400, prec);
+    aic_contraction_anderson(xa, &oa, &sa);
+    check_cedge_fixed_point(xa, 1e-11);
+    AIC_CHECK_MSG(sa.iters < st.iters,
+                  "Anderson did not beat Picard's iteration count at c=0.9");
+    acb_mat_clear(xa);
+
+    acb_mat_clear(x); acb_mat_clear(y); acb_mat_clear(x0);
+}
+
+/* --- 7b. FAIL-LOUD #1: c>=1 violates the lemma hypothesis (fires pre-iter) - */
+static void child_cedge_c1(void)
+{
+    aic_adv_cedge_ctx ctx;
+    aic_contraction_opts o;
+    acb_mat_t x0, y, x;
+    acb_mat_init(x0, 1, 1); acb_mat_init(y, 1, 1); acb_mat_init(x, 1, 1);
+    aic_adv_contraction_cedge(&o, &ctx, x0, y, 1.0, 1e-12, 400, 256);
+    aic_contraction_picard(x, &o, NULL);   /* must abort: c=1 not in [0,1) */
+    acb_mat_clear(x); acb_mat_clear(y); acb_mat_clear(x0); /* unreached */
+}
+
+/* --- 7c. FAIL-LOUD #2: genuine c=0.9 contraction but cap=100 < ~242 fires - */
+static void child_cedge_cap(void)
+{
+    aic_adv_cedge_ctx ctx;
+    aic_contraction_opts o;
+    acb_mat_t x0, y, x;
+    acb_mat_init(x0, 1, 1); acb_mat_init(y, 1, 1); acb_mat_init(x, 1, 1);
+    aic_adv_contraction_cedge(&o, &ctx, x0, y, 0.9, 1e-12, 100, 256);
+    aic_contraction_picard(x, &o, NULL);   /* must abort: ~242 > 100-step cap */
+    acb_mat_clear(x); acb_mat_clear(y); acb_mat_clear(x0); /* unreached */
+}
+
+static void test_cedge_failloud(void)
+{
+    aic_watchdog_assert_failloud(child_cedge_c1, 20,
+                                 "contraction c>=1 hypothesis",
+                                 "is not in [0,1)");
+    aic_watchdog_assert_failloud(child_cedge_cap, 20,
+                                 "contraction Picard cap",
+                                 "aic_contraction_picard: no convergence in");
+}
+
 int main(void)
 {
     test_known_inverse(256);
@@ -316,6 +431,8 @@ int main(void)
     test_candidate_agreement(256);
     test_sgn_system(256);
     test_precision_ladder();
+    test_cedge_deliver(256);
+    test_cedge_failloud();
 
     aic_test_report("test_contraction");
     printf("OK test_contraction\n");
