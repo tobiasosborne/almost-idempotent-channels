@@ -46,10 +46,16 @@ include("libaic.jl")
 # stubs; the AICMosekExt extension adds the real methods.
 include("sdp_stubs.jl")
 
-# The six immutable value-types (UCPMap, EpsCStarAlgebra, CStarAlgebra,
-# MainIsomorphism, ChannelFactorization, CertifiedBracket) + their accessors (bead J2).
-# Pure Julia; no ccall (the C-data-driven verbs are bead J4).
-include("types.jl")
+# The seven immutable value-types (UCPMap, EpsCStarAlgebra, CStarAlgebra,
+# MainIsomorphism, ChannelFactorization, CertifiedBracket, CPMap) + their
+# accessors (bead J2). Pure Julia; no ccall (the C-data-driven verbs are bead J4).
+# Split into three files by concern (house Rule 10), respecting inter-type field
+# dependency order: types_core (CertifiedBracket, UCPMap) → types_algebra
+# (EpsCStarAlgebra, CStarAlgebra, MainIsomorphism) → types_channel (CPMap,
+# ChannelFactorization). All MUST precede show.jl, which dispatches on every type.
+include("types_core.jl")
+include("types_algebra.jl")
+include("types_channel.jl")
 
 # Compact + multi-line Base.show for every type (bead J2; design §2.6).
 include("show.jl")
