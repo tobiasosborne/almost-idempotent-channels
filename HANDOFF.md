@@ -1,6 +1,59 @@
 # HANDOFF.md — almost-idempotent-channels
 
-## ▶▶ LATEST (2026-06-02a, orchestrated, laptop): tex:484 universality thread + the adversarial channel corpus (lethal TOP-8) COMPLETE; the dbo.4 corpus-payoff retrofit STARTED (funcalc + ucp). 5 beads closed; findings C17/C18/D7n/D1/D6
+## ▶▶ LATEST (2026-06-02b, orchestrated, laptop): aic-8de watchdog unification COMPLETE+CLOSED; the dbo.4 corpus-payoff retrofit COMPLETE across ALL 5 modules; FINDINGS §C19; aic-ynu researched+planned
+
+**State:** master FULLY GREEN, clean, pushed (HEAD `059005e`, up to date with origin). `ctest -L fast` 19/19
+(~8s). Full `ctest` includes the heavier slow drivers (test_cstar_build now ~247s with the new blockalg
+T5, under the 600s TIMEOUT; fast laptop gate unaffected). bd: 100 issues; **aic-8de CLOSED**; dbo.2/dbo.4
+advanced; aic-ynu designed. **9 commits this session, all pushed, every Core change hostile-reviewed +
+mutation-proven + ASan-clean.**
+
+**LANDED — `aic-8de` (watchdog unification) CLOSED.** Factored the fork+SIGALRM fail-loud watchdog (9 full
+copies + 2 `expect_abort_with_msg` + bare-forks = the suite's entire fail-loud machinery, ~900 LOC of
+duplication) into ONE canonical `tests/aic_watchdog.{c,h}` + a self-test `tests/test_watchdog.c` (the 19th
+fast test). API: `aic_watchdog_assert_failloud(fn,timeout_s,who,needle[nullable])` + `aic_watchdog_run(...)`.
+**FLINT-robust (load-bearing for every fail-loud test):** captures BOTH stdout+stderr because FLINT aborts
+via `flint_printf`->STDOUT, not stderr. Migrated in 5 reviewed increments (Inc1 funcalc+self-test; Inc2
+eigmult/eigvec/kraus/ucp; Inc3a xo0[ctx-wrapper]/channels/cbnorm_distance/idemp + the capture-both upgrade;
+Inc3b adversarial/projection/errreduce/corner; final funcalc out-of-basin). Zero raw fork/waitpid remain
+outside the helper (swept + verified). Commits `c138e63..21a56f5`.
+
+**LANDED — the dbo.4 corpus-payoff retrofit COMPLETE (all 5 named modules now draw the corpus,
+bound-holds OR fail-loud).** funcalc+ucp were prior; THIS session: **projection** (`test_projection` T7-T11:
+3C bare-Hermitian + 3D blockalg onto the lem_nontriv_projection finder; C=delta/eta=0.0145 + a cross-dim
+coupling C(dim12)/C(dim8)<1.5; hostile-review fixes folded — asymmetric n=5,k=2 disambiguation + the
+overclaim->real coupling), **contraction** (the new nla-7c gen + deliver + 2 fail-loud), **cstar_build**
+(`test_cstar_build` T5 blockalg deliver C=0.0182 bijective + eta=0 oracle vs aic_idemp_decompose). Each
+hostile-reviewed SHIP + mutation-proven + ASan-clean. The standing policy is PROVEN (ucp MUT4b caught a
+real SOURCE regression; the 7c retrofit caught FINDINGS §C19).
+
+**LANDED — `aic-dbo.2`: the nla-7c contraction-edge generator** `aic_adv_contraction_cedge` (fills
+`aic_contraction_opts`; reusable — `aic-dbo.5` will draw it for the sub-ULP c->1 straddle). **FINDINGS §C19
+(spec error caught):** the docs/adversarial/nla.md "7c" recipe `f(x)=c*x` is WRONG — lem_invfun's
+contraction constant is `gamma=||V^{-1} d_x f - 1||` (tex:567/569), so `f=c*x` with V=I contracts at rate
+`1-c` (FAST near c=1 -> toothless cap test); the correct map is `f(x)=(1-c)*x` (rate exactly `c`). Hostile
+review verified the derivation vs tex:567 and PROVED the suite pins the fix (reverting to f=c*x goes RED).
+
+**RESEARCHED+PLANNED — `aic-ynu` (the next consequential bead):** the constructive Artin-Wedderburn block
+decomposition of A=Img Phi (eta=0) realizing **prop_Gamma** (tex:2106) + the Delta/Gamma Kraus reps. THE
+MANDATE; pure C, NO MOSEK/Julia risk. The FULL granular plan (the precise gap, the PRIMARY commutant-eig
+route vs the ALT cstar_build-reuse route, increments I1-I4, the test oracles, the reusable primitives) is
+in the **bead design** — run `bd show aic-ynu`. In one line: `aic_idemp_decompose` already gives the `w` +
+`Gamma` matrices; aic-ynu adds num_blocks / dim L_j / dim E_j + the block-diagonalizing `W` + the explicit
+`Tr_{E_j}` prop_Gamma form + the Kraus reps. NOT blocked (degenerate-eig resolved via aic-4td).
+
+**NEXT (orchestrated):** (1) **implement aic-ynu I1-I4** (plan in the bead; start with I1 = the new
+`aic_idemp_wedderburn` struct + the commutant-eig block split, tested vs `make_block_cond_exp(5,2)` +
+`make_noiseless_subsystem(2,2)`). (2) the **Julia deliverable** (aic-ssu/aic-jhe/aic-obc — SERIAL Julia;
+MOSEK risk: the eig-free `aic-ssu` bracket avoids MOSEK, the tight `aic-jhe` needs it — gate carefully,
+a MOSEK hang is the one escalation risk). (3) the remaining **~16 nla matrix gens** (Kahan 5b
+catastrophic-cancellation is the classic arb-justifier) + **`aic-dbo.5`** near-boundary fail-loud stress
+(now unblocked by the 7c gen). (4) the dbo.4 long-tail modules (dhom/errreduce/opspace/corner/ecstar/
+factorize — mostly cross-test-covered, optional).
+
+---
+
+## ▶▶ PRIOR (2026-06-02a, orchestrated, laptop): tex:484 universality thread + the adversarial channel corpus (lethal TOP-8) COMPLETE; the dbo.4 corpus-payoff retrofit STARTED (funcalc + ucp). 5 beads closed; findings C17/C18/D7n/D1/D6
 
 **State:** master FULLY GREEN — `ctest -L fast` 18/18 (~3.4s); full `ctest` 40/40; working tree
 clean, up to date with `origin/master` (HEAD `c0a5347`). bd: 100 issues (imported from JSONL at
