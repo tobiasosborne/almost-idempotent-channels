@@ -102,20 +102,55 @@ function Base.show(io::IO, ::MIME"text/plain", v::MainIsomorphism)
     print(io,   "  iso defect ∈ ", sprint(show, v.isodefect))
 end
 
+# ----- CPMap (rectangular CPTP, Appendix B7/B10) -----
+
+# compact: "CPMap(2 → 4, 8 Kraus)"
+Base.show(io::IO, c::CPMap) =
+    print(io, "CPMap(", c.dim_in, " → ", c.dim_out, ", ", length(c.kraus), " Kraus)")
+
+function Base.show(io::IO, ::MIME"text/plain", c::CPMap)
+    println(io, "CPMap: CPTP  C^", c.dim_in, " → C^", c.dim_out,
+            "   (Schrödinger: ρ ↦ Σ K_a ρ K_a†)")
+    println(io, "  Kraus operators: ", length(c.kraus),
+            "   (each ", c.dim_out, "×", c.dim_in, ")")
+    defect = opnorm(sum(K' * K for K in c.kraus) - I)
+    # An η>0 factorize `decode` channel is only O(η)-TP (the §C14 PSD-cone clip),
+    # so a measured defect of ~1e-6 is EXPECTED, not a bug — say "approx (O(η))"
+    # rather than a bald "no" so the show is honest about the certificate level.
+    if defect ≤ 1e-9
+        print(io, "  trace-preserving: yes        (‖Σ K_a† K_a − I_", c.dim_in, "‖ = ",
+              _fmtnum(defect), ")")
+    elseif defect ≤ 1e-4
+        print(io, "  trace-preserving: approx O(η) (‖Σ K_a† K_a − I_", c.dim_in, "‖ = ",
+              _fmtnum(defect), ";  the cb-norm round-trip bracket is the certificate)")
+    else
+        print(io, "  trace-preserving: no         (‖Σ K_a† K_a − I_", c.dim_in, "‖ = ",
+              _fmtnum(defect), ")")
+    end
+end
+
 # ----- ChannelFactorization (the showcase) -----
+#
+# UNAMBIGUOUS by construction (Appendix B7): the header carries the OBSERVABLE
+# identity Φ ≈ Δ Υ; the body lists the two CHANNELS by their physical role and
+# dual binding (encode = Υ* : B → B(H); decode = Δ* : B(H) → B). The word
+# "encode" is NEVER placed next to "Dec=Δ*" (the §C13 conflation trap).
 
 # compact: "ChannelFactorization(Φ ≈ Δ Υ, B = ⊕ M_d [1, 1])"
 Base.show(io::IO, F::ChannelFactorization) =
     print(io, "ChannelFactorization(Φ ≈ Δ Υ, B = ⊕ M_d ", F.B.blocks, ")")
 
 function Base.show(io::IO, ::MIME"text/plain", F::ChannelFactorization)
-    println(io, "ChannelFactorization  Φ ≈ Δ Υ   through  B = ⊕ M_d, blocks = ", F.B.blocks)
+    enc, dec = F.encode, F.decode
+    println(io, "ChannelFactorization  Φ ≈ Δ Υ  through  B = ⊕ M_d, blocks = ", F.B.blocks)
     # right-justify the two Kraus counts so the columns line up (§2.6).
-    rΔ, rΥ = length(F.Δ), length(F.Υ)
-    w = max(ndigits(rΔ), ndigits(rΥ))
-    println(io, "  encode  Δ: B → B(H)   (", lpad(rΔ, w), " Kraus,  Dec = Δ*)")
-    println(io, "  decode  Υ: B(H) → B   (", lpad(rΥ, w), " Kraus,  Enc = Υ*)")
-    println(io, "  ‖ΔΥ − Φ‖_cb   ∈ ", sprint(show, F.delups), "     (encode∘decode ≈ Φ)")
-    println(io, "  ‖ΥΔ − 1_B‖_cb ∈ ", sprint(show, F.upsdel), "     (decode∘encode ≈ 1_B)")
+    re, rd = length(enc.kraus), length(dec.kraus)
+    w = max(ndigits(re), ndigits(rd))
+    println(io, "  encode = Υ* : B → B(H)   (", lpad(re, w), " Kraus,  ",
+            enc.dim_in, "→", enc.dim_out, " CPTP)")
+    println(io, "  decode = Δ* : B(H) → B   (", lpad(rd, w), " Kraus,  ",
+            dec.dim_in, "→", dec.dim_out, " CPTP)")
+    println(io, "  ‖ΔΥ − Φ‖_cb   ∈ ", sprint(show, F.delups), "     (round-trip ΔΥ ≈ Φ)")
+    println(io, "  ‖ΥΔ − 1_B‖_cb ∈ ", sprint(show, F.upsdel), "     (round-trip ΥΔ ≈ 1_B)")
     print(io,   "  η proxy = ", _fmtnum(F.eta_proxy), ",  ε used = ", _fmtnum(F.eps_used))
 end

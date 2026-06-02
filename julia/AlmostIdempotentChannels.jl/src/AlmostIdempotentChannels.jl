@@ -29,6 +29,12 @@ package pattern. NO PYTHON. Design: docs/research/julia_package_design.md §3, �
 module AlmostIdempotentChannels
 
 using LinearAlgebra
+# Appendix B6: the `factorize` verb EXTENDS LinearAlgebra.factorize (shared
+# binding) rather than defining a fresh exported `factorize`, so a user doing
+# `using AlmostIdempotentChannels, LinearAlgebra` gets NO ambiguity (ambiguity
+# only arises between two DIFFERENT bindings of one name). The method's first
+# arg is our UCPMap, so it is not type piracy (Aqua-clean).
+import LinearAlgebra: factorize
 using Printf
 
 # Native-library lifecycle: Preferences libpath, dlopen handle, dlsym'd symbol
@@ -57,17 +63,25 @@ include("show.jl")
 include("ccall.jl")
 include("ccall_factorize.jl")
 
+# The prop_P basin pre-check (bead J4, Appendix B8): keeps the C SIGABRT (out of
+# the ρ(Φ²−Φ) < 1/4 basin) away from the user's Julia session. Included before
+# api.jl, which calls _assert_in_basin.
+include("basin.jl")
+
+# The HIGH-LEVEL idiomatic API (bead J4 aic-exa.7): the verbs humans/agents touch
+# — certified_defect, associated_algebra, main_isomorphism, factorize (extends
+# LinearAlgebra.factorize, Appendix B6), encode/decode/choi, and the UCPMap
+# idempotency_defect method. Included AFTER the ccall wrappers (it calls
+# _assoc_summary/_main_iso_summary/_factorize_artifacts) and the types.
+include("api.jl")
+
 export choi_diff, eta_eigfree, eta_idempotence, idempotency_defect,
        diamond_norm_watrous, diamond_norm_watrous_primal, diamond_norm_dual,
        libaic_path, set_libaic_path!
 
-# ----- the value-types + their accessors (bead J2) -----
-# NOTE (incremental, per the bead): we export only the types and the accessors
-# J2 OWNS. The high-level verbs that need C data (certified_defect,
-# associated_algebra, main_isomorphism, factorize, encode, decode, choi) are bead
-# J4 and are NOT exported here (no method yet).
-export UCPMap, EpsCStarAlgebra, CStarAlgebra, MainIsomorphism, ChannelFactorization,
-       CertifiedBracket
+# ----- the value-types -----
+export UCPMap, CPMap, EpsCStarAlgebra, CStarAlgebra, MainIsomorphism,
+       ChannelFactorization, CertifiedBracket
 # UCPMap accessors:
 export n, nkraus, kraus, isunital            # Base.adjoint is extended, not exported
 # CertifiedBracket accessors (Base.in/minimum/maximum are Base extensions):
@@ -78,8 +92,13 @@ export blocks, dim_B, n_B
 export dim, ambient, epsilon
 # MainIsomorphism accessors:
 export cbnorm_forward, cbnorm_inverse, isodefect
-# ChannelFactorization accessors (encode/decode are bead J4):
+# ChannelFactorization accessors:
 export algebra, delups_defect, upsdel_defect
+# ----- the high-level verbs (bead J4 api.jl) -----
+# `factorize` is NOT exported here separately — it is the shared LinearAlgebra
+# binding we imported above; re-export it so it is reachable bare (Appendix B6).
+export certified_defect, associated_algebra, main_isomorphism, factorize,
+       encode, decode, choi, iscptp
 
 # ----- marshalling helpers (Julia ComplexF64 matrices <-> flat C arrays) -----
 

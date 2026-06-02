@@ -1078,3 +1078,38 @@ build (§4.2); the C2–C5 signatures (§4.3) MODULO B1/B2; `CertifiedBracket` w
 IntervalArithmetic (§7); the file layout (§5); Preferences libpath + dlopen/RTLD verbatim
 (§6.1); MOSEK extension via `_diamond_value_impl` + error hints (§3); the bead-by-bead
 checklist (§9). Serial-Julia + no-build-during-julia is the global execution invariant.
+
+**B7 — encode/decode need a rectangular `Channel` type; `UCPMap` is square-only (corrects §2.4).**
+The encode/decode CHANNELS (Dec=Δ\*, Enc=Υ\*) are CPTP maps between DIFFERENT spaces (B↔B(H)), so
+their Kraus are RECTANGULAR — `decode`: n_B×N, `encode`: N×n_B — and do NOT fit `UCPMap` (square n×n
+self-map Kraus, single dim n). §2.4's "return as a check=false UCPMap" is WRONG. [J4] adds a `Channel`
+type (fields: Kraus, dim_in, dim_out; Schrödinger action ρ↦Σ K_a ρ K_a†; predicate `iscptp` = Σ K_a†K_a =
+I_{dim_in}, trace-preserving) and returns `encode(F)::Channel` (dim_in=n_B, dim_out=N), `decode(F)::Channel`
+(dim_in=N, dim_out=n_B). `ChannelFactorization` stores these two `Channel`s (revising J2's Δ/Υ-Kraus
+fields) + the certified `delups`/`upsdel` brackets. Add a `Base.show` for `Channel`.
+
+**B8 — out-of-basin input ABORTS the C pipeline; Julia cannot catch a C `abort()` (Rule 4 vs UX).**
+`associated_algebra`/`main_isomorphism`/`factorize` call C cores that hard-assert when ρ(Φ²−Φ) ≥ 1/4 (the
+prop_P basin, §C15); SIGABRT would kill the user's Julia session. [J4] MUST pre-check the basin IN JULIA
+before the C call: a cheap double-precision spectral-radius estimate of Φ²−Φ via power iteration that
+APPLIES the Kraus map (Φ(X)=Σ K_a† X K_a; do NOT form the superoperator — the project avoids it, vec/Kron
+trap), and throw a clear `ArgumentError` naming the estimated ρ and pointing at `certified_defect` when
+ρ ≳ 1/4 (conservative margin). `certified_defect` itself is always safe (eig-free, never aborts). Document
+that severely out-of-basin input may still abort if the estimate under-reads (best-effort guard).
+
+**B10 — the rectangular channel type is `CPMap`, NOT `Channel` (Base.Channel clash; caught in J4).** A type
+named `Channel` collides with `Base.Channel` (the concurrency primitive), so `using AlmostIdempotentChannels`
+makes a bare `Channel` ambiguous — same class as the `Factorization`/`LinearAlgebra` clash. The B7 type is
+named **`CPMap`** (completely-positive map; mirrors `UCPMap` — observable unital-CP self-map ↔ state CP
+channel). `encode(F)::CPMap`, `decode(F)::CPMap`, `ChannelFactorization.{encode,decode}::CPMap`. Invariant:
+`names(AlmostIdempotentChannels) ∩ names(Base) == []` and `∩ names(LinearAlgebra) == [:factorize]` (the one
+shared, same binding). decode is only O(η)-trace-preserving (the §C14 PSD-cone clip): `iscptp(decode(F))` is
+false at the default `atol=1e-9` — the `upsdel`/`delups` cb-norm round-trip brackets are the rigorous
+certificate (Appendix B4); the `CPMap` show prints "trace-preserving: approx O(η)" with the measured defect.
+
+**B9 — cross-impl test conditioning ([T], from J3).** The oblique `eps_assoc` SCALAR is ill-conditioned
+across Julia-LAPACK vs C-FLINT `exp(iH)` (~6% from a 1-ULP input difference, amplified by the near-degenerate
+oblique algebra — the spectral-sensitivity CLAUDE.md warns of). Marshalling is byte-exact. Julia tests must
+cross-check via the WELL-CONDITIONED quantities — η=0 oracles (machine-ε), `factorize` `eta_proxy`, cb-vs-SDP
+bracket MEMBERSHIP, and the B1 dec/enc dims — NOT bit-equality of `eps_assoc` (assert it by magnitude/
+order-of-magnitude only).
