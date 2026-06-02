@@ -50,6 +50,27 @@ void aic_cbnorm_eigfree_ball_choi(arb_t lo, arb_t hi, const acb_mat_t J,
 void aic_cbnorm_eigfree_ball(arb_t lo, arb_t hi, const aic_ucp_kraus *phi,
                              slong prec);
 
+/* Eig-free certified two-sided bracket on the diamond norm ||f||_⋄ of a GENERAL
+ * (RECTANGULAR, non-self-map) Hermiticity-preserving map f: M_in -> M_out, from
+ * its GOLDEN-RULE Convention-A Choi J (.tex:1538-1540; the cb-norm of th_main_ext's
+ * isomorphism v: B -> A is reached via the adjoint duality ||v||_cb = ||v*||_⋄,
+ * Watrous 2009 — feed J = J(v*) here, NOT a transpose). For f: M_in -> M_out the
+ * Choi (aic_opspace.h GOLDEN RULE, INPUT-major) is the square (d_in*d_out) x
+ * (d_in*d_out) matrix J[s*d_out+i, t*d_out+j] = f(E_st)[i,j]. On return the arb
+ * balls satisfy, RIGOROUSLY,
+ *   arb_lower(lo) <= ||f||_⋄ <= arb_upper(hi),
+ *   with lo ~ ||J||_F / d_in,   hi ~ d_out * ||J||_F.
+ * (Derivation in aic_cbnorm.c: the maximally-entangled INPUT state gives the
+ * ||J||_F/d_in lower bound; the dual feasible point Y0=Y1=||J||_F I gives the
+ * d_out*||J||_F upper bound — both eig-free, solver-free, never abort. This
+ * GENERALIZES aic_cbnorm_eigfree_ball_choi, whose self-map d_in=d_out=n and tighter
+ * 2*||J||_F upper relies on the self-map P+Q=I_{n^2} primal that does NOT hold for
+ * a rectangular map, so the rect upper is the looser d_out*||J||_F.) f=0 (J=0)
+ * gives [0,0]. nrows(J)==ncols(J)==d_in*d_out and d_in,d_out>=1 are ASSERTED (fail
+ * loud, Rule 4). `lo`, `hi` are caller-initialised arb_t. FINDINGS §C12, §D2. */
+void aic_cbnorm_eigfree_ball_choi_rect(arb_t lo, arb_t hi, const acb_mat_t J,
+                                       slong d_in, slong d_out, slong prec);
+
 /* Eig-free certified two-sided bracket on the GENERAL cb-norm / diamond distance
  * ||Phi - Psi||_cb between two UCP SELF-maps (dim_K == dim_H == n for BOTH, all
  * four dims equal, asserted). Lambda = Phi - Psi is Hermiticity-preserving (a

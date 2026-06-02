@@ -101,3 +101,50 @@ void aic_cbnorm_eigfree_ball(arb_t lo, arb_t hi, const aic_ucp_kraus *phi,
     acb_mat_clear(J);
     aic_ucp_kraus_clear(&phi2);
 }
+
+/* aic_cbnorm.h — RECTANGULAR eig-free bracket on ||f||_⋄ for f: M_in -> M_out.
+ *
+ * THE DERIVATION (Law 1 — recorded in full so the bound survives a rewrite).
+ * Let f be Hermiticity-preserving, J = J(f) its GOLDEN-RULE Convention-A Choi
+ * (INPUT s,t MAJOR stride d_out; OUTPUT i,j MINOR), a (d_in*d_out) x (d_in*d_out)
+ * Hermitian (indefinite) matrix. The Watrous diamond-norm dual (rect, pinned
+ * convention, src/aic_cbnorm_certify_rect.c:9-20) is
+ *   ||f||_⋄ = min (1/2)(lambda_max(Tr_out Y0) + lambda_max(Tr_out Y1))
+ *             s.t. [[Y0,-J],[-J^dag,Y1]] >= 0,  Y0,Y1 >= 0,
+ * Tr_out = partial trace of the MINOR/OUTPUT factor (size d_out).
+ *
+ * RIGOROUS UPPER BOUND (eig-free). Take the FEASIBLE point Y0 = Y1 = ||J||_F * I_D
+ * (D = d_in*d_out). Block PSD: [[Y0,-J],[-J^dag,Y1]] = ||J||_F I_{2D} -
+ * [[0,J],[J^dag,0]]; the off-block-antidiagonal matrix has eigenvalues +-sigma_k(J),
+ * |sigma_k| <= ||J||_op <= ||J||_F, so the block is PSD. Y0,Y1 >= 0 trivially. The
+ * MINOR-factor partial trace of ||J||_F I_D is ||J||_F * d_out * I_{d_in}, so
+ * lambda_max(Tr_out Y0) = ||J||_F * d_out, giving
+ *   ||f||_⋄ <= (1/2)(||J||_F d_out + ||J||_F d_out) = d_out * ||J||_F.
+ *
+ * RIGOROUS LOWER BOUND (eig-free). The diamond norm is a sup over INPUT states;
+ * for the normalized maximally-entangled input rho = omega/d_in on M_in (x) M_in,
+ * (id_in (x) f)(omega) = J (Convention-A), so (id (x) f)(rho) = J/d_in and
+ *   ||f||_⋄ >= ||(id (x) f)(rho)||_1 = ||J||_1 / d_in >= ||J||_2 / d_in
+ *           = ||J||_F / d_in   (Schatten ||.||_1 >= ||.||_2).
+ *
+ * So the certified bracket is  [ ||J||_F / d_in ,  d_out * ||J||_F ].  Eig-free
+ * (only ||J||_F, a certified arb ball), solver-free, never aborts; f=0 (J=0)
+ * gives [0,0]. NO LAPACK — this rung stays certified, like the self-map routine. */
+void aic_cbnorm_eigfree_ball_choi_rect(arb_t lo, arb_t hi, const acb_mat_t J,
+                                       slong d_in, slong d_out, slong prec)
+{
+    slong D = d_in * d_out;
+    assert(d_in >= 1 && d_out >= 1);
+    assert(acb_mat_nrows(J) == D && acb_mat_ncols(J) == D);
+
+    arb_t fro;
+    arb_init(fro);
+    aic_mat_frobenius_norm(fro, J, prec); /* certified ball enclosing ||J||_F */
+
+    /* lo = ||J||_F / d_in. */
+    arb_div_ui(lo, fro, (ulong) d_in, prec);
+    /* hi = d_out * ||J||_F. */
+    arb_mul_ui(hi, fro, (ulong) d_out, prec);
+
+    arb_clear(fro);
+}
