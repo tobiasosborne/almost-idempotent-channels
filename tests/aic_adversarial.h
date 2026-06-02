@@ -40,6 +40,7 @@
  *   chan_depol_boundary domain 2A, tex:516-525 : eta->1/4 theta(2Phi-1) basin edge
  *   chan_unital_defect  domain 1D, tex:432/672 : unital-but-barely Phi(I)=I+delta_u E
  *   chan_carrier_dropout domain 1C, tex:1724/1731 : near-degenerate carrier, rank near-drop
+ *   chan_carrier_dropout_dense 1C-dense, tex:1724/1731 : DENSIFIED non-normal carrier (straddle + convention-sensitive)
  *   chan_blockalg       domain 3D, tex:484/1249 : eps~c/n dimension-blowup block algebra (+)_j M_d
  *   chan_noncomm_boundary README:57, tex:347/378 : NON-COMMUTATIVE eta_cb=1/4-kappa boundary (id(x)cb_op_gap)
  *   chan_conc_defect    domain 2B, tex:2192-2204/2385-2422 : RANK-1 defect on a near-degenerate subspace (gap_sub)
@@ -207,6 +208,39 @@ void aic_adv_chan_unital_defect(aic_ucp_kraus *out, slong d, double delta_u,
  * aic_ucp_kraus_init'd HERE (dim_K=dim_H=d, r=1; caller aic_ucp_kraus_clears it). */
 void aic_adv_chan_carrier_dropout(aic_ucp_kraus *out, slong d, double gap,
                                   slong prec);
+
+/* fam1C-dense — DENSIFIED near-degenerate carrier (domain.md 1C; lem_carrier
+ * .tex:1724, cor_carrier .tex:1731; FINDINGS §D7 the prec floor). The hostile-
+ * review follow-up to the diagonal 1C (aic_adv_chan_carrier_dropout), closing the
+ * two gaps that family leaves: it exercises the STRADDLE/fail-loud contract of
+ * aic_ucp_carrier_rank (the diagonal carrier's point ball only ever DECIDES) and
+ * it is CONVENTION-SENSITIVE (the diagonal Hermitian 1C cannot catch a
+ * sum K K^dag vs sum K^dag K bug). A self-map on B(C^d), d>=2, with a SINGLE
+ * NON-NORMAL Kraus operator
+ *   K_0 = U diag(1, ..., 1, sqrt(gap)) V^dag   on C^d,   gap in (0, 1],
+ * U(cos=3/5,sin=4/5) != V(cos=5/13,sin=12/13) being two DIFFERENT fixed rational-
+ * Givens chain unitaries (no RNG). The carrier
+ *   Q = sum_a K_a K_a^dag = K_0 K_0^dag = U diag(1, ..., 1, gap) U^dag
+ * is NON-DIAGONAL, spectrum {1 (x)(d-1), gap} (same as diagonal 1C but dense
+ * eigenvectors). KNOB gap in (0,1]; asserts gap>0, d>=2 (Rule 4, fail loud). NOT
+ * unital for gap!=1 (deliberate carrier-only fixture; a unital padding would kill
+ * the rank near-drop, same rationale as the diagonal 1C).
+ * Adversarial properties (the two gaps closed):
+ *   (STRADDLE) MEASURED prec=53, d=3: the densified small-cluster ball radius
+ *     ~1.5e-15 STRADDLES thr = dim_K*2^-52*||Q||_F ~9.4e-16 for gap below ~1e-15,
+ *     so aic_ucp_carrier_rank fail-loud-ABORTS ("STRADDLES"); at prec>=64 the ball
+ *     radius drops to ~7e-19 and it certifies (rank d for gap>>thr, d-1 for the
+ *     near-zero gap). The diagonal 1C's point ball can NEVER reach this (FINDINGS
+ *     §D7, aic_adversarial_carrier.c:50-64).
+ *   (CONVENTION) certified ||sum K K^dag - sum K^dag K||_op > 0 (MEASURED 0.223 at
+ *     d=3 gap=0.5, up to 0.605 at d=4 gap->0), because sum K^dag K =
+ *     V diag(1,...,1,gap) V^dag differs from the carrier sum K K^dag =
+ *     U diag(1,...,1,gap) U^dag (U!=V). The diagonal Hermitian 1C gives EXACTLY 0.
+ * gap=1 REDUCTION: K_0 = U V^dag (unitary), Q = 1_d, EXACT full-rank d carrier
+ * oracle (and unital then). `out` is aic_ucp_kraus_init'd HERE (dim_K=dim_H=d,
+ * r=1; caller aic_ucp_kraus_clears it). See aic_adversarial_carrier_dense.c. */
+void aic_adv_chan_carrier_dropout_dense(aic_ucp_kraus *out, slong d, double gap,
+                                        slong prec);
 
 /* fam3D — dimension-blowup block algebra (domain.md:416-449; the eps~c/n regime
  * tex:484, the explicit B-diagonal ||D||=1 vs naive Haar error ~ n, tex:1249). A

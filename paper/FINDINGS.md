@@ -1227,6 +1227,34 @@ with the concrete evidence from where they bit.
   stays at/below the eigenvalue-ball radii (~1e-31), so a broken `U` (defect ~1) still fails loud; OR
   raise prec for large `n`. Left for a separate review-gated C2 change (Rule 9), not done in step D.
 
+### D7n. Inspect a carrier `Q` AT its build prec — a stricter eig prec trips the relative Hermiticity assert (`aic-v5f`)
+- **Status:** RECORDED (2026-06-02, surfaced building the DENSIFIED carrier self-test
+  `tests/test_adversarial.c` test_fam1c_carrier_dense, generator `tests/aic_adversarial_carrier_dense.c`).
+  An IMPL bug, not a routine bug; the lesson is load-bearing for any future carrier/Choi test that
+  builds at one prec and inspects at another.
+- **What:** the densified carrier `Q = U diag(1,…,1,gap) U†` is formed by two `acb_mat_mul` at the
+  BUILD prec P. Its off-diagonal pair `Q[i,j], Q[j,i]` are then equal only to ~`2^-P` (radii ~`4e-38`
+  at P=128). Feeding that `Q` to `aic_mat_eig_hermitian_multiple` / `aic_ucp_carrier_rank` at a
+  STRICTER prec P' > P makes `aic_mat_int_assert_hermitian` use tol `~2^-(P'-8)` (e.g. `~2.6e-75` at
+  P'=256), and the prec-P rounding asymmetry `|Q[i,j] − conj(Q[j,i])| ~ 1e-38` EXCEEDS it → fail-loud
+  abort ("input not Hermitian … relative tol", bead aic-2yo). Measured: a `Q` built at P=128 then
+  eig'd at P'=256 aborts; built AND eig'd at the same prec (53/128/256) it is fine.
+- **The rule:** build and inspect a carrier at the SAME prec (or inspect at prec ≤ build prec). The
+  self-test runs the CERTIFY teeth entirely at `PREC=256` (build + `carrier_smallest_eig` + rank all
+  at 256) and the STRADDLE tooth entirely at prec=53; it never crosses prec on one `Q`. This is the
+  faithful-rounding analogue of §C5/§D7: the Hermiticity radius of a product is set by the prec it was
+  computed at, and a tighter downstream tol must not assume more symmetry than that prec delivered.
+- **The straddle/convention calibration it sits under (the bead's deliverable).** Densified carrier
+  `Q = U diag(1,…,1,gap) U†` (U = chained rational Givens 3-4-5; the non-normal Kraus `K = U diag V†`,
+  V = chained 5-12-13): at **prec=53** the small/zero-cluster ball radius is `~1.5e-15` (d=3) and
+  `thr = dim_K·2^-52·‖Q‖_F ~9.4e-16`, so for `gap ≲ 1e-15` the ball STRADDLES thr and
+  `aic_ucp_carrier_rank` fail-loud-aborts ("STRADDLES") — the no-straddle gap the DIAGONAL 1C
+  (point ball) could never reach. At **prec≥64** the ball radius drops to `~7e-19` (64) / `~4e-38`
+  (128) / `~1e-75` (256) and it certifies (rank d for gap≫thr, d−1 for the near-zero gap). The
+  non-normal `U≠V` Kraus gives convention gap `‖Σ K K† − Σ K† K‖_op = 0.223` (d=3,gap=0.5) … `0.605`
+  (d=4,gap→0), vs `~3e-77` for the diagonal Hermitian 1C — so a carrier-side `Σ K K†` vs `Σ K† K`
+  convention bug is now catchable. Mirrors the FINDINGS §D7 Choi→Kraus prec floor at the carrier level.
+
 ### D8. Increment-2 hostile-review fixes — self-certifying on-H residual (finding-1) + per-eigenvalue Kraus for lumped-distinct clusters (finding-2) — `aic-4td`
 - **Status:** RESOLVED (2026-06-01, the inc-2 `aic-4td` hostile-review gating). Two MAJOR
   soundness/honesty gaps closed; both used data the routines already held. The recurring lesson:

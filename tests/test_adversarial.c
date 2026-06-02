@@ -15,9 +15,15 @@
  * aic_mat_frobenius_norm, aic_mat_singular_values, aic_mat_herm_max_eig); a property
  * claimed sharp that produced a straddling ball fails loud (Rule 4).
  */
+#define _POSIX_C_SOURCE 200809L
 #include <complex.h>
 #include <math.h>
+#include <signal.h>
+#include <stdio.h>
+#include <string.h>
 #include <stdlib.h>
+#include <unistd.h>
+#include <sys/wait.h>
 
 #include <flint/acb.h>
 #include <flint/acb_mat.h>
@@ -926,6 +932,268 @@ static void test_fam1c_carrier_dropout(void)
     arb_clear(mn);
 }
 
+/* ---- fam1C-dense: DENSIFIED non-normal carrier (domain.md 1C, lem_carrier
+ * .tex:1724 / cor_carrier .tex:1731; FINDINGS §D7 the prec floor). The hostile-
+ * review follow-up (bead aic-v5f) to the diagonal 1C. It closes the two gaps the
+ * diagonal family leaves: (a) the STRADDLE/fail-loud contract of
+ * aic_ucp_carrier_rank (the diagonal point ball only ever DECIDES) and (b)
+ * CONVENTION-SENSITIVITY sum K K^dag != sum K^dag K (the diagonal Hermitian 1C
+ * gives 0).
+ *
+ * Teeth (Rule 5: every check asserts a value/bound; Rule 6 cross-checks):
+ *  (1) CERTIFY (gap>>thr): at prec=128 the dense carrier still certifies rank d
+ *      and agrees with the double path — and the small carrier eig == gap (the
+ *      construction pin; a wrong carrier marginal misses it). Confirms the dense
+ *      carrier did not lose the certify path the diagonal 1C had.
+ *  (2) STRADDLE (near thr): at prec=53, gap=1e-16, the densified small-cluster
+ *      ball (radius ~1.5e-15, MEASURED) STRADDLES thr ~9.4e-16 -> aic_ucp_carrier_rank
+ *      fail-loud-ABORTS ("STRADDLES"). Tested via the fork+SIGALRM watchdog so the
+ *      test binary survives the abort. At prec=128 the SAME gap certifies the DROP
+ *      to d-1 (the §D7 prec floor: ball radius ~4e-38 << thr). This is the path the
+ *      diagonal 1C could NOT reach (its gap eigenvalue is a point ball).
+ *  (3) CONVENTION-SENSITIVE: certified ||sum K K^dag - sum K^dag K||_op > 0 (a
+ *      stated gap, MEASURED ~0.223 at d=3 gap=0.5), distinguishing the non-normal
+ *      densified Kraus from the diagonal Hermitian 1C (where it is exactly 0). The
+ *      tooth a carrier-side convention bug (computing the WRONG marginal) trips.
+ *
+ * MUTATION-PROVEN (Rule 7), confirmed RED then restored byte-identical:
+ *  - M1: make K NORMAL (use the SAME rational unitary for U and V, K = U diag U^dag)
+ *    => the convention gap collapses to ~0 (tooth 3 RED). The straddle tooth STAYS
+ *    GREEN: Q = U diag U^dag is still DENSE (U applied), so the zero-cluster ball
+ *    still straddles thr at prec=53 and carrier_rank still aborts. So M1 cleanly
+ *    ISOLATES the convention tooth (the straddle tooth is proven by M2).
+ *  - M2: mis-set the straddle gap (use gap=0.5 instead of 1e-16 in the straddle
+ *    child) => no straddle at prec=53, child certifies rank d and exits 0 => the
+ *    SIGABRT expectation goes RED.
+ */
+/* The straddle prec (53): the densified small-cluster ball (~1.5e-15) STRADDLES
+ * thr (~9.4e-16) and aic_ucp_carrier_rank fail-loud-aborts. The CERTIFY teeth run
+ * at PREC (256, headroom): the ball drops to ~1e-75 and decides cleanly. The
+ * carrier MUST be inspected AT its build prec — a Q built at prec P then eig'd at
+ * a stricter prec > P trips the relative Hermiticity assert on the prec-P
+ * rounding asymmetry (FINDINGS §D7n; the bug this self-test hit during impl). */
+#define V5F_STRADDLE_PREC 53     /* small-cluster ball straddles thr here */
+#define V5F_WATCH_S 20           /* watchdog: a child alive past this is a HANG */
+
+/* SIGALRM watchdog (mirror of tests/test_xo0_failloud.c / test_eigvec.c): run a
+ * void(void) child in a fork, capture its stderr, bound it with a SIGALRM, and
+ * return the raw wait status + whether it finished (1) or was killed for hanging
+ * (0). Lets a Rule-4 abort() be asserted without crashing this test binary. */
+typedef void (*v5f_child_fn)(void);
+static volatile pid_t v5f_watch_pid = 0;
+static volatile sig_atomic_t v5f_timed_out = 0;
+static void v5f_alarm(int sig)
+{
+    (void) sig;
+    v5f_timed_out = 1;
+    if (v5f_watch_pid > 0) kill(v5f_watch_pid, SIGKILL);
+}
+static int v5f_run_child(v5f_child_fn fn, int *status, char *err, size_t errsz)
+{
+    char tmpl[] = "/tmp/aic_v5f_err_XXXXXX";
+    int efd = mkstemp(tmpl);
+    AIC_CHECK_MSG(efd >= 0, "v5f_run_child: mkstemp failed");
+    fflush(NULL);
+    pid_t pid = fork();
+    AIC_CHECK_MSG(pid >= 0, "v5f_run_child: fork failed");
+    if (pid == 0) {
+        dup2(efd, STDERR_FILENO);
+        close(efd);
+        fn();
+        _exit(0);                 /* reached only if fn did NOT abort */
+    }
+    v5f_watch_pid = pid;
+    v5f_timed_out = 0;
+    struct sigaction sa = {0}, old;
+    sa.sa_handler = v5f_alarm;
+    sigaction(SIGALRM, &sa, &old);
+    alarm(V5F_WATCH_S);
+    int st = 0;
+    pid_t w;
+    do { w = waitpid(pid, &st, 0); } while (w < 0 && !v5f_timed_out);
+    alarm(0);
+    sigaction(SIGALRM, &old, NULL);
+    if (w < 0) waitpid(pid, &st, 0);
+    lseek(efd, 0, SEEK_SET);
+    ssize_t r = read(efd, err, errsz - 1);
+    err[(r > 0) ? (size_t) r : 0] = '\0';
+    close(efd);
+    unlink(tmpl);
+    *status = st;
+    return v5f_timed_out ? 0 : 1;
+}
+
+/* The straddle child: build the dense carrier at gap=1e-16, prec=53, and call
+ * aic_ucp_carrier_rank — which must ABORT ("STRADDLES"). The d=3 dimension and
+ * gap are the MEASURED straddle window (file docstring / probe). */
+static void v5f_child_straddle(void)
+{
+    aic_ucp_kraus phi;
+    aic_adv_chan_carrier_dropout_dense(&phi, 3, 1e-16, V5F_STRADDLE_PREC);
+    acb_mat_t Q;
+    acb_mat_init(Q, 3, 3);
+    aic_ucp_carrier_Q(Q, &phi, V5F_STRADDLE_PREC);
+    (void) aic_ucp_carrier_rank(Q, 3, V5F_STRADDLE_PREC);  /* must abort */
+    acb_mat_clear(Q);
+    aic_ucp_kraus_clear(&phi);
+}
+
+/* ||sum K K^dag - sum K^dag K||_op for a Kraus channel (the convention gap). */
+static double convention_gap_op(const aic_ucp_kraus *phi)
+{
+    slong dk = phi->dim_K, dh = phi->dim_H;
+    acb_mat_t Kd, KKd, KdK, term, diff;
+    acb_mat_init(Kd, dh, dk);
+    acb_mat_init(KKd, dk, dk);          /* sum K K^dag (carrier, on K) */
+    acb_mat_init(KdK, dh, dh);          /* sum K^dag K (= 1_H if unital) */
+    acb_mat_init(term, dk, dk);
+    acb_mat_zero(KKd);
+    acb_mat_zero(KdK);
+    for (slong a = 0; a < phi->r; a++) {
+        acb_mat_conjugate_transpose(Kd, phi->K[a]);
+        acb_mat_mul(term, phi->K[a], Kd, PREC);
+        acb_mat_add(KKd, KKd, term, PREC);
+        acb_mat_clear(term);
+        acb_mat_init(term, dh, dh);
+        acb_mat_mul(term, Kd, phi->K[a], PREC);
+        acb_mat_add(KdK, KdK, term, PREC);
+        acb_mat_clear(term);
+        acb_mat_init(term, dk, dk);
+    }
+    /* dim_K == dim_H here (self-map), so the two are comparable d x d matrices. */
+    acb_mat_init(diff, dk, dk);
+    acb_mat_sub(diff, KKd, KdK, PREC);
+    arb_t g;
+    arb_init(g);
+    aic_mat_opnorm(g, diff, PREC);
+    double gv = arf_get_d(arb_midref(g), ARF_RND_UP) + mag_get_d(arb_radref(g));
+    arb_clear(g);
+    acb_mat_clear(diff);
+    acb_mat_clear(term);
+    acb_mat_clear(KdK);
+    acb_mat_clear(KKd);
+    acb_mat_clear(Kd);
+    return gv;
+}
+
+static void test_fam1c_carrier_dense(void)
+{
+    const slong d = 3;
+    arb_t mn;
+    arb_init(mn);
+
+    /* (1) CERTIFY (gap>>thr) at the §D7 headroom prec (PREC, the carrier inspected
+     * AT its build prec — see FINDINGS §D7n): dense carrier still certifies rank d,
+     * agrees with the double path, and the smallest carrier eig == gap. */
+    {
+        aic_ucp_kraus phi;
+        aic_adv_chan_carrier_dropout_dense(&phi, d, 0.5, PREC);
+        acb_mat_t Q;
+        acb_mat_init(Q, d, d);
+        aic_ucp_carrier_Q(Q, &phi, PREC);
+
+        /* Q is genuinely NON-DIAGONAL (the whole point vs the diagonal 1C). */
+        double offmax = 0.0;
+        for (slong a = 0; a < d; a++)
+            for (slong b = 0; b < d; b++)
+                if (a != b) {
+                    double m = fabs(arf_get_d(arb_midref(acb_realref(
+                                   acb_mat_entry(Q, a, b))), ARF_RND_NEAR));
+                    if (m > offmax) offmax = m;
+                }
+        AIC_CHECK_MSG(offmax > 1e-3,
+                      "fam1C-dense: carrier Q is ~diagonal (max off-diag %.3e) — "
+                      "the densifier U did not densify it", offmax);
+
+        carrier_smallest_eig(mn, Q);
+        check_ball_eq(mn, 0.5, 1e-9);    /* small carrier eig == gap (pin) */
+
+        slong rk_cert = aic_ucp_carrier_rank(Q, d, PREC);
+        slong rk_dbl = aic_ucp_carrier_rank_latd(Q, d);
+        AIC_CHECK_MSG(rk_cert == d,
+                      "fam1C-dense gap=0.5: certified rank %ld != d=%ld",
+                      (long) rk_cert, (long) d);
+        AIC_CHECK_MSG(rk_cert == rk_dbl,
+                      "fam1C-dense gap=0.5: certified rank %ld != double-path %ld",
+                      (long) rk_cert, (long) rk_dbl);
+
+        /* At the headroom prec the near-zero gap certifies the DROP to d-1 (the
+         * §D7 prec floor: ball radius << thr, unlike the prec=53 straddle below). */
+        aic_ucp_kraus phi2;
+        aic_adv_chan_carrier_dropout_dense(&phi2, d, 1e-16, PREC);
+        acb_mat_t Q2;
+        acb_mat_init(Q2, d, d);
+        aic_ucp_carrier_Q(Q2, &phi2, PREC);
+        slong rk_drop = aic_ucp_carrier_rank(Q2, d, PREC);
+        AIC_CHECK_MSG(rk_drop == d - 1,
+                      "fam1C-dense gap=1e-16 @headroom prec: certified rank %ld != "
+                      "d-1=%ld (the near-zero carrier dimension must drop at headroom "
+                      "prec)", (long) rk_drop, (long) (d - 1));
+        acb_mat_clear(Q2);
+        aic_ucp_kraus_clear(&phi2);
+
+        acb_mat_clear(Q);
+        aic_ucp_kraus_clear(&phi);
+        printf("  fam1C-dense CERTIFY: Q dense (off-diag %.3f), small eig 0.5, "
+               "cert rank d=%ld == double-path; gap->0 @prec=%d certifies drop to "
+               "d-1=%ld\n", offmax, (long) d, (int) PREC, (long) (d - 1));
+    }
+
+    /* (2) STRADDLE (near thr) at prec=53: aic_ucp_carrier_rank must FAIL LOUD. The
+     * fork+SIGALRM watchdog lets the abort be asserted without crashing this binary.
+     * The diagonal 1C could NOT reach this (its gap eig is a point ball). */
+    {
+        char err[4096];
+        int status = 0;
+        int finished = v5f_run_child(v5f_child_straddle, &status, err, sizeof err);
+        AIC_CHECK_MSG(finished,
+                      "fam1C-dense straddle: aic_ucp_carrier_rank HUNG on the "
+                      "densified carrier at prec=53 (watchdog killed it after %d s)",
+                      V5F_WATCH_S);
+        int aborted = WIFSIGNALED(status) && WTERMSIG(status) == SIGABRT;
+        AIC_CHECK_MSG(aborted,
+                      "fam1C-dense straddle: aic_ucp_carrier_rank did NOT fail loud "
+                      "on the densified carrier at prec=53 — the small-cluster ball "
+                      "STRADDLES thr (it must abort, not silently return a rank). "
+                      "(signaled=%d sig=%d exited=%d code=%d). stderr:\n%s",
+                      WIFSIGNALED(status),
+                      WIFSIGNALED(status) ? WTERMSIG(status) : -1,
+                      WIFEXITED(status), WIFEXITED(status) ? WEXITSTATUS(status) : -1,
+                      err);
+        AIC_CHECK_MSG(strstr(err, "STRADDLES") != NULL,
+                      "fam1C-dense straddle: abort message does not name the "
+                      "STRADDLE (expected the aic_mat_certified_rank message). "
+                      "Got:\n%s", err);
+        printf("  fam1C-dense STRADDLE: prec=53 gap=1e-16 -> carrier_rank SIGABRT "
+               "(\"STRADDLES\"); the no-straddle gap the diagonal 1C could not reach\n");
+    }
+
+    /* (3) CONVENTION-SENSITIVE: ||sum K K^dag - sum K^dag K||_op > 0 (the non-normal
+     * Kraus distinguishes the two carrier conventions; the diagonal Hermitian 1C
+     * gives EXACTLY 0). Cross-check: the diagonal 1C's gap MUST be 0. */
+    {
+        aic_ucp_kraus dense, diag;
+        aic_adv_chan_carrier_dropout_dense(&dense, d, 0.5, PREC);
+        aic_adv_chan_carrier_dropout(&diag, d, 0.5, PREC);   /* the Hermitian 1C */
+        double g_dense = convention_gap_op(&dense);
+        double g_diag = convention_gap_op(&diag);
+        AIC_CHECK_MSG(g_dense > 0.1,
+                      "fam1C-dense convention: ||sum KK^dag - sum K^dag K||_op = %.3e "
+                      "not > 0.1 — the densified Kraus is (near-)normal, the "
+                      "convention bug would be undetectable", g_dense);
+        AIC_CHECK_MSG(g_diag < 1e-12,
+                      "fam1C-dense convention cross-check: the diagonal Hermitian 1C "
+                      "must give convention gap ~0, got %.3e", g_diag);
+        printf("  fam1C-dense CONVENTION: ||sum KK^dag - sum K^dag K||_op = %.3f "
+               "(dense, non-normal) vs %.1e (diagonal 1C, Hermitian => 0)\n",
+               g_dense, g_diag);
+        aic_ucp_kraus_clear(&diag);
+        aic_ucp_kraus_clear(&dense);
+    }
+
+    arb_clear(mn);
+}
+
 /* ---- fam3D: dimension-blowup block algebra (domain.md:416-449, tex:484/1249).
  * The FIFTH channel generator's self-test. The named property: a UCP self-map on
  * B(C^N), N=k*d, whose associated eps-C* algebra is A = (+)_j M_d (dim_A = k*d^2),
@@ -1822,6 +2090,7 @@ int main(void)
     test_fam2a_depol_boundary();
     test_fam1d_unital_defect();
     test_fam1c_carrier_dropout();
+    test_fam1c_carrier_dense();   /* DENSIFIED carrier: straddle + convention (aic-v5f) */
     test_fam3d_blockalg();
     test_fam3d_bijective_eta();   /* aic-66n wrapper-collapse regression (prec=256) */
     test_fam_nc_noncomm_boundary();  /* NON-COMMUTATIVE eta->1/4 boundary (aic-cxo) */
