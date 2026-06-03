@@ -63,8 +63,9 @@ _tight_bracket_impl(::Any, ::Int) = error("certified_defect(Φ; tight=true) " * 
 """
     diamond_norm_watrous(J::Matrix{ComplexF64}, n::Int)
 
-Watrous 2012 MAX-primal diamond-norm SDP for the map with Convention-A Choi `J`.
-Extension-only (Convex + Mosek + MosekTools); throws a helpful error otherwise.
+Watrous MAX-primal diamond-norm SDP (Watrous, *Theory of Computing* 2013;
+arXiv:1207.5726) for the map with Convention-A Choi `J`. Extension-only
+(Convex + Mosek + MosekTools); throws a helpful error otherwise.
 """
 diamond_norm_watrous(::Any, ::Any) =
     error("diamond_norm_watrous " * _MOSEK_HINT)

@@ -1,5 +1,58 @@
 # HANDOFF.md — almost-idempotent-channels
 
+## ▶▶ LATEST (2026-06-03): Comprehensive Diátaxis documentation site DELIVERED (bead aic-6k6); docs build CLEAN (0 warnings, all doctests green)
+
+**The deliverable.** The 3-page Documenter site (index/tutorial/api) is now a **24-page Diátaxis site** at
+`docs/src/`, built and verified GREEN — `julia --project=docs docs/make.jl` exits 0 with **zero warnings,
+zero unresolved `@ref`, zero missing-docs, and every `jldoctest`/`@example` executed against `libaic`**.
+24 HTML pages + 5 bundled assets in `docs/build/`.
+
+**Structure (Diátaxis, `docs/make.jl` pages tree):** Home (`index.md`, rewritten as an orientation hub:
+story arc + demo.svg + five-verb table + 3 "start here" routes + known-limits admonitions) · **Getting
+started** (install, quickstart) · **Tutorials** (the five-verb pipeline, the η=0 oracle, multi-block
+channels, tight MOSEK brackets) · **How-to guides** (8: certify defect, read bracket, block structure,
+factorize, domain check, iscptp, build UCPMap, MOSEK install) · **Explanation** (6: the mathematics —
+4-stage story; certified arithmetic + cross-check ladder; dimension-independence; architecture C+FLINT+Julia;
+the constructive mandate; design decisions & known limits) · **Reference** (API curated `@docs` groups,
+notation glossary with `tex:` anchors, bibliography). The 4 result plots + demo.svg are placed once each.
+
+**Orchestration (the user's directive — delegate summarisation, ≤5 parallel subagents, NO parallel Julia).**
+Phase A: 5 parallel read-only subagents wrote citeable briefs to `docs/research/docsite/` (`brief-math.md`
+[the 4-stage story, every claim `tex:`-anchored + FINDINGS §C subtleties], `brief-api.md` [44-name inventory
++ docstring audit], `brief-architecture.md`, `brief-examples.md` [verified snippets + 10 build-breaking
+pitfalls + numbers-with-provenance], `brief-structure.md` [Diátaxis plan]). `STYLE.md` is the binding style
+contract every page-author followed. Phase B: I authored the 4 highest-stakes pages (home + the 3 math/
+Explanation pages — KaTeX-translation- and accuracy-critical); 5 background subagents drafted the other 20
+from the briefs + verified snippets. Phase C: I integrated + built serially (3 rebuilds), fixing doctests
+and cross-refs.
+
+**Accuracy fixes caught in review (Rule 2 paid off):** (1) my own `certified_arithmetic.md` had the eig-free
+bracket as `[‖J‖_F/N, 2‖J‖_F]` with `N=n²` — WRONG; verified against `ALGORITHM.md:307-326` it is
+`[‖J‖_F/n, 2‖J‖_F]`, ratio exactly `2n` (n = dim H), corrected. (2) `read_bracket.md` claimed `width(b)`
+prints `0.2` — `0.3-0.1` in Float64 is `0.19999999999999998`; moved to `@example`. (3) bare `analytic in η`
+jldoctests (pitfall P6, FLOOR-rounded lo can sit above the analytic value) → the 1e-7-slack containment
+invariant. (4) 21 `@ref` text/header mismatches (notably `[The $\eta=0$ oracle]` KaTeX vs the unicode `η`
+header) fixed; (5) 4 leaked `\eps` paper-macros (KaTeX renders client-side, the Julia build can't catch them)
+→ `\varepsilon`.
+
+**Also:** docstring-audit fixes to the package source (internal-constructor notes on `EpsCStarAlgebra`/
+`MainIsomorphism`/`ChannelFactorization`; Watrous arXiv cite) so the API reference renders cleanly;
+`Base.adjoint`+the module docstring folded into `reference/api.md` (cleared the 2 missing-docs); copied the
+plot assets into `docs/src/assets/`; added `[sources]` to `docs/Project.toml` so the documented
+`Pkg.instantiate()` recipe works from a fresh clone (docs/Manifest.toml is gitignored). The just-updated
+README is unchanged (it is the GitHub front door; the site complements, does not duplicate it).
+
+**Build/iterate:** `julia --project=docs -e 'using Pkg; Pkg.instantiate(); include("docs/make.jl")'` →
+`docs/build/index.html`. The doctests are a real gate (`doctest=true`, NOT in `warnonly`); they ccall into
+`build/libaic.so` (the checked-in build was STALE — rebuilt with `cmake --build build --target aic` to get
+`aic_assoc_summary_d`). NO deploydocs / NO CI (Rule 13).
+
+**NEXT (optional docs follow-ups):** none blocking. Possible: per-page screenshots; wire the README's badges
+to the local site; a search-tuning pass. The one OPEN code item remains `aic-exa.13` (the C `factorize`/xpow
+domain SIGABRT, P1) — unrelated to docs.
+
+---
+
 ## ▶▶ LATEST (2026-06-02d): Julia package `AlmostIdempotentChannels.jl` DELIVERED (aic-exa epic — .1–.12 + aic-obc CLOSED; only the .13 C-domain bug open)
 
 **The deliverable.** A joyful, idiomatic, MOSEK-OPTIONAL Julia surface over the libaic C/arb core, with a

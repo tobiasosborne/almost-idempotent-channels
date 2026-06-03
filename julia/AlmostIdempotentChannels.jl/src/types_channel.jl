@@ -92,6 +92,10 @@ The approximate channel factorization Φ ≈ Δ Υ through a genuine C* algebra 
 `delups = ‖ΔΥ − Φ‖_cb` (.tex:2733) and `upsdel = ‖ΥΔ − 1_B‖_cb` (.tex:2739).
 `eta_proxy`/`eps_used` are the shim sentinels (≈ 0 at η = 0).
 
+Returned by [`factorize`](@ref); not constructed directly. Read it with
+[`algebra`](@ref), [`encode`](@ref), [`decode`](@ref), [`delups_defect`](@ref),
+and [`upsdel_defect`](@ref).
+
 The STORED objects are the state-space CHANNELS — the duals (Appendix B1, B7):
 the `encode` CPMap = Enc = Υ* : B → B(H) (CPTP, n_B→N) and the `decode` CPMap
 = Dec = Δ* : B(H) → B (CPTP, N→n_B). These are RECTANGULAR CPTP maps between

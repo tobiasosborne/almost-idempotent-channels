@@ -2,3 +2,10 @@
 AlmostIdempotentChannels = "6bf14b85-acf1-40b3-a7a0-aef96f56c734"
 Documenter = "e30172f5-a6a5-5a46-863b-614d45cd2de4"
 LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
+
+# The package under documentation is a local, unregistered dev dependency. The
+# `[sources]` entry makes the documented recipe — `Pkg.instantiate()` then
+# `include("docs/make.jl")` — work from a fresh clone with no committed Manifest
+# (docs/Manifest.toml is gitignored). Path is relative to this file (docs/).
+[sources]
+AlmostIdempotentChannels = {path = "../julia/AlmostIdempotentChannels.jl"}

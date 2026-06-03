@@ -18,6 +18,9 @@ regularisation; th_almost_idemp, approximate_algebras.tex:2184). A is an OBLIQUE
 subspace of M_n (FINDINGS §C3); its product is the Choi–Effros star X⋆Y = Φ̃(XY),
 NOT plain XY (FINDINGS §C2); the axioms hold only UP TO ε (no exact unit).
 
+Returned by [`associated_algebra`](@ref); not constructed directly. Read it with
+[`dim`](@ref), [`ambient`](@ref), and [`epsilon`](@ref).
+
 Fields: `n` ambient dim (A ≤ M_n), `dim_A`, `basis` the Frobenius-orthonormal
 {B_k} snapshot (n×n each), `eps` the certified associator-defect bracket, and
 `source` the UCPMap it came from. The basis is a snapshot for showability; the
@@ -112,6 +115,10 @@ UNIVERSAL, dimension-INDEPENDENT constant. `B` is the genuine C* algebra, and th
 three `CertifiedBracket` fields are the certified cb-norm brackets ‖v‖_cb,
 ‖v⁻¹‖_cb (≈ 1 + O(ε)) and the isomorphism defect. `source` is the originating
 UCPMap.
+
+Returned by [`main_isomorphism`](@ref); not constructed directly. Read it with
+[`blocks`](@ref), [`cbnorm_forward`](@ref), [`cbnorm_inverse`](@ref), and
+[`isodefect`](@ref).
 """
 struct MainIsomorphism
     source::UCPMap
