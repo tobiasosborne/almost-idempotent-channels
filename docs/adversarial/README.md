@@ -1,5 +1,10 @@
 # Adversarial / correctness stress suite — index
 
+**Internal developer notes — not user documentation.** This is the design catalog
+of the adversarial test corpus (the families of "evil" inputs the suite is built
+around); the implementing test code lives in [`../../tests/`](../../tests/). For
+the user documentation, start at [`../src/index.md`](../src/index.md).
+
 > Directive (2026-05-28): the happy path is the least useful. Every benchmark
 > and correctness test is built around punishing, adversarial instances.
 > Correct behavior on an evil input = the certified bound provably holds, OR the

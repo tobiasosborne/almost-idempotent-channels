@@ -114,6 +114,6 @@ axislegend(ax, handles, labels;
     position = :lt, framevisible = false, labelcolor = "#c0caf5",
     patchsize = (20, 12), labelsize = 11, rowgap = 1)
 
-out = "/home/tobias/Projects/almost-idempotent-channels/docs/assets/roundtrip.png"
+out = "/home/tobias/Projects/almost-idempotent-channels/docs/src/assets/roundtrip.png"
 save(out, fig; px_per_unit = 2)
 println("WROTE ", out)

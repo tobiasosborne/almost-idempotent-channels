@@ -542,7 +542,7 @@ npm install -g svg-term-cli      # marionebl/svg-term-cli; pulls asciinema-playe
 **Render command:**
 
 ```sh
-svg-term --in docs/assets/demo.cast --out docs/assets/demo.svg \
+svg-term --in docs/src/assets/demo.cast --out docs/assets/demo.svg \
          --window --width 84 --height 30 --padding 18
 ```
 
@@ -618,7 +618,7 @@ universality.png, roundtrip.png, eta0_oracle.png).
 
 | Asset | Path | Tool | Embed markdown |
 |---|---|---|---|
-| Terminal demo | `docs/assets/demo.svg` | svg-term-cli (from `docs/assets/demo.cast`) | `![…](docs/assets/demo.svg)` bare |
+| Terminal demo | `docs/assets/demo.svg` | svg-term-cli (from `docs/src/assets/demo.cast`) | `![…](docs/assets/demo.svg)` bare |
 | Containment plot | `docs/assets/containment.png` | CairoMakie | `<p align="center"><img … width="640"/>…</p>` |
 | Universality plot | `docs/assets/universality.png` | CairoMakie | centered `<img>` |
 | Round-trip plot | `docs/assets/roundtrip.png` | CairoMakie | centered `<img>` |
@@ -628,7 +628,7 @@ universality.png, roundtrip.png, eta0_oracle.png).
 
 ## Part D — PHASE-B ASSET-GENERATION PLAN (mechanical, serial-Julia-safe)
 
-Phase B is: install svg-term-cli; write `docs/assets/demo.cast` from the transcript
+Phase B is: install svg-term-cli; write `docs/src/assets/demo.cast` from the transcript
 below; render it; set up `docs/plots/`; run the four plotting scripts **one at a
 time**; capture the `[VERIFY]` endpoints from a live REPL; drop the README in. No
 step runs Julia in parallel.
@@ -654,7 +654,7 @@ build`) and `set_libaic_path!`. Capture:
 The `show` *layout* is already correct (from `src/show.jl`); only the numeric
 endpoints need substituting.
 
-### D.1 The demo `.cast` transcript (encode into `docs/assets/demo.cast`)
+### D.1 The demo `.cast` transcript (encode into `docs/src/assets/demo.cast`)
 
 The exact REPL session to synthesize, escalating defect → algebra → isomorphism →
 the `ChannelFactorization` showcase → the η=0 machine-ε punch. Input lines are the
@@ -792,8 +792,8 @@ data, a muted band/envelope, axis labels with units, a one-line title naming the
 1. `npm install -g svg-term-cli`.
 2. `cmake -S . -B build && cmake --build build`; `set_libaic_path!`.
 3. Live-capture session (D.0) → fill every `<…>` and `[VERIFY]`.
-4. Write `docs/assets/demo.cast` from the D.1 transcript with captured numbers;
-   `svg-term --in docs/assets/demo.cast --out docs/assets/demo.svg --window
+4. Write `docs/src/assets/demo.cast` from the D.1 transcript with captured numbers;
+   `svg-term --in docs/src/assets/demo.cast --out docs/assets/demo.svg --window
    --width 84 --height 30 --padding 18`.
 5. Set up `docs/plots/` env (C.2).
 6. Run `containment.jl`, then `universality.jl`, then `roundtrip.jl`, then

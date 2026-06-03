@@ -1,18 +1,17 @@
 # Install and use the MOSEK extension
 
 After this guide you can install the MOSEK extension, obtain a license, and use
-the two entry points it unlocks: [`idempotency_defect`](@ref) (exact
+the two entry points it unlocks: [`idempotency_defect`](../reference/api.md) (exact
 diamond-norm value) and `certified_defect(Φ; tight = true)` (tight bracket).
 
 **Assumes:** `AlmostIdempotentChannels` is already installed; see
-[Quick start](@ref).
+[Quick start](../getting_started/quickstart.md).
 
-!!! tip "MOSEK is optional"
-    All pipeline verbs — `certified_defect` (default), `associated_algebra`,
-    `main_isomorphism`, `factorize` — work without MOSEK. Without the extension,
-    `idempotency_defect` and `certified_defect(Φ; tight = true)` throw a helpful
-    install hint, not a `MethodError`. Install MOSEK only when you need the exact
-    diamond-norm value or a tight bracket (width ~5e-13 vs ~2e-01 solver-free).
+**Tip — MOSEK is optional.** All pipeline verbs — `certified_defect` (default), `associated_algebra`,
+`main_isomorphism`, `factorize` — work without MOSEK. Without the extension,
+`idempotency_defect` and `certified_defect(Φ; tight = true)` throw a helpful
+install hint, not a `MethodError`. Install MOSEK only when you need the exact
+diamond-norm value or a tight bracket (width ~5e-13 vs ~2e-01 solver-free).
 
 ## Steps
 
@@ -108,6 +107,6 @@ idempotency_defect(UCPMap(phit_kraus(2, 0.1)))
 
 ## See also
 
-- [Tight brackets with MOSEK](@ref) — the mathematics of the MIN-dual certifier
-- [Certify the idempotency defect (solver-free)](@ref) — the always-safe alternative
-- [API reference](@ref) — full signatures for `idempotency_defect` and `certified_defect`
+- [Tight brackets with MOSEK](../tutorials/mosek_tight.md) — the mathematics of the MIN-dual certifier
+- [Certify the idempotency defect (solver-free)](certify_defect.md) — the always-safe alternative
+- [API reference](../reference/api.md) — full signatures for `idempotency_defect` and `certified_defect`

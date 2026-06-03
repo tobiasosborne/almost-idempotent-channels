@@ -1,6 +1,6 @@
 # Build a UCPMap from Kraus operators
 
-After this guide you can construct a [`UCPMap`](@ref) from a list of Kraus
+After this guide you can construct a [`UCPMap`](../reference/api.md) from a list of Kraus
 operators and read its basic accessors.
 
 **Assumes:** `AlmostIdempotentChannels` and `LinearAlgebra` are loaded.
@@ -114,10 +114,10 @@ true
 ```
 
 On an exactly-idempotent channel every downstream certified defect is below
-1e-9 — see [The η = 0 oracle](@ref).
+1e-9 — see [The η = 0 oracle](../tutorials/eta0_oracle.md).
 
 ## See also
 
-- [API reference](@ref) — full `UCPMap` signature including the Choi constructor and `Base.adjoint`
-- [The mathematics](@ref) — the Heisenberg vs Schrödinger picture and the UCP condition
-- [The five-verb pipeline](@ref) — end-to-end walkthrough using `UCPMap` as the entry point
+- [API reference](../reference/api.md) — full `UCPMap` signature including the Choi constructor and `Base.adjoint`
+- [The mathematics](../explanation/math_story.md) — the Heisenberg vs Schrödinger picture and the UCP condition
+- [The five-verb pipeline](../tutorials/pipeline.md) — end-to-end walkthrough using `UCPMap` as the entry point

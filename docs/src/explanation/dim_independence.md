@@ -3,8 +3,8 @@
 This page explains the paper's central and most surprising claim — that the
 rigidity constant of `th_main` does **not** grow with dimension — why the naive
 construction fails to achieve it, and the measured evidence that the package's
-construction does. For the theorem in context see [The mathematics](@ref); to read
-the certified brackets it rests on see [Certified arithmetic](@ref).
+construction does. For the theorem in context see [The mathematics](math_story.md); to read
+the certified brackets it rests on see [Certified arithmetic](certified_arithmetic.md).
 
 ## The claim
 
@@ -41,7 +41,7 @@ structure with the Lefschetz–Hopf fixed-point theorem and improving the inclus
 with `cor_improvement` (`tex:1317`), whose reduced defect ``\delta_0 =
 O(\varepsilon)`` is *independent of the starting ``\delta``* and of ``n``. The
 package replaces those non-constructive ingredients with finite-dimensional
-algorithms (see [The constructive mandate](@ref)) — but it must then *check* that the
+algorithms (see [The constructive mandate](constructive.md)) — but it must then *check* that the
 constant it actually produces does not grow with ``n``.
 
 ## The test that cannot fail — and the one that can
@@ -82,11 +82,7 @@ The constant is flat — the slope is slightly *negative*, and the worst case
 (``c = 0.047``) occurs at one of the *smallest* dimensions, not the largest. The
 paper's dimension-independence claim (`tex:484`) holds empirically on this family.
 
-```@raw html
-<p align="center">
-  <img src="../assets/universality.png" alt="The isomorphism constant is flat across dimension" width="640"/>
-</p>
-```
+![The isomorphism constant is flat across dimension](../assets/universality.png)
 
 The constant ``c = \text{isodefect}/\eta`` over ``\dim A \in \{8,12,16,18,20\}``:
 OLS slope ``-2.7\times10^{-4}``, max ``c = 0.047`` at ``\dim A = 12``. The line is
@@ -110,6 +106,6 @@ condition, not tuned away.
 
 ## Where to go next
 
-- The theorem in its four-stage context: [The mathematics](@ref).
-- How the per-instance constants are certified: [Certified arithmetic](@ref).
-- The finite-dimensional algorithms behind the constant: [The constructive mandate](@ref).
+- The theorem in its four-stage context: [The mathematics](math_story.md).
+- How the per-instance constants are certified: [Certified arithmetic](certified_arithmetic.md).
+- The finite-dimensional algorithms behind the constant: [The constructive mandate](constructive.md).

@@ -4,7 +4,7 @@ Primary sources and the libraries the package builds on.
 
 ---
 
-**Kitaev, Alexei.** *Almost-idempotent quantum channels and approximate C\*-algebras.* arXiv:2405.02434, 2025.
+**Kitaev, Alexei.** _Almost-idempotent quantum channels and approximate C\*-algebras._ arXiv:2405.02434, 2025.
 
 This is the paper the package implements. Every algorithm is a constructive finite-dimensional realization of a result in this paper; every source comment cites a line number from its LaTeX source.
 

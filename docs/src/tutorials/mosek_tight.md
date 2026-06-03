@@ -18,40 +18,39 @@ two things:
 2. A **tight rigorous bracket** fed by the SDP primal/dual feasible points
    (`certified_defect(Φ; tight=true)`), with width ``\sim10^{-13}``.
 
-!!! tip "With MOSEK installed"
-    Activate the `AICMosekExt` extension by loading `Convex`, `Mosek`, and
-    `MosekTools` before `AlmostIdempotentChannels`:
+**Tip — With MOSEK installed.** Activate the `AICMosekExt` extension by loading `Convex`, `Mosek`, and
+`MosekTools` before `AlmostIdempotentChannels`:
 
-    ```julia
-    using AlmostIdempotentChannels, LinearAlgebra
-    using Convex, Mosek, MosekTools   # activates AICMosekExt
+```julia
+using AlmostIdempotentChannels, LinearAlgebra
+using Convex, Mosek, MosekTools   # activates AICMosekExt
 
-    e(d, i) = (v = zeros(ComplexF64, d); v[i] = 1; v)
-    function phit_kraus(d, t)
-        K = Matrix{ComplexF64}[sqrt(1 - t) * Matrix{ComplexF64}(I, d, d)]
-        for i in 1:d, j in 1:d
-            push!(K, sqrt(t) * (e(d, i) * e(d, j)') / sqrt(d))
-        end
-        return K
+e(d, i) = (v = zeros(ComplexF64, d); v[i] = 1; v)
+function phit_kraus(d, t)
+    K = Matrix{ComplexF64}[sqrt(1 - t) * Matrix{ComplexF64}(I, d, d)]
+    for i in 1:d, j in 1:d
+        push!(K, sqrt(t) * (e(d, i) * e(d, j)') / sqrt(d))
     end
+    return K
+end
 
-    Φ = UCPMap(phit_kraus(2, 0.3))
+Φ = UCPMap(phit_kraus(2, 0.3))
 
-    # Exact diamond-norm value (Watrous SDP):
-    idempotency_defect(Φ)
-    # output: 0.3149999999994273
-    # = 0.3 · 0.7 · 2 · (1 − 1/4) = 0.315 to solver precision
+# Exact diamond-norm value (Watrous SDP):
+idempotency_defect(Φ)
+# output: 0.3149999999994273
+# = 0.3 · 0.7 · 2 · (1 − 1/4) = 0.315 to solver precision
 
-    # Tight rigorous bracket:
-    tight = certified_defect(Φ; tight = true)
-    width(tight)
-    # output: ~5.76e-13
-    value(tight)
-    # output: ≈ 0.315  (the SDP point estimate)
-    ```
+# Tight rigorous bracket:
+tight = certified_defect(Φ; tight = true)
+width(tight)
+# output: ~5.76e-13
+value(tight)
+# output: ≈ 0.315  (the SDP point estimate)
+```
 
-    Without MOSEK both functions throw a helpful install hint rather than a
-    `MethodError`.
+Without MOSEK both functions throw a helpful install hint rather than a
+`MethodError`.
 
 ## Solver-free vs MOSEK bracket widths
 
@@ -74,13 +73,12 @@ all test fixtures is 1.23e-11 (`test_sdp.jl`). This is the strong-duality
 cross-check: if the gap is large, the SDP solve failed and the tight bracket
 is unreliable.
 
-!!! note
-    `phit(2, 0.3)` is outside `factorize`'s domain (``\rho \approx 0.21 > 0.10``)
-    but is safe for `certified_defect` at any ``\eta``. The MOSEK tight bracket
-    and `idempotency_defect` work at any ``\eta``.
+**Note.** `phit(2, 0.3)` is outside `factorize`'s domain (``\rho \approx 0.21 > 0.10``)
+but is safe for `certified_defect` at any ``\eta``. The MOSEK tight bracket
+and `idempotency_defect` work at any ``\eta``.
 
 ## Where to go next
 
-- [Install and use the MOSEK extension](@ref) — step-by-step install instructions.
-- [Certified arithmetic](@ref) — the four-rung cross-check ladder, where the MOSEK
+- [Install and use the MOSEK extension](../howto/mosek_install.md) — step-by-step install instructions.
+- [Certified arithmetic](../explanation/certified_arithmetic.md) — the four-rung cross-check ladder, where the MOSEK
   strong-duality check is rung 4.

@@ -2,7 +2,7 @@
  * TIGHT cb-norm certifier (bead aic-m24, increment 3b). The public dispatcher is
  * in src/aic_cbnorm_certify.c; this file holds the bulk of the math (split for
  * the <=200 LOC limit, Rule 10). See include/aic_cbnorm.h for the API and
- * docs/cbnorm_tight_certifier.md for THE CONTRACT.
+ * docs/research/cbnorm_tight_certifier.md for THE CONTRACT.
  *
  * THE TWO RECIPES (Law 1; design doc LOWER/UPPER; .tex:347-354 cb-norm SDP).
  *

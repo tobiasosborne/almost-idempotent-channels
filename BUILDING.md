@@ -89,6 +89,37 @@ ctest --test-dir build -L bench --output-on-failure
 A bench that exits non-zero fails (a measurement that crashed is not a result).
 Some benches are minutes-long; they are not part of any default gate.
 
+## Julia package and documentation
+
+The Julia package `AlmostIdempotentChannels.jl` calls into `libaic.so` via
+`@ccall`, so build the C core first (above), then:
+
+```sh
+# Point the package at the library you just built (the default already looks
+# for build/libaic.so next to the package, so this is only needed elsewhere).
+julia --project=julia/AlmostIdempotentChannels.jl -e '
+    using AlmostIdempotentChannels
+    set_libaic_path!(joinpath(pwd(), "build", "libaic.so"))'   # then restart Julia
+
+# Run the test suite (green with NO solver installed; ~2m09s, 219 passes).
+julia --project=julia/AlmostIdempotentChannels.jl -e 'using Pkg; Pkg.test()'
+```
+
+Library discovery is via `Preferences` (no `deps/build.jl`, no `Pkg.build()`): the
+default path is `build/libaic.so` next to the package, and `set_libaic_path!(p)`
+overrides it (writes `LocalPreferences.toml`). The optional MOSEK extension
+(`Convex` + `Mosek` + `MosekTools`) adds the exact diamond-norm value and a tight
+bracket; without it the package is fully functional and the suite stays green.
+
+To build the documentation site (executes every example against `libaic`):
+
+```sh
+julia --project=docs -e 'using Pkg; Pkg.instantiate(); include("docs/make.jl")'
+# -> docs/build/index.html
+```
+
+See [`docs/README.md`](docs/README.md) for the documentation layout.
+
 ## Install
 
 ```sh

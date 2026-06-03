@@ -1,20 +1,19 @@
 # Factorize a channel
 
-After this guide you can call [`factorize`](@ref) on an almost-idempotent
+After this guide you can call [`factorize`](../reference/api.md) on an almost-idempotent
 channel and use the four accessors to read the encode/decode channels and their
 certified round-trip defects.
 
 **Assumes:** your `UCPMap` is in factorize's domain; see
-[Stay in factorize's domain](@ref).
+[Stay in factorize's domain](domain_check.md).
 
-!!! warning "factorize has a tighter domain"
-    `factorize` builds ``\Upsilon`` via a power-series functional calculus whose
-    convergence domain is much smaller than the `prop_P` basin
-    ``\rho(\Phi^2-\Phi) < 1/4``. The verb pre-checks a conservative
-    ``\rho < 0.10`` in Julia and throws a clean `ArgumentError` — it does not
-    abort the session. `associated_algebra` and `main_isomorphism` keep the wider
-    ``\rho < 1/4`` domain; `certified_defect` is always safe at any ``\eta``.
-    (bug `aic-exa.13`)
+**Warning — factorize has a tighter domain.** `factorize` builds ``\Upsilon`` via a power-series functional calculus whose
+convergence domain is much smaller than the `prop_P` basin
+``\rho(\Phi^2-\Phi) < 1/4``. The verb pre-checks a conservative
+``\rho < 0.10`` in Julia and throws a clean `ArgumentError` — it does not
+abort the session. `associated_algebra` and `main_isomorphism` keep the wider
+``\rho < 1/4`` domain; `certified_defect` is always safe at any ``\eta``.
+(bug `aic-exa.13`)
 
 ## Steps
 
@@ -23,7 +22,7 @@ certified round-trip defects.
 Verify ``\rho(\Phi^2-\Phi) < 0.10`` before calling `factorize`.  The cleanest
 way is to attempt `certified_defect` first and inspect the bracket midpoint, or
 to call `factorize` in a try/catch and redirect to `certified_defect` on
-`ArgumentError`.  See [Stay in factorize's domain](@ref) for the full procedure.
+`ArgumentError`.  See [Stay in factorize's domain](domain_check.md) for the full procedure.
 
 **2. Call `factorize`.**
 
@@ -123,11 +122,11 @@ For the ``C^*``-algebra structure without the channel factorization, call
 ``\rho < 1/4`` basin.
 
 On an exactly-idempotent channel both defect brackets sit below 1e-9; see
-[The η = 0 oracle](@ref).
+[The η = 0 oracle](../tutorials/eta0_oracle.md).
 
 ## See also
 
-- [Stay in factorize's domain](@ref) — how to pre-check the domain condition
-- [Check trace-preservation of a channel](@ref) — why `iscptp(decode(F))` can be `false`
-- [The mathematics](@ref) — the paper result `th_factorization` this implements
-- [API reference](@ref) — full signatures for `factorize`, `encode`, `decode`, `delups_defect`, `upsdel_defect`
+- [Stay in factorize's domain](domain_check.md) — how to pre-check the domain condition
+- [Check trace-preservation of a channel](iscptp.md) — why `iscptp(decode(F))` can be `false`
+- [The mathematics](../explanation/math_story.md) — the paper result `th_factorization` this implements
+- [API reference](../reference/api.md) — full signatures for `factorize`, `encode`, `decode`, `delups_defect`, `upsdel_defect`

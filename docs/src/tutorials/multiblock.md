@@ -8,7 +8,7 @@ and read off the block structure ``B = M_2 \oplus M_2``.
 `bce_conj_kraus(4, 2, 0.02)` is a convex mix of `block_cond_exp_kraus(4, 2)`
 with its unitary conjugate. It is genuinely ``\eta > 0`` and oblique — its image
 is not a ``*``-subalgebra of ``M_4`` on the nose; that is the generic case
-(see [The mathematics](@ref) for why obliqueness is the interesting regime rather
+(see [The mathematics](../explanation/math_story.md) for why obliqueness is the interesting regime rather
 than the special case). The three constructors it needs are inlined:
 
 ```@example multiblock
@@ -92,20 +92,19 @@ julia> iscptp(decode(F); atol = 1e-4)
 true
 ```
 
-!!! warning "decode is O(η)-trace-preserving for η > 0"
-    The `decode` channel is only ``O(\eta)``-trace-preserving for ``\eta > 0``
-    (an internal Choi→Kraus PSD-cone clip; measured clipped mass ``\approx
-    3.7\times10^{-6}`` on multi-block oblique fixtures). `iscptp(decode(F))` is
-    `false` at the default `atol = 1e-9` and `true` at `atol = 1e-4`. The
-    rigorous certificate is the cb-norm round-trip bracket, not `iscptp` at
-    machine tolerance. The encode channel and the ``\eta = 0`` oracle decode are
-    TP to machine precision.
+**Warning — decode is O(η)-trace-preserving for η > 0.** The `decode` channel is only ``O(\eta)``-trace-preserving for ``\eta > 0``
+(an internal Choi→Kraus PSD-cone clip; measured clipped mass ``\approx
+3.7\times10^{-6}`` on multi-block oblique fixtures). `iscptp(decode(F))` is
+`false` at the default `atol = 1e-9` and `true` at `atol = 1e-4`. The
+rigorous certificate is the cb-norm round-trip bracket, not `iscptp` at
+machine tolerance. The encode channel and the ``\eta = 0`` oracle decode are
+TP to machine precision.
 
 On the ``\eta = 0`` oracle every defect is below `1e-9` and decode is TP to
-machine precision — see [The η = 0 oracle](@ref).
+machine precision — see [The η = 0 oracle](eta0_oracle.md).
 
 ## Where to go next
 
-- [Design decisions and known limits](@ref) — root causes for the three known
+- [Design decisions and known limits](../explanation/design_limits.md) — root causes for the three known
   limits.
-- [The mathematics](@ref) — the four-stage mathematical story with paper anchors.
+- [The mathematics](../explanation/math_story.md) — the four-stage mathematical story with paper anchors.

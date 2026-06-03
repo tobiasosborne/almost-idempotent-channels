@@ -7,8 +7,8 @@ This page leads with the constraints, in the spirit of SQLite's "Quirks" page:
 the things that surprise a reader who expected exact behaviour. Each limit is
 real, each has a measured number, and each is a consequence of a deliberate
 choice rather than an unfinished corner. To see *why* the underlying mathematics
-forces these tradeoffs, see [The mathematics](@ref); for the certificate
-machinery, see [Certified arithmetic](@ref).
+forces these tradeoffs, see [The mathematics](math_story.md); for the certificate
+machinery, see [Certified arithmetic](certified_arithmetic.md).
 
 ## Known limits
 
@@ -35,12 +35,11 @@ encode map; the conservative ``\rho < 0.10`` pre-check is the documented fix (bu
 domain so the reader is pointed back to `certified_defect`, which has no domain
 restriction.
 
-!!! warning "`factorize` domain"
-    Do not call `factorize` on a fixture with ``\rho(\Phi^2-\Phi) \ge 0.10``; it
-    throws `ArgumentError`. Safe inputs: any ``\eta = 0`` oracle,
-    `phit_kraus(2, 0.1)`, `bce_conj_kraus(4, 2, 0.02)`, `mixconj_kraus(4, 2,
-    0.02)`. For the staying-in-domain recipe see
-    [Stay in factorize's domain](@ref).
+**Warning — `factorize` domain.** Do not call `factorize` on a fixture with ``\rho(\Phi^2-\Phi) \ge 0.10``; it
+throws `ArgumentError`. Safe inputs: any ``\eta = 0`` oracle,
+`phit_kraus(2, 0.1)`, `bce_conj_kraus(4, 2, 0.02)`, `mixconj_kraus(4, 2,
+0.02)`. For the staying-in-domain recipe see
+[Stay in factorize's domain](../howto/domain_check.md).
 
 ### `decode` is only ``O(\eta)``-trace-preserving for ``\eta > 0``
 
@@ -68,11 +67,10 @@ genuine ``O(1)`` or ``O(\eta)`` negative eigenvalue. The clip stays within the
 round-trip bracket remains the honest certificate (`FINDINGS §C14`). The
 ``3.7\mathrm{e}{-6}`` is the mass the clip removes, not an error in the bound.
 
-!!! warning "`decode` trace-preservation tolerance"
-    On an ``\eta > 0`` multi-block fixture, `iscptp(decode(F))` returns `false`
-    at the default `atol = 1e-9`. Call `iscptp(decode(F); atol = 1e-4)` and read
-    the round-trip bracket as the certificate. For the full recipe see
-    [Check trace-preservation of a channel](@ref).
+**Warning — `decode` trace-preservation tolerance.** On an ``\eta > 0`` multi-block fixture, `iscptp(decode(F))` returns `false`
+at the default `atol = 1e-9`. Call `iscptp(decode(F); atol = 1e-4)` and read
+the round-trip bracket as the certificate. For the full recipe see
+[Check trace-preservation of a channel](../howto/iscptp.md).
 
 ### The eig-free bracket is loose by design
 
@@ -102,12 +100,11 @@ ratio ``2n`` is the price of certifying without solving: the bracket is built to
 *contain* the truth and never abort, not to compete on tightness. The MOSEK rung
 feeds two independent feasible points, each restored to exact feasibility in arb,
 and collapses the width to roughly the MOSEK duality gap plus the arb radius. The
-mathematics of both rungs is in [Certified arithmetic](@ref).
+mathematics of both rungs is in [Certified arithmetic](certified_arithmetic.md).
 
-!!! note "Loose by design"
-    The eig-free bracket width grows like ``2n`` and is meant to. It is the
-    fallback the tight certifier dispatches to near ``\eta = 0``, and the default
-    on the solver-free path. For tightness, load MOSEK.
+**Note — Loose by design.** The eig-free bracket width grows like ``2n`` and is meant to. It is the
+fallback the tight certifier dispatches to near ``\eta = 0``, and the default
+on the solver-free path. For tightness, load MOSEK.
 
 ## Design decisions
 
@@ -129,7 +126,7 @@ unit even at ``\eta = 0`` — a test that cannot pass — so the package sweeps 
 in-block units and targets ``P_B`` (`FINDINGS §C14(b)`, `§C22(b)`). The ``\eta =
 0`` oracle confirms this: the round-trip defect ``\|\Upsilon\Delta - P_B\|_{\mathrm{cb}}``
 collapses to a measured maximum of ``3.9\mathrm{e}{-75}`` at
-``\mathrm{prec} = 128`` — see [The η = 0 oracle](@ref).
+``\mathrm{prec} = 128`` — see [The η = 0 oracle](../tutorials/eta0_oracle.md).
 
 **The product is the Choi–Effros star ``X \star Y = \tilde\Phi(XY)``, not ``XY``.**
 Every multiplication inside the associated algebra ``\mathcal{A} =
@@ -152,17 +149,17 @@ therefore calibrated on ``\eta_{\mathrm{cb}}``, never on ``\rho`` (`FINDINGS §C
 
 The ``\eta``-dependence of the round-trip defect — including the ``P_B`` target
 and the ``O(\eta)``-TP behaviour above — is plotted in the five-verb pipeline
-tutorial (`docs/assets/roundtrip.png`); see [The five-verb pipeline](@ref) rather
+tutorial (`docs/src/assets/roundtrip.png`); see [The five-verb pipeline](../tutorials/pipeline.md) rather
 than duplicating the figure here.
 
 ## See also
 
-- [The mathematics](@ref) — why the star, the cb-norm, and the ``P_B`` target
+- [The mathematics](math_story.md) — why the star, the cb-norm, and the ``P_B`` target
   are forced by the construction
-- [Certified arithmetic](@ref) — the bracket inequality chain and the tight
+- [Certified arithmetic](certified_arithmetic.md) — the bracket inequality chain and the tight
   MOSEK rung
-- [Stay in factorize's domain](@ref) — keeping ``\rho`` inside the convergence
+- [Stay in factorize's domain](../howto/domain_check.md) — keeping ``\rho`` inside the convergence
   disc
-- [Check trace-preservation of a channel](@ref) — the `iscptp` tolerance recipe
-- [The η = 0 oracle](@ref) — the exact case where every defect collapses
+- [Check trace-preservation of a channel](../howto/iscptp.md) — the `iscptp` tolerance recipe
+- [The η = 0 oracle](../tutorials/eta0_oracle.md) — the exact case where every defect collapses
   to machine precision

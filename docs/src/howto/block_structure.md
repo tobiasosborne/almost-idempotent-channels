@@ -4,7 +4,7 @@ After this guide you can read off the block dimensions ``d_l`` of the genuine
 C\*-algebra ``B = \bigoplus_l M_{d_l}`` that an almost-idempotent channel
 factors through.
 
-**Assumes:** you have a `UCPMap` in domain; see [Stay in factorize's domain](@ref).
+**Assumes:** you have a `UCPMap` in domain; see [Stay in factorize's domain](domain_check.md).
 
 ## Steps
 
@@ -79,10 +79,10 @@ julia> maximum(upsdel_defect(F0)) < 1e-9
 true
 ```
 
-See [The η = 0 oracle](@ref) for more on this calibration device.
+See [The η = 0 oracle](../tutorials/eta0_oracle.md) for more on this calibration device.
 
 ## See also
 
-- [The mathematics](@ref) — why ``B = \bigoplus_l M_{d_l}`` is a genuine C\*-algebra
-- [Multi-block channels](@ref) — when and why multiple blocks appear
-- [The five-verb pipeline](@ref) — end-to-end worked example including block extraction
+- [The mathematics](../explanation/math_story.md) — why ``B = \bigoplus_l M_{d_l}`` is a genuine C\*-algebra
+- [Multi-block channels](../tutorials/multiblock.md) — when and why multiple blocks appear
+- [The five-verb pipeline](../tutorials/pipeline.md) — end-to-end worked example including block extraction

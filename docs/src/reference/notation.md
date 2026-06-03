@@ -2,7 +2,7 @@
 
 Look up any symbol used in the docs and the paper, with its meaning, paper line, and Julia type or function.
 
-For the full mathematical story behind these symbols, see [The mathematics](@ref).
+For the full mathematical story behind these symbols, see [The mathematics](../explanation/math_story.md).
 
 | Symbol | Meaning | Paper anchor | Julia type / function |
 |--------|---------|-------------|----------------------|

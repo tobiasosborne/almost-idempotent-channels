@@ -60,7 +60,7 @@ nothing # hide
 
 ## Step 1 — build the channel and certify the defect
 
-[`UCPMap`](@ref) wraps the Kraus operators and checks Heisenberg unitality
+[`UCPMap`](../reference/api.md) wraps the Kraus operators and checks Heisenberg unitality
 ``\sum_a K_a^\dagger K_a = I``:
 
 ```@example tut
@@ -88,7 +88,7 @@ julia> n(Φ), nkraus(Φ)
 (2, 5)
 ```
 
-[`certified_defect`](@ref) returns a rigorous ``\|\Phi^2-\Phi\|_{\mathrm{cb}}``
+[`certified_defect`](../reference/api.md) returns a rigorous ``\|\Phi^2-\Phi\|_{\mathrm{cb}}``
 bracket — no SDP solver required:
 
 ```@example tut
@@ -101,18 +101,17 @@ Test containment and read the bracket geometry:
 (0.0 in η, width(η), midpoint(η))
 ```
 
-!!! note
-    The eig-free bracket is loose by design (`hi/lo ~ 2n`). It certifies a value
-    rather than computing it. For a tight bracket or the exact value, use the MOSEK
-    extension — see [Tight brackets with MOSEK](@ref).
+**Note.** The eig-free bracket is loose by design (`hi/lo ~ 2n`). It certifies a value
+rather than computing it. For a tight bracket or the exact value, use the MOSEK
+extension — see [Tight brackets with MOSEK](mosek_tight.md).
 
 On an exactly-idempotent channel (``\eta = 0``), the bracket collapses to machine
-``\varepsilon``. See [The η = 0 oracle](@ref) for a worked demonstration.
+``\varepsilon``. See [The η = 0 oracle](eta0_oracle.md) for a worked demonstration.
 
 ## Step 2 — the associated ``\varepsilon``-C\*-algebra
 
-[`associated_algebra`](@ref) builds the ``\varepsilon``-C\*-algebra ``A``; for
-what that means, see [The mathematics](@ref):
+[`associated_algebra`](../reference/api.md) builds the ``\varepsilon``-C\*-algebra ``A``; for
+what that means, see [The mathematics](../explanation/math_story.md):
 
 ```@example tut
 A = associated_algebra(Φ)
@@ -124,7 +123,7 @@ dim(A), ambient(A), epsilon(A)
 
 ## Step 3 — the ``O(\varepsilon)``-isomorphism to a genuine C\*-algebra
 
-[`main_isomorphism`](@ref) produces ``v: B \to A``, where
+[`main_isomorphism`](../reference/api.md) produces ``v: B \to A``, where
 ``B = \bigoplus_l M_{d_l}`` is a genuine finite-dimensional C\*-algebra:
 
 ```@example tut
@@ -144,17 +143,16 @@ julia> blocks(v)
 
 ## Step 4 — factorize the channel
 
-[`factorize`](@ref) realises the isomorphism and its inverse as quantum channels,
+[`factorize`](../reference/api.md) realises the isomorphism and its inverse as quantum channels,
 giving ``\Phi \approx \Delta\Upsilon`` through ``B``.
 
-!!! warning "factorize has a tighter domain"
-    `factorize` builds ``\Upsilon`` via a power-series functional calculus whose
-    convergence domain is much smaller than the `prop_P` basin
-    ``\rho(\Phi^2-\Phi) < 1/4``. The verb pre-checks a conservative
-    ``\rho < 0.10`` and throws a clean `ArgumentError` for out-of-domain inputs —
-    it does **not** abort the session. [`associated_algebra`](@ref) and
-    [`main_isomorphism`](@ref) keep the wider ``\rho < 1/4`` domain;
-    [`certified_defect`](@ref) is always safe at any ``\eta``. (bug `aic-exa.13`)
+**Warning — factorize has a tighter domain.** `factorize` builds ``\Upsilon`` via a power-series functional calculus whose
+convergence domain is much smaller than the `prop_P` basin
+``\rho(\Phi^2-\Phi) < 1/4``. The verb pre-checks a conservative
+``\rho < 0.10`` and throws a clean `ArgumentError` for out-of-domain inputs —
+it does **not** abort the session. [`associated_algebra`](../reference/api.md) and
+[`main_isomorphism`](../reference/api.md) keep the wider ``\rho < 1/4`` domain;
+[`certified_defect`](../reference/api.md) is always safe at any ``\eta``. (bug `aic-exa.13`)
 
 Use a genuinely oblique, multi-block fixture so the full machinery is exercised
 (``B = M_2 \oplus M_2``):
@@ -164,7 +162,7 @@ Use a genuinely oblique, multi-block fixture so the full machinery is exercised
 F = factorize(Ψ)
 ```
 
-The encode and decode channels are the duals ([`CPMap`](@ref), not square
+The encode and decode channels are the duals ([`CPMap`](../reference/api.md), not square
 `UCPMap`s):
 
 ```@example tut
@@ -197,7 +195,7 @@ The certified round-trip defects are linear in ``\eta`` and lie below the
 ![Certified round-trip defects vs η; linear in η, below the 50·η envelope (test_factorize.jl)](../assets/roundtrip.png)
 
 For ``\eta > 0`` the `decode` channel is only ``O(\eta)``-trace-preserving (an
-internal Choi→Kraus PSD-cone clip). [`iscptp`](@ref) is `false` at the default
+internal Choi→Kraus PSD-cone clip). [`iscptp`](../reference/api.md) is `false` at the default
 `atol = 1e-9` and `true` once loosened. The rigorous certificate is the cb-norm
 round-trip bracket above, not `iscptp` at machine tolerance. The `encode` channel
 is TP to machine precision:
@@ -210,9 +208,9 @@ is TP to machine precision:
 
 ## Where to go next
 
-- [The η = 0 oracle](@ref) — watch every certified defect collapse to machine
+- [The η = 0 oracle](eta0_oracle.md) — watch every certified defect collapse to machine
   ``\varepsilon`` on exactly-idempotent channels.
-- [Multi-block channels](@ref) — a dedicated walkthrough of the oblique
+- [Multi-block channels](multiblock.md) — a dedicated walkthrough of the oblique
   ``B = M_2 \oplus M_2`` case.
-- [The mathematics](@ref) — the four-stage mathematical story with paper anchors.
-- [API reference](@ref) — every exported docstring.
+- [The mathematics](../explanation/math_story.md) — the four-stage mathematical story with paper anchors.
+- [API reference](../reference/api.md) — every exported docstring.

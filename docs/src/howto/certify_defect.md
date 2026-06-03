@@ -4,14 +4,14 @@ After this guide you can obtain a rigorous two-sided bracket on
 ``\eta = \|\Phi^2 - \Phi\|_{\mathrm{cb}}`` without any SDP solver.
 
 **Assumes:** `AlmostIdempotentChannels` is installed and you have a
-`UCPMap` in scope; see [Quick start](@ref).
+`UCPMap` in scope; see [Quick start](../getting_started/quickstart.md).
 
 ## Steps
 
 **1. Build a `UCPMap` from Kraus operators.**
 
 Inline the constructor body (fixtures are not exported — see step 2 in
-[Build a UCPMap from Kraus operators](@ref)):
+[Build a UCPMap from Kraus operators](build_ucpmap.md)):
 
 ```@example certify
 using AlmostIdempotentChannels, LinearAlgebra
@@ -43,7 +43,7 @@ more than speed:
 ```
 
 `certified_defect` has no domain restriction — it is safe to call at any
-``\eta``, including channels that would throw from [`factorize`](@ref).
+``\eta``, including channels that would throw from [`factorize`](../reference/api.md).
 
 **3. Read the bracket.**
 
@@ -80,18 +80,17 @@ julia> value(η)   # nothing — only the MOSEK tight bracket carries a point es
 
 (`value(η)` returns `nothing`; Documenter suppresses `nothing` output by default.)
 
-!!! note "Loose bracket by design"
-    The eig-free bracket is loose by design (hi/lo ~ 2n); it certifies a
-    rigorous interval rather than computing the exact value. For ``n = 2``
-    the solver-free bracket width is measured at ~2.34e-01.  For a tight
-    bracket (width ~1.60e-13) use `certified_defect(Φ; tight = true)` with
-    the MOSEK extension. See [Install and use the MOSEK extension](@ref).
+**Note — Loose bracket by design.** The eig-free bracket is loose by design (hi/lo ~ 2n); it certifies a
+rigorous interval rather than computing the exact value. For ``n = 2``
+the solver-free bracket width is measured at ~2.34e-01.  For a tight
+bracket (width ~1.60e-13) use `certified_defect(Φ; tight = true)` with
+the MOSEK extension. See [Install and use the MOSEK extension](mosek_install.md).
 
 On an exactly-idempotent channel ``\eta = 0`` and the bracket collapses to a
-neighbourhood of 0 at machine precision — see [The η = 0 oracle](@ref).
+neighbourhood of 0 at machine precision — see [The η = 0 oracle](../tutorials/eta0_oracle.md).
 
 ## See also
 
-- [Interpret a CertifiedBracket](@ref) — what `lo`/`hi`/`width`/`midpoint`/`value`/`∈` mean
-- [Certified arithmetic](@ref) — why the bracket is a proof
-- [The five-verb pipeline](@ref) — full walkthrough including algebra extraction and factorization
+- [Interpret a CertifiedBracket](read_bracket.md) — what `lo`/`hi`/`width`/`midpoint`/`value`/`∈` mean
+- [Certified arithmetic](../explanation/certified_arithmetic.md) — why the bracket is a proof
+- [The five-verb pipeline](../tutorials/pipeline.md) — full walkthrough including algebra extraction and factorization

@@ -6,8 +6,8 @@ is what makes the output checkable.
 
 This page explains why the package replaces the paper's non-constructive proofs
 with finite-dimensional algorithms; for the mathematics those algorithms compute,
-see [The mathematics](@ref). For the claim that the resulting constant does not
-grow with the matrix size, see [Dimension-independence](@ref).
+see [The mathematics](math_story.md). For the claim that the resulting constant does not
+grow with the matrix size, see [Dimension-independence](dim_independence.md).
 
 ## The mandate
 
@@ -31,7 +31,7 @@ and meet the same bound (`CLAUDE.md:148-151`).
 The correctness specification is not "matches the proof step by step." It is the
 inequality the theorem promises (`CLAUDE.md:74-76`, verbatim):
 
-> **The paper's $O(\varepsilon)$ bound is the algorithm's correctness specification.**
+> **The paper's ``O(\varepsilon)`` bound is the algorithm's correctness specification.**
 > The constructive routine must produce an output meeting the bound the theorem
 > promises; that bound is the assertion the cross-check verifies.
 
@@ -41,7 +41,7 @@ the theorem's own ``\le O(\eta)`` inequality on adversarial inputs at the
 boundary of the hypotheses. A proof you cannot run cannot catch a sign error in
 its own constants; a bound you can certify can. The cleanest instance is the
 ``\eta = 0`` case, where every defect must collapse to machine precision — see
-[The η = 0 oracle](@ref).
+[The η = 0 oracle](../tutorials/eta0_oracle.md).
 
 ## The four canonical moves
 
@@ -62,7 +62,7 @@ The paper itself declines the contour-integral calculus, and says why
 (`approximate_algebras.tex:535`, verbatim):
 
 > "We have not found use of these methods due to their fragility in the
-> approximate setting and the lack of a $*$-representation, which could
+> approximate setting and the lack of a ``*``-representation, which could
 > alleviate it."
 
 The reason is that the spectrum of a non-normal operator is
@@ -108,15 +108,15 @@ universal constant ``c_0`` from the error-reduction lemma `cor_improvement`
 remains **open** (`FINDINGS §D2`). The naive averaging route is rejected
 precisely because *its* constant grows ``\propto n`` (`tex:484`); a bound that
 grows with dimension is therefore a stop condition, not a constant to patch — see
-[Dimension-independence](@ref).
+[Dimension-independence](dim_independence.md).
 
 When a result genuinely resists constructivization, that is a finding to escalate
 with the specific obstruction, not a corner to paper over (`CLAUDE.md:78-79`).
 
 ## See also
 
-- [The mathematics](@ref) — the four-stage story the constructive routes realise
-- [Dimension-independence](@ref) — why the constant must not grow with ``n``,
+- [The mathematics](math_story.md) — the four-stage story the constructive routes realise
+- [Dimension-independence](dim_independence.md) — why the constant must not grow with ``n``,
   and how the package checks it
-- [The η = 0 oracle](@ref) — the exact case where every constructive
+- [The η = 0 oracle](../tutorials/eta0_oracle.md) — the exact case where every constructive
   output collapses to machine precision

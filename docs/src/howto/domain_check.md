@@ -1,15 +1,14 @@
 # Stay in factorize's domain
 
-After this guide you can determine whether a `UCPMap` is in [`factorize`](@ref)'s
+After this guide you can determine whether a `UCPMap` is in [`factorize`](../reference/api.md)'s
 convergence domain and choose the right escape hatch when it is not.
 
-**Assumes:** `AlmostIdempotentChannels` is installed; see [Quick start](@ref).
+**Assumes:** `AlmostIdempotentChannels` is installed; see [Quick start](../getting_started/quickstart.md).
 
-!!! warning "Conservative threshold"
-    `factorize` pre-checks ``\rho(\Phi^2-\Phi) < 0.10`` and throws a clean
-    `ArgumentError` when this fails. `associated_algebra` and `main_isomorphism`
-    keep the wider ``\rho < 1/4`` basin; `certified_defect` is always safe at any
-    ``\eta``. (bug `aic-exa.13`)
+**Warning — Conservative threshold.** `factorize` pre-checks ``\rho(\Phi^2-\Phi) < 0.10`` and throws a clean
+`ArgumentError` when this fails. `associated_algebra` and `main_isomorphism`
+keep the wider ``\rho < 1/4`` basin; `certified_defect` is always safe at any
+``\eta``. (bug `aic-exa.13`)
 
 ## Steps
 
@@ -93,10 +92,10 @@ with ``U = \mathrm{diag}(1, -1)``, where ``\rho = 2``) throw from all three
 pipeline verbs; only `certified_defect` is safe there.
 
 On an exactly-idempotent channel ``\rho = 0``; every verb is in domain — see
-[The η = 0 oracle](@ref).
+[The η = 0 oracle](../tutorials/eta0_oracle.md).
 
 ## See also
 
-- [Design decisions and known limits](@ref) — the full rationale for the tighter threshold
-- [Factorize a channel](@ref) — what to do once you are in domain
-- [Certify the idempotency defect (solver-free)](@ref) — the always-safe alternative
+- [Design decisions and known limits](../explanation/design_limits.md) — the full rationale for the tighter threshold
+- [Factorize a channel](factorize.md) — what to do once you are in domain
+- [Certify the idempotency defect (solver-free)](certify_defect.md) — the always-safe alternative

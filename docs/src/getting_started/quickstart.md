@@ -58,7 +58,7 @@ number of Kraus operators.
 ```
 
 `certified_defect` calls the C/arb core, constructs a rigorous bracket from
-FLINT/arb error balls rounded outward, and returns a [`CertifiedBracket`](@ref).
+FLINT/arb error balls rounded outward, and returns a [`CertifiedBracket`](../reference/api.md).
 No SDP solver is needed.
 
 ## Read the bracket
@@ -82,21 +82,20 @@ The bracket geometry:
 width(η), midpoint(η)
 ```
 
-!!! note "The eig-free bracket is loose by design"
-    The solver-free bracket width satisfies `hi/lo ~ 2n`; it certifies a value
-    rather than computing it. For a tight bracket (width ~1e-13 for this fixture)
-    or the exact diamond-norm value, use the MOSEK extension.
+**Note — The eig-free bracket is loose by design.** The solver-free bracket width satisfies `hi/lo ~ 2n`; it certifies a value
+rather than computing it. For a tight bracket (width ~1e-13 for this fixture)
+or the exact diamond-norm value, use the MOSEK extension.
 
 `value(η)` returns `nothing` on the solver-free path — there is no point
 estimate, only the interval. On an exactly-idempotent channel (``\eta = 0``)
-the bracket collapses to near machine ``\varepsilon`` — see [The η = 0 oracle](@ref).
+the bracket collapses to near machine ``\varepsilon`` — see [The η = 0 oracle](../tutorials/eta0_oracle.md).
 
 ## Where to go next
 
-- [The five-verb pipeline](@ref) — `certified_defect`, `associated_algebra`,
+- [The five-verb pipeline](../tutorials/pipeline.md) — `certified_defect`, `associated_algebra`,
   `main_isomorphism`, `factorize`, `encode`/`decode` in sequence on the same
   channel.
-- [Interpret a CertifiedBracket](@ref) — what `lo`, `hi`, `width`, `midpoint`,
+- [Interpret a CertifiedBracket](../howto/read_bracket.md) — what `lo`, `hi`, `width`, `midpoint`,
   `value`, and `∈` mean, and when `value` is non-nothing.
-- [The mathematics](@ref) — the paper results each verb implements, with
+- [The mathematics](../explanation/math_story.md) — the paper results each verb implements, with
   `approximate_algebras.tex` anchors.

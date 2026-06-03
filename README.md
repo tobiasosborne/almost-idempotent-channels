@@ -18,7 +18,7 @@ is. It is a Julia surface over the `libaic` C/arb cores, implementing
 arXiv:2405.02434](https://arxiv.org/abs/2405.02434) (2025) as finite-dimensional
 algorithms for *every* result the paper proves non-constructively.
 
-![Pipeline demo: certified_defect, associated_algebra, main_isomorphism, factorize](docs/assets/demo.svg)
+![Pipeline demo: certified_defect, associated_algebra, main_isomorphism, factorize](docs/src/assets/demo.svg)
 
 ## Why this exists
 
@@ -119,6 +119,42 @@ Library discovery is via `Preferences` — there is no `deps/build.jl` and no
 `set_libaic_path!(p)` points it anywhere else. The suite is green with no solver
 installed: `AlmostIdempotentChannels | 219 219 PASS` in ~2m09s.
 
+## Documentation
+
+The full documentation is a [Diátaxis](https://diataxis.fr)-structured site —
+tutorials, how-to guides, explanation essays, and a complete API reference. It is
+plain Markdown with relative links, so you can **read and navigate all of it on
+GitHub** without building anything: **start at
+[`docs/src/index.md`](docs/src/index.md)**.
+
+- **Learn** — [the five-verb pipeline](docs/src/tutorials/pipeline.md) ·
+  [the η = 0 oracle](docs/src/tutorials/eta0_oracle.md) ·
+  [multi-block channels](docs/src/tutorials/multiblock.md)
+- **Do** — [certify a defect](docs/src/howto/certify_defect.md) ·
+  [factorize a channel](docs/src/howto/factorize.md) ·
+  [interpret a `CertifiedBracket`](docs/src/howto/read_bracket.md) ·
+  [extract the block structure](docs/src/howto/block_structure.md)
+- **Understand** — [the mathematics](docs/src/explanation/math_story.md) ·
+  [certified arithmetic & the cross-check ladder](docs/src/explanation/certified_arithmetic.md) ·
+  [dimension-independence](docs/src/explanation/dim_independence.md) ·
+  [design decisions & known limits](docs/src/explanation/design_limits.md)
+- **Look up** — [API reference](docs/src/reference/api.md) ·
+  [notation glossary](docs/src/reference/notation.md)
+
+To build the rendered HTML site (every example executes against `libaic`; there is
+no hosted site by design):
+
+```sh
+julia --project=docs -e 'using Pkg; Pkg.instantiate(); include("docs/make.jl")'
+# -> open docs/build/index.html
+```
+
+<p align="center">
+  <img src="docs/src/assets/screenshot_home.png" alt="The rendered documentation site: home page" width="760"/>
+  <br/>
+  <em>The rendered site (build it locally, or browse the Markdown on GitHub).</em>
+</p>
+
 ## A look at it running
 
 Each plot below re-renders a passing test; the reproduce script for each is in
@@ -130,7 +166,7 @@ Containment is a test invariant (`test/test_core.jl`), so this plot is a passing
 test drawn.
 
 <p align="center">
-  <img src="docs/assets/containment.png" alt="Certified bracket containing the analytic η" width="640"/>
+  <img src="docs/src/assets/containment.png" alt="Certified bracket containing the analytic η" width="640"/>
   <br/>
   <em>The eig-free certificate [lo, hi] (shaded band) brackets the analytic
   η = t(1−t)·2(1−1/d²) (line) for every t. Loose by design (hi/lo ≈ 2n): it
@@ -143,7 +179,7 @@ dimension is *flat*: it does not grow with `dim A`. The naive averaging route th
 paper warns against (§9) has a constant that grows like `n`; this one does not.
 
 <p align="center">
-  <img src="docs/assets/universality.png" alt="Isomorphism constant flat over dimension" width="640"/>
+  <img src="docs/src/assets/universality.png" alt="Isomorphism constant flat over dimension" width="640"/>
   <br/>
   <em>c = isodefect/η over dim A ∈ {8,12,16,18,20} (the C dim-sweep, tests/test_dbo3.c,
   prec=256): OLS slope −2.7e-4, max c = 0.047 at dim A = 12. The constant does not
@@ -156,7 +192,7 @@ channels (`bce_conj`, `B = M_2 ⊕ M_2`) the certified round-trip defects
 `50·η` envelope the tests assert.
 
 <p align="center">
-  <img src="docs/assets/roundtrip.png" alt="Round-trip defect O(η)" width="640"/>
+  <img src="docs/src/assets/roundtrip.png" alt="Round-trip defect O(η)" width="640"/>
   <br/>
   <em>Certified round-trip defects ‖ΔΥ−Φ‖_cb and ‖ΥΔ−1_B‖_cb vs η for oblique
   multi-block channels. Linear in η, below the 50·η envelope (test/test_factorize.jl).</em>
@@ -169,7 +205,7 @@ exactly right: `identity(2) → [2]`, `block_cond_exp(4,2) → [2,2]`,
 `dephasing(3) → [1,1,1]`. This is the cleanest ground truth in the paper.
 
 <p align="center">
-  <img src="docs/assets/eta0_oracle.png" alt="η=0 oracle defects at machine ε" width="640"/>
+  <img src="docs/src/assets/eta0_oracle.png" alt="η=0 oracle defects at machine ε" width="640"/>
   <br/>
   <em>On exactly-idempotent channels every certified defect collapses below 1e-9 and
   the block structure is exact. The cleanest cross-check rung (test/test_factorize.jl).</em>
@@ -318,6 +354,22 @@ with `Δ: B → B(H)` (decode) and `Υ: B(H) → B` (encode). This package compu
 four objects and certifies the two round-trip inequalities.
 
 </details>
+
+## Repository layout
+
+| Path | What it is |
+|---|---|
+| [`docs/`](docs/) | the documentation site (`docs/src/`) plus internal notes — see [`docs/README.md`](docs/README.md) |
+| `julia/AlmostIdempotentChannels.jl/` | the Julia package (the `ccall` surface and high-level API) |
+| `src/`, `include/aic/` | the C/arb cores and public headers |
+| `tests/`, `bench/` | the C test suite and benchmarks |
+| `paper/` | the verbatim arXiv source, per-section shards, and the findings log |
+| [`BUILDING.md`](BUILDING.md) | build, test, install, and consume instructions |
+
+`CLAUDE.md`, `AGENTS.md`, and `HANDOFF.md` at the repository root are working notes
+for AI coding agents; `ALGORITHM.md` and `MODULE_PLAN.md` are contributor design
+notes. As a user you need only this README and the
+[documentation](docs/src/index.md).
 
 ## Citation
 

@@ -1,5 +1,51 @@
 # HANDOFF.md — almost-idempotent-channels
 
+## ▶▶ LATEST (2026-06-03b): docs made GitHub-navigable + `docs/` tidied + README wired + screenshots (follow-up to aic-6k6)
+
+**Driver.** User: "wire docs into README; the docs folder is a mess with non-docs in it; give docs its own
+README; sample a fresh agent's confusion and fix the frictions; add screenshots" + "links are broken on
+github / you should be able to navigate everything easily on github alone."
+
+**Fresh-agent friction study.** 3 read-only subagents dropped cold into the repo; strong consensus
+(transcripts summarised in commit msg): (1) README had no docs link; (2) `docs/` conflated the Documenter
+site + research notes + adversarial design + plot scripts + 2 loose root `.md` files; (3) `docs/assets/`
+duplicated `docs/src/assets/`; (4) BUILDING.md had no Julia/docs section; (5) top-level `.md` files
+(CLAUDE/HANDOFF/AGENTS vs ALGORITHM/MODULE_PLAN) unlabeled. All fixed.
+
+**GitHub-navigability (the load-bearing fix).** Documenter `[x](@ref)` and `@raw html` do NOT render on
+GitHub. Converted ALL cross-refs to **relative `.md` links** (184; work on BOTH GitHub and Documenter;
+function refs → `reference/api.md`) and `@raw html` image blocks → **markdown images**. Admonitions: Documenter
+`!!!` indents the body 4 spaces (GitHub renders it as a code block) and Documenter 1.17 does NOT support
+GitHub `> [!WARNING]` alerts (leaks literal `[!WARNING]`), so converted all 20 to **bold-lead paragraphs**
+(clean on both). **KEY CONSTRAINT discovered:** inline math has NO syntax that renders on both — this
+Documenter config renders `` ``...`` `` (not `$...$`); GitHub renders `$...$`/```math (not `` `` ``). Kept
+`` ``...`` `` (the built site is the deliverable; screenshots show it); on GitHub inline math is monospace
+(standard Documenter-on-GitHub limitation), but display ```math, links, images, admonitions, tables all
+render. Fixed 8 stray `$...$` (were literal in the built site) → `` `` ``; fixed a nested-`$` inside a ```math
+block; fixed the paper-title citation (asterisk-italic `*..C\*-algebras*` rendered "C\" in Documenter →
+**underscore-italic `_..C\*-algebras_`**, renders on both).
+
+**Tidy.** `docs/` root now holds ONLY site tooling (`make.jl`, `Project.toml`) + subdirs. Moved the 2 loose
+internal specs (`applications_and_frictions.md`, `cbnorm_tight_certifier.md`) → `docs/research/` (updated the
+11 live `docs/cbnorm_tight_certifier.md` provenance citations in C/headers/tests/tools/ext/ALGORITHM/HANDOFF).
+Deduped: removed `docs/assets/` (5 png dupes), moved `demo.cast` → `docs/src/assets/`, repointed README + plot
+scripts to `docs/src/assets/`. NEW **`docs/README.md`** (renders when you open `docs/` on GitHub) maps user
+docs (`src/`) vs internal (`research/`, `adversarial/`, `plots/`). Added an "internal — not user docs"
+disclaimer to `docs/adversarial/README.md`.
+
+**README + BUILDING.** README: new "## Documentation" section (links into `docs/src/index.md` + key pages +
+build one-liner + a rendered-site screenshot) and a "## Repository layout" table marking user vs
+contributor vs agent-only files. BUILDING.md: new "## Julia package and documentation" section (the
+`Pkg.test()` + docs-build recipe it was missing). Screenshots (`docs/src/assets/screenshot_{home,math}.png`)
+captured via headless playwright/chromium of the built HTML.
+
+**Build:** `julia --project=docs docs/make.jl` exits 0, **0 warnings, all doctests green** (9 rebuilds this
+session; final is build9). No C recompile needed (the 11 path edits are comment-only). README/docs render on
+GitHub now; the built site renders identically to before (math + nav). Bead aic-6k6 stays closed (this was the
+GitHub-readiness follow-up).
+
+---
+
 ## ▶▶ LATEST (2026-06-03): Comprehensive Diátaxis documentation site DELIVERED (bead aic-6k6); docs build CLEAN (0 warnings, all doctests green)
 
 **The deliverable.** The 3-page Documenter site (index/tutorial/api) is now a **24-page Diátaxis site** at
@@ -1342,7 +1388,7 @@ central quantity η = ‖Φ²−Φ‖_cb now has a full certified pipeline:
   `SemidefiniteOptimization`, complex-native) confirms the MOSEK golden master to
   ≤1.1e-7. KEY: Mathematica SDP is **machine-precision only** (no `WorkingPrecision`)
   — certified high-precision η must come from the FLINT/arb route, not Mathematica.
-- Design contract: `docs/cbnorm_tight_certifier.md` (TIB-grounded: Jansson SIAM
+- Design contract: `docs/research/cbnorm_tight_certifier.md` (TIB-grounded: Jansson SIAM
   2008, Watrous 1207.5726/TQI Ch.3, QETLAB). Follow-up `aic-ssu` (Julia end-to-end
   `certify(kraus)→(lo,hi)` wrapper). **Partial-trace direction in the dual is the
   load-bearing convention** (`aic_mat_partial_trace_right` / Convex sys 2, the

@@ -74,6 +74,6 @@ axislegend(ax,
     ["c (C dim-sweep, test_dbo3, prec=256)", "OLS fit  (slope −2.7e-4)"];
     position = :rt, framevisible = false, labelcolor = "#c0caf5", patchsize = (18, 14))
 
-out = "/home/tobias/Projects/almost-idempotent-channels/docs/assets/universality.png"
+out = "/home/tobias/Projects/almost-idempotent-channels/docs/src/assets/universality.png"
 save(out, fig; px_per_unit = 2)
 println("WROTE ", out)

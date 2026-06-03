@@ -56,7 +56,7 @@ int aic_cbnorm_eigfree_d(double *lo, double *hi,
 
 /* TIGHT certified two-sided bracket on eta = ||Phi^2-Phi||_cb, returned as two
  * RIGOROUS doubles (*lo <= eta <= *hi). Flat-double ABI over aic_cbnorm_certify
- * (include/aic_cbnorm.h; docs/cbnorm_tight_certifier.md) for the 3c Julia ccall:
+ * (include/aic_cbnorm.h; docs/research/cbnorm_tight_certifier.md) for the 3c Julia ccall:
  * J and the two MOSEK feasible points (MAX-primal X,P,Q; MIN-dual Y0,Y1) are
  * passed as flat N x N [p*N+q] (re,im) arrays (N=n*n); the routine loads them to
  * acb_mat, runs the arb certifier, and converts the balls with the rigorous

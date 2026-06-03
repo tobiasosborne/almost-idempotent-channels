@@ -1,10 +1,10 @@
 # Interpret a CertifiedBracket
 
-After this guide you can read every field of a [`CertifiedBracket`](@ref) and
+After this guide you can read every field of a [`CertifiedBracket`](../reference/api.md) and
 know what the bracket proves.
 
 **Assumes:** you have a `CertifiedBracket` value in scope, either from
-[`certified_defect`](@ref) or from one of the pipeline accessors.
+[`certified_defect`](../reference/api.md) or from one of the pipeline accessors.
 
 ## Steps
 
@@ -78,7 +78,7 @@ The eig-free bracket is loose by design (hi/lo ~ 2n); it certifies a value
 rather than computing it. Measured widths: ~2.34e-01 for ``\Phi_t(2, 0.1)``
 and ~5.46e-01 for ``\Phi_t(2, 0.3)``; compare to the tight MOSEK bracket
 widths of ~1.60e-13 and ~5.76e-13. The reason the solver-free bracket is loose
-lives in [Certified arithmetic](@ref).
+lives in [Certified arithmetic](../explanation/certified_arithmetic.md).
 
 **7. Handle the §B9 slack when testing against an analytic value.**
 
@@ -93,10 +93,10 @@ tol = 1e-7
 ```
 
 On an exactly-idempotent channel every bracket collapses to a neighbourhood of
-0 at machine precision — see [The η = 0 oracle](@ref).
+0 at machine precision — see [The η = 0 oracle](../tutorials/eta0_oracle.md).
 
 ## See also
 
-- [Certified arithmetic](@ref) — why the arb rounding guarantees the containment
-- [API reference](@ref) — full signature of `CertifiedBracket`, `width`, `midpoint`, `value`
-- [The five-verb pipeline](@ref) — end-to-end walk through bracket creation and use
+- [Certified arithmetic](../explanation/certified_arithmetic.md) — why the arb rounding guarantees the containment
+- [API reference](../reference/api.md) — full signature of `CertifiedBracket`, `width`, `midpoint`, `value`
+- [The five-verb pipeline](../tutorials/pipeline.md) — end-to-end walk through bracket creation and use

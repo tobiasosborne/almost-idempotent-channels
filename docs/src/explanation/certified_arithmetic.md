@@ -3,7 +3,7 @@
 This page explains *why* the package's numbers are trustworthy: what a certified
 bracket is, how it is built, and the four-rung cross-check ladder that the whole
 test suite rests on. It is the understanding-page behind every scalar the verbs
-return; to read a bracket in practice see [Interpret a CertifiedBracket](@ref).
+return; to read a bracket in practice see [Interpret a CertifiedBracket](../howto/read_bracket.md).
 
 The paper's entire subject is rigorous ``O(\varepsilon)`` bounds. A floating-point
 computation that merely *looks* close is not a proof of a bound. So the package
@@ -11,7 +11,7 @@ certifies the bounds numerically rather than trusting `double`.
 
 ## A `CertifiedBracket` is a proof, not a guess
 
-Every scalar result comes back as a [`CertifiedBracket`](@ref)
+Every scalar result comes back as a [`CertifiedBracket`](../reference/api.md)
 
 ```math
 \mathrm{lo} \le x \le \mathrm{hi},
@@ -29,7 +29,7 @@ of exactly the kind of inequality the paper states.
 
 This is why a defect being "zero" is checkable without ambiguity: on an
 exactly-idempotent channel the bracket contains ``0`` and its endpoints sit at
-machine ``\varepsilon`` — see [The η = 0 oracle](@ref).
+machine ``\varepsilon`` — see [The η = 0 oracle](../tutorials/eta0_oracle.md).
 
 ## Where precision is load-bearing
 
@@ -71,11 +71,10 @@ design** — the ratio ``\mathrm{hi}/\mathrm{lo}`` is exactly ``2n`` — because
 *certifies* a value with a closed-form inequality rather than *competing* with a
 solver for the exact number.
 
-!!! note "The eig-free bracket is loose by design"
-    The solver-free bracket has ``\mathrm{hi}/\mathrm{lo} \sim 2n``. It proves an
-    inequality cheaply and with no solver; it does not try to be tight. For a tight
-    bracket (width ``\sim 10^{-13}``) or the exact diamond-norm value, install the
-    MOSEK extension — see [Tight brackets with MOSEK](@ref).
+**Note — The eig-free bracket is loose by design.** The solver-free bracket has ``\mathrm{hi}/\mathrm{lo} \sim 2n``. It proves an
+inequality cheaply and with no solver; it does not try to be tight. For a tight
+bracket (width ``\sim 10^{-13}``) or the exact diamond-norm value, install the
+MOSEK extension — see [Tight brackets with MOSEK](../tutorials/mosek_tight.md).
 
 The **tight rung** feeds the same arb certifier the Watrous SDP feasible points
 (the maximising primal for the lower bound, the minimising dual for the upper),
@@ -104,11 +103,7 @@ certified bracket must **contain** that analytic value for every ``t``. This
 catches a *bound* error: a bracket that is too tight to be rigorous would exclude
 the truth at some ``t``. Containment is a test invariant (`test_core.jl`).
 
-```@raw html
-<p align="center">
-  <img src="../assets/containment.png" alt="The certified bracket contains the analytic defect for every t" width="640"/>
-</p>
-```
+![The certified bracket contains the analytic defect for every t](../assets/containment.png)
 
 The shaded band is the eig-free certificate ``[\mathrm{lo}, \mathrm{hi}]``; the
 line is the analytic ``\eta = t(1-t)\cdot 2(1 - 1/d^2)``. The band brackets the line
@@ -124,7 +119,7 @@ not "small". This is the cleanest ground truth in the paper: zero defect is
 unambiguous, and the extracted block structure is exactly right. Rung 3 catches a
 *structural* error that rungs 1–2 can miss, because it pins the answer to an exact
 value rather than a tolerance. It is the discipline test for every feature — see
-[The η = 0 oracle](@ref).
+[The η = 0 oracle](../tutorials/eta0_oracle.md).
 
 ### Rung 4 — strong duality (MOSEK)
 
@@ -146,8 +141,8 @@ than a crash; a certified bracket is only emitted when it is genuinely certified
 
 ## Where to go next
 
-- Read a bracket in practice: [Interpret a CertifiedBracket](@ref) and
-  [Certify the idempotency defect (solver-free)](@ref).
-- The exact-value path: [Tight brackets with MOSEK](@ref).
-- The central dimension-free claim, with its own canary: [Dimension-independence](@ref).
-- The software that makes the two number paths possible: [Architecture: C + FLINT + Julia](@ref).
+- Read a bracket in practice: [Interpret a CertifiedBracket](../howto/read_bracket.md) and
+  [Certify the idempotency defect (solver-free)](../howto/certify_defect.md).
+- The exact-value path: [Tight brackets with MOSEK](../tutorials/mosek_tight.md).
+- The central dimension-free claim, with its own canary: [Dimension-independence](dim_independence.md).
+- The software that makes the two number paths possible: [Architecture: C + FLINT + Julia](architecture.md).

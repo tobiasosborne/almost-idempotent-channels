@@ -94,7 +94,7 @@ cbnorm_inverse
 isodefect
 ```
 
-`blocks(v::MainIsomorphism)` delegates to the underlying `CStarAlgebra` and is listed under [CStarAlgebra](@ref) above.
+`blocks(v::MainIsomorphism)` delegates to the underlying `CStarAlgebra` and is listed under [CStarAlgebra](api.md) above.
 
 ### ChannelFactorization
 
@@ -115,7 +115,7 @@ set_libaic_path!
 
 ## MOSEK extension (solver-gated)
 
-These names require the `AICMosekExt` package extension. Without it they throw a helpful install hint. The solver-free alternative is [`certified_defect`](@ref) (always available, no solver needed). See [Install and use the MOSEK extension](@ref).
+These names require the `AICMosekExt` package extension. Without it they throw a helpful install hint. The solver-free alternative is [`certified_defect`](api.md) (always available, no solver needed). See [Install and use the MOSEK extension](../howto/mosek_install.md).
 
 ```@docs
 idempotency_defect

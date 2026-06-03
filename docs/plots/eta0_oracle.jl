@@ -111,6 +111,6 @@ axislegend(ax, deflegs, defect_names;
 text!(ax, 0.55, 1e-15; text = "all defects ε=iso=0 exactly; round-trips ≤ 1.5e-36\n(exact-0 / sub-1e-40 bars shown at the 1e-40 floor)",
       align = (:left, :top), color = "#565f89", fontsize = 11, offset = (0, 0))
 
-out = "/home/tobias/Projects/almost-idempotent-channels/docs/assets/eta0_oracle.png"
+out = "/home/tobias/Projects/almost-idempotent-channels/docs/src/assets/eta0_oracle.png"
 save(out, fig; px_per_unit = 2)
 println("WROTE ", out)

@@ -69,13 +69,13 @@ All 219 tests pass with no solver installed.
 A MOSEK license unlocks two additional verbs: `idempotency_defect` (the exact
 diamond-norm value via the Watrous SDP) and `certified_defect(Φ; tight=true)`
 (a tight bracket fed the SDP feasible points, ~10^12x narrower than the
-solver-free bracket). See [Install and use the MOSEK extension](@ref) for the install steps
-and [Tight brackets with MOSEK](@ref) for usage examples.
+solver-free bracket). See [Install and use the MOSEK extension](../howto/mosek_install.md) for the install steps
+and [Tight brackets with MOSEK](../tutorials/mosek_tight.md) for usage examples.
 
 The solver-free pipeline — `certified_defect`, `associated_algebra`,
 `main_isomorphism`, and `factorize` — works without a solver at any step.
 
 ---
 
-**Next:** [Quick start](@ref) for a first certified run, or [The five-verb pipeline](@ref)
+**Next:** [Quick start](quickstart.md) for a first certified run, or [The five-verb pipeline](../tutorials/pipeline.md)
 for the full chain.

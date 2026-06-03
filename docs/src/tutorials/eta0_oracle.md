@@ -89,8 +89,8 @@ assertions only bound them at `< 1e-9`.
 On the ``\eta = 0`` oracle the `decode` channel is TP to machine precision
 (no PSD-cone clip), so `iscptp(decode(F2))` is `true` at the default
 `atol = 1e-9`. Contrast with the ``\eta > 0`` multi-block case, where decode is
-only ``O(\eta)``-TP — see [Multi-block channels](@ref) and the Known limits in
-[Design decisions and known limits](@ref).
+only ``O(\eta)``-TP — see [Multi-block channels](multiblock.md) and the Known limits in
+[Design decisions and known limits](../explanation/design_limits.md).
 
 ![On exactly-idempotent channels every certified defect collapses below 1e-9; measured maxima are 4.4e-75 and 3.9e-75 (test_factorize.jl)](../assets/eta0_oracle.png)
 
@@ -102,11 +102,11 @@ behind that note. If you add a new channel fixture and any defect does not colla
 below `1e-9` when ``\eta = 0``, treat it as a regression.
 
 For the cross-check ladder — where the ``\eta = 0`` oracle is rung 3 — see
-[Certified arithmetic](@ref).
+[Certified arithmetic](../explanation/certified_arithmetic.md).
 
 ## Where to go next
 
-- [The five-verb pipeline](@ref) — the full chain on a genuinely ``\eta > 0``
+- [The five-verb pipeline](pipeline.md) — the full chain on a genuinely ``\eta > 0``
   channel.
-- [Certified arithmetic](@ref) — the four-rung cross-check ladder where this
+- [Certified arithmetic](../explanation/certified_arithmetic.md) — the four-rung cross-check ladder where this
   oracle is rung 3.

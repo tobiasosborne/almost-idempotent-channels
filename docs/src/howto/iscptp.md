@@ -1,16 +1,15 @@
 # Check trace-preservation of a channel
 
-After this guide you can use [`iscptp`](@ref) correctly, understand when it
+After this guide you can use [`iscptp`](../reference/api.md) correctly, understand when it
 returns `false` by design, and know what the rigorous certificate actually is.
 
 **Assumes:** you have a `CPMap` — typically `encode(F)` or `decode(F)` from a
-[`ChannelFactorization`](@ref) — in scope.
+[`ChannelFactorization`](../reference/api.md) — in scope.
 
-!!! warning "iscptp at machine tolerance is not the rigorous certificate"
-    For ``\eta > 0`` multi-block channels, `iscptp(decode(F))` returns `false`
-    at the default `atol = 1e-9` by design. The rigorous certificate for the
-    round-trip quality is the cb-norm defect brackets `delups_defect` /
-    `upsdel_defect`, not `iscptp` at machine tolerance.
+**Warning — iscptp at machine tolerance is not the rigorous certificate.** For ``\eta > 0`` multi-block channels, `iscptp(decode(F))` returns `false`
+at the default `atol = 1e-9` by design. The rigorous certificate for the
+round-trip quality is the cb-norm defect brackets `delups_defect` /
+`upsdel_defect`, not `iscptp` at machine tolerance.
 
 ## Steps
 
@@ -88,10 +87,10 @@ Both brackets certify the round-trip accuracy rigorously; they do not depend on
 a TP tolerance.
 
 On an exactly-idempotent channel decode is exactly TP — see
-[The η = 0 oracle](@ref).
+[The η = 0 oracle](../tutorials/eta0_oracle.md).
 
 ## See also
 
-- [Multi-block channels](@ref) — why the PSD-cone clip happens and when it matters
-- [Design decisions and known limits](@ref) — the full O(η)-TP design note
-- [API reference](@ref) — full signature of `iscptp`
+- [Multi-block channels](../tutorials/multiblock.md) — why the PSD-cone clip happens and when it matters
+- [Design decisions and known limits](../explanation/design_limits.md) — the full O(η)-TP design note
+- [API reference](../reference/api.md) — full signature of `iscptp`

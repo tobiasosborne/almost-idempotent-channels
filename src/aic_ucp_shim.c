@@ -151,7 +151,7 @@ static void mat_from_flat(acb_mat_t M, const double *re, const double *im, int N
 
 /* include/aic_cbnorm.h — TIGHT certified bracket on eta = ||Phi^2-Phi||_cb from
  * J = Choi(Phi^2-Phi) and the two MOSEK feasible points (.tex:347-354;
- * docs/cbnorm_tight_certifier.md). Flat-double ABI: builds Phi from the Kraus
+ * docs/research/cbnorm_tight_certifier.md). Flat-double ABI: builds Phi from the Kraus
  * arrays, forms J = Choi(Phi^2-Phi) (the SAME arb core the C test exercises),
  * loads X,P,Q,Y0,Y1 (each N x N, N=n*n, [p*N+q]) into acb_mat, runs
  * aic_cbnorm_certify, then converts the arb balls to a RIGOROUS double bracket:

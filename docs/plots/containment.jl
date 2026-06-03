@@ -83,6 +83,6 @@ axislegend(ax,
     ["certified bracket [lo, hi]", "analytic η, d=2", "analytic η, d=3"];
     position = :lt, framevisible = false, labelcolor = "#c0caf5", patchsize = (22, 14))
 
-out = "/home/tobias/Projects/almost-idempotent-channels/docs/assets/containment.png"
+out = "/home/tobias/Projects/almost-idempotent-channels/docs/src/assets/containment.png"
 save(out, fig; px_per_unit = 2)
 println("WROTE ", out)

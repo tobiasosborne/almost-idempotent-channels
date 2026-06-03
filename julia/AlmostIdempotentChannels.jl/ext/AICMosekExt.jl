@@ -36,7 +36,7 @@ import AlmostIdempotentChannels: choi_diff, n, kraus, eta_eigfree,
 # =============================================================================
 # The Watrous 2012 diamond-norm SDP (arXiv:1207.5726), Convex.jl + MOSEK,
 # complex-native. This is the eta = ||Phi^2-Phi||_cb = ||Lambda||_diamond engine,
-# in three forms (bead aic-m24, increment 3a; design doc docs/cbnorm_tight_certifier.md):
+# in three forms (bead aic-m24, increment 3a; design doc docs/research/cbnorm_tight_certifier.md):
 #
 #   1. diamond_norm_watrous(J, n)        — MAX primal, value only (the original).
 #   2. diamond_norm_watrous_primal(J, n) — MAX primal, EXPOSES the feasible point

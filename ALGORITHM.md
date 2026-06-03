@@ -490,7 +490,7 @@ bracket. Files: `include/aic_cbnorm.h` (`aic_cbnorm_certify` decl),
 GAP-2 tests use to read the restoration defects),
 `tests/test_certify.c` (34 checks), and the flat-double `aic_cbnorm_certify_d`
 shim in `src/aic_ucp_shim.c` (exported in `libaic.so` for the 3c Julia ccall).
-Design doc: `docs/cbnorm_tight_certifier.md`. NO Julia run here — the C/arb
+Design doc: `docs/research/cbnorm_tight_certifier.md`. NO Julia run here — the C/arb
 certifier consumes the committed golden-master feasible points (step 3a).
 
 **Strategy.** Two INDEPENDENT MOSEK feasible points bracket `eta` by weak

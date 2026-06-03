@@ -106,7 +106,7 @@ void aic_cbnorm_eigfree_distance(arb_t lo, arb_t hi, const aic_ucp_kraus *phi,
  * eta=0 regime (||J||_F < ~1e-9*n) or when the MOSEK points are too far off to
  * restore cleanly; fails loud (Rule 4) if even the eig-free fallback straddles.
  * All ONE-SIDED herm_max_eig(-M) PSD tests (no full eig; dodges aic-w4o.1).
- * See docs/cbnorm_tight_certifier.md. `lo`, `hi` are caller-initialised arb_t. */
+ * See docs/research/cbnorm_tight_certifier.md. `lo`, `hi` are caller-initialised arb_t. */
 void aic_cbnorm_certify(arb_t lo, arb_t hi, const acb_mat_t J,
                         const acb_mat_t X, const acb_mat_t P, const acb_mat_t Q,
                         const acb_mat_t Y0, const acb_mat_t Y1,

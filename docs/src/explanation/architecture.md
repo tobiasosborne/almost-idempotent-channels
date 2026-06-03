@@ -5,7 +5,7 @@ is built on, why it is C + FLINT + Julia rather than pure Julia, and what you
 depend on when you load it.
 
 This page explains the software stack the package is built on; to install and run
-it, see [Installation](@ref). It is a companion to [Certified arithmetic](@ref),
+it, see [Installation](../getting_started/install.md). It is a companion to [Certified arithmetic](certified_arithmetic.md),
 which covers the bracket mathematics and the cross-check ladder in depth — here we
 summarise *why* there are two number paths and link there for the ladder.
 
@@ -65,7 +65,7 @@ verbatim):
 
 > Every nontrivial routine exists (eventually) in **both** number paths, and the
 > arb path at `prec=53` must agree with the double path — that is a primary
-> cross-check. The arb path is what *certifies* the paper's $O(\varepsilon)$ bound; the
+> cross-check. The arb path is what *certifies* the paper's ``O(\varepsilon)`` bound; the
 > double path is what makes the test suite fast.
 
 The **double path** is the fast `prec=53` anchor. It carries the
@@ -74,16 +74,16 @@ degenerate and a certified simple-eigenvalue arb routine would abort on it
 (`aic_ucp.h:44-51`). It makes the 219-test solver-free suite run in about 2m09s.
 
 The **arb path** is the reason the project exists. It returns rigorous error
-balls, so the package can certify Kitaev's $O(\eta)$ inequalities rather than
+balls, so the package can certify Kitaev's ``O(\eta)`` inequalities rather than
 trust `double` (`CLAUDE.md:34-36`). `double` is adequate almost everywhere, but
-the *bound itself* fails silently in three regimes — a difference of $O(1)$
-quantities like the associator $(XY)Z - X(YZ)$ or $\Phi^2-\Phi$ where
+the *bound itself* fails silently in three regimes — a difference of ``O(1)``
+quantities like the associator ``(XY)Z - X(YZ)`` or ``\Phi^2-\Phi`` where
 cancellation eats the answer; the inversion of a near-singular operator; and a
-spectral gap comparable to $\eta$ where a `double` verdict on rank or positivity
+spectral gap comparable to ``\eta`` where a `double` verdict on rank or positivity
 would be a guess (`CLAUDE.md:327-331`). In those regimes the arb ball tracks the
 true uncertainty, and an enclosure that has lost all precision is a loud failure,
 not a silent widening. The two paths agreeing at `prec=53` is the cheapest rung
-of the [Certified arithmetic](@ref) cross-check ladder; the arb path's outward-rounded ball is the certificate at the top of it.
+of the [Certified arithmetic](certified_arithmetic.md) cross-check ladder; the arb path's outward-rounded ball is the certificate at the top of it.
 
 ## Why C + FLINT, not pure Julia
 
@@ -154,7 +154,7 @@ far above the `1e-11` fixture tolerance (`ALGORITHM.md:264-266`,
 ``C_\Phi \succeq 0`` and unital iff ``\operatorname{Tr}_K(C_\Phi) = 1`` (tracing
 out the left factor). On an exactly-idempotent ``\Phi`` the defect Choi
 ``\operatorname{Choi}(\Phi^2-\Phi)`` collapses to zero — see
-[The η = 0 oracle](@ref).
+[The η = 0 oracle](../tutorials/eta0_oracle.md).
 
 ## The native-library lifecycle
 
@@ -193,12 +193,12 @@ helpful error registered through `Base.Experimental.register_error_hint`; with
 `using Convex, Mosek, MosekTools` loaded, the extension's concrete methods shadow
 the stubs (`sdp_stubs.jl:1-50`, `libaic.jl:86-100`). The dual-path rationale for
 *why* the solver-free bracket is loose but rigorous — and how MOSEK tightens it —
-is in [Certified arithmetic](@ref).
+is in [Certified arithmetic](certified_arithmetic.md).
 
 ## See also
 
-- [Certified arithmetic](@ref) — the `CertifiedBracket` inequality, outward
+- [Certified arithmetic](certified_arithmetic.md) — the `CertifiedBracket` inequality, outward
   rounding, the eig-free Watrous bracket, and the cross-check ladder
-- [The mathematics](@ref) — what the five verbs compute and why
-- [The constructive mandate](@ref) — why the cores are finite-dim algorithms
-- [Installation](@ref) — building `libaic` and pointing Julia at it
+- [The mathematics](math_story.md) — what the five verbs compute and why
+- [The constructive mandate](constructive.md) — why the cores are finite-dim algorithms
+- [Installation](../getting_started/install.md) — building `libaic` and pointing Julia at it

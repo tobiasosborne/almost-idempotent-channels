@@ -4,7 +4,7 @@
  * (the bulk of the math) live in src/aic_cbnorm_certify_restore.c
  * (aic_cbnorm_int_lower / aic_cbnorm_int_upper); this file wires them together,
  * applies the dispatch and the fail-loud stop condition. See
- * include/aic_cbnorm.h for the API and docs/cbnorm_tight_certifier.md for THE
+ * include/aic_cbnorm.h for the API and docs/research/cbnorm_tight_certifier.md for THE
  * CONTRACT (the normalization table, the two recipes, the dispatch rules).
  *
  * STRATEGY (Law 1; .tex:347-354, the cb-norm = diamond-norm SDP). Two INDEPENDENT
