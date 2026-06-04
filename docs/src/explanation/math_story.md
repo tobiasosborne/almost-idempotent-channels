@@ -16,9 +16,10 @@ Every nontrivial claim is anchored to a line of the canonical source
 `paper/src/approximate_algebras.tex`, cited as `tex:NNN`. Subtleties the
 project's own reviews keep catching are cited to `paper/FINDINGS.md`. The package
 implements **constructive finite-dimensional algorithms**: the paper's proofs are
-often non-constructive (Lefschetz–Hopf fixed points, contour-integral functional
-calculus, Haar-measure diagonals), but in finite dimensions the objects those
-proofs merely assert to exist are computable. For each stage we separate **the
+often non-explicit — a Lefschetz–Hopf fixed-point count with no witness, or
+objects written infinite-dimensionally (a contour-integral functional calculus, a
+Haar-measure diagonal) — but in finite dimensions the objects those proofs merely
+assert to exist are computable. For each stage we separate **the
 paper's proof technique** from **the constructive route the package takes** — and
 the paper's ``O(\varepsilon)`` bound is the algorithm's correctness specification.
 
@@ -217,10 +218,10 @@ to patch.
 `tex:1414`) builds ``B`` incrementally: find a maximal commutative subalgebra whose
 projections are one-dimensional; the first split ``\mathbb{C} \to \mathbb{C}\oplus
 \mathbb{C}`` needs a **nontrivial projection** in ``A``, whose *existence*
-(`lem_nontriv_projection`, `tex:931`) is proved non-constructively with the
-**Lefschetz–Hopf fixed-point theorem** and H-space homotopy (§6). Each
-non-constructive ingredient is replaced by a finite-dimensional algorithm meeting
-the same bound (see [The constructive mandate](constructive.md)):
+(`lem_nontriv_projection`, `tex:931`) is proved by a pure-existence argument — the
+**Lefschetz–Hopf fixed-point theorem** and H-space homotopy (§6) — that exhibits no
+witness. Each non-explicit ingredient is replaced by a finite-dimensional algorithm
+meeting the same bound (see [The constructive mandate](constructive.md)):
 
 - **Nontrivial projection** ← an *ambient spectral split*: take a non-scalar
   Hermitian ``H \in A`` with the largest interior eigenvalue gap, form

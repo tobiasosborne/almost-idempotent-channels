@@ -16,7 +16,7 @@ a proof of an inequality, not a floating-point guess — on how lossy the round 
 is. It is a Julia surface over the `libaic` C/arb cores, implementing
 [Kitaev, *Almost-idempotent quantum channels and approximate C\*-algebras*,
 arXiv:2405.02434](https://arxiv.org/abs/2405.02434) (2025) as finite-dimensional
-algorithms for *every* result the paper proves non-constructively.
+algorithms for *every* result the paper establishes non-explicitly.
 
 ![Pipeline demo: certified_defect, associated_algebra, main_isomorphism, factorize](docs/src/assets/demo.svg)
 
@@ -44,11 +44,16 @@ because *its* constant grows like `n` (§9). When `A` comes from a finite-dimens
 **approximate factorization `Φ ≈ Δ Υ`** of the channel through `B`: a decode map
 `Δ` and an encode map `Υ` with `ΔΥ ≈ Φ̃` and `ΥΔ ≈ 1_B`.
 
-**What this package contributes.** Kitaev's proofs are non-constructive — the
-Lefschetz–Hopf fixed-point theorem, holomorphic functional calculus via contour
-integrals, Haar-measure diagonals. None of them hands you the object. In finite
-dimensions every one of those objects is computable, and this package implements
-a constructive algorithm for each, wrapped as five verbs that read like the paper:
+**What this package contributes.** Kitaev's proofs are *non-explicit*: they show
+the objects exist without exhibiting them. A nontrivial projection is conjured by
+the Lefschetz–Hopf fixed-point theorem — a topological count of fixed points, no
+witness; the functional calculus and the trivialising Haar-measure diagonal are
+written as contour integrals and group averages — explicit, but infinite-dimensional
+and analytic. None of them hands you the object. The obstruction is non-explicit
+existence and infinite-dimensional phrasing, *not* the axiom of choice — in finite
+dimensions every one of those objects is computable, and this package gives an
+explicit, terminating, error-certified algorithm for each, wrapped as five verbs
+that read like the paper:
 
 1. The whole pipeline is **constructive and finite-dimensional** — no existence
    proof is left as an existence proof.
