@@ -22,3 +22,6 @@ docs/plots/Manifest.toml
 # Documenter generated site + docs Manifest (regeneratable)
 docs/build/
 docs/Manifest.toml
+
+# Perf-campaign scratch build dirs (aic-xv4): out-of-tree experiment builds
+build-*/
