@@ -1,6 +1,79 @@
 # HANDOFF.md — almost-idempotent-channels
 
-## ▶▶ LATEST (2026-06-03b): docs made GitHub-navigable + `docs/` tidied + README wired + screenshots (follow-up to aic-6k6)
+## ▶▶ LATEST (2026-06-04): PERFORMANCE campaign — full profile + size limits + sparsity research + first sgn audition (epic aic-xv4)
+
+**Driver.** User: "go all out on performance optimization. Deep research every approach, profile every axis,
+identify hot paths, complete information." Then: practical size limits; preserve everything + register beads;
+the low-Kraus-rank idea; do the deep-research; then "build multiple prototypes, benchmark, Pareto, dispatch."
+
+**State:** master GREEN on the fast gate (`ctest -L fast` 22/22), clean, **pushed (HEAD `086e754`, up to date
+with origin)**. bd: **132 issues, 69 closed**. 4 commits this session (`0d76940..086e754`), each pushed.
+**The deliverable is `PROFILING.md`** (root) — read it before any perf work. Scratch perf probes live in
+gitignored `build-perf/`/`build-fast/`. NOTE: the only uncommitted file is `.beads/interactions.jsonl` (a
+churning bd activity log, not issue data — leave it).
+
+**⚠ KNOWN RED (surfaced this session, NOT caused by it): `test_opspace_o2` T2 mixconj FAILS in the FULL suite**
+— committed SDP dual infeasible for the assembled J (diff 1.728); confirmed REAL after a clean `build/` rebuild
+(not stale). The fast gate stays green. Bead **`aic-nsb`** (P1). The full serial `ctest` is **1379s / 46 tests,
+1 failed**.
+
+**LANDED — the profiling (PROFILING.md, every axis measured).** Headline: this is an **arb-path
+certified-numerics** perf problem, NOT a BLAS-or-threads problem. Two disjoint worlds — the minute-scale
+drivers are arb (FLINT ball arithmetic, **never touch BLAS**); the double/LAPACK path is separate & ~100-150x
+faster. **Hot-path ranking** (full serial ctest): `cstar_build` 327s, `opspace` 139s, `errreduce` 105s,
+`factorize` 96s = top-4 = **48%**. Counterintuitive MEASURED findings: (1) **OpenBLAS is NOT a wholesale win**
+— 4.8x faster at n=4 but **1.3x SLOWER at n=32** (small zheev is tridiagonalization-bound, not GEMM-bound);
+it only wins at LARGE N (1.6x at N=1024); reference netlib stays the deterministic default. (2) **FLINT
+`flint_set_num_threads` caps at <=1.9x at every scale** (incl. the 256x256 superop); the certified eig gets
+1.1x — stop chasing it. (3) **compiler flags on glue = 0-7% noise**; callgrind: ~43% of instructions in the arb
+fused dot product, ~34% in raw GMP limb arithmetic, **0% in aic code**. (4) **precision is a ~3.3x knob**.
+Real levers (ranked): **L1** task-parallelism over independent work (blocks/ampliations/sweep-points — OpenMP,
+inner libs pinned to 1 thread); **L2** faster certified primitives; **L3** adaptive precision.
+
+**LANDED — practical size limits (PROFILING.md §8, MEASURED).** d = dim H; pipeline builds the d²×d²
+superoperator; cost O(d⁶) time, O(d⁴) memory. **Fast route (double/LAPACK, no cert): practical to d≈32,
+pushable to d≈48-64** (memory-bound). **Arb-certified route: d≈8-12 routine, d≈16 the ceiling today** (one
+certified eig ~100s, one sgn ~260s at d=16; `dim_A>20` DNF; `factorize` xpow SIGABRT `aic-exa.13`). d≥20
+impractical/blocked.
+
+**LANDED — the low-Kraus-rank finding (user-flagged, confirmed in code; PROFILING.md §9; epic `aic-g0z`).**
+A channel IS stored in Kraus form (`aic_ucp_kraus`, r ops each d×d; `aic_ucp_apply` is matrix-free O(r·d³)) but
+`aic_assoc_superop_from_ucp` (src/aic_assoc_superop.c:36) **eagerly densifies** to the d²×d² superoperator, after
+which everything runs dense O(d⁶) — burning the rank-r Choi structure. The densification sits in
+assoc/factorize/opspace = 3 of the top-4 hot paths. **Could change the asymptotics O(d⁶)→O(r·d³·poly).**
+
+**LANDED — deep-research `aic-tg8` CLOSED (matrix-free/certified Φ̃; docs/research/matrix_free_certified_phitilde.md).**
+19 primary sources, 21/25 claims adversarially verified. Verdict: matrix-free is achievable (O(#matvecs·r·d³))
+but **NO off-the-shelf method gives a certified O(ε) bound free**. The certified path = a **fast matrix-free
+sign/projector layer** (rational Arnoldi w/ Crouzeix bound / multishift Krylov-Ritz sign + deflation / FEAST
+contour) **+ a SEPARATE rigorous a-posteriori enclosure** (the open crux — `aic-xsv` design updated to this
+two-layer shape). Traps caught: HSS-rank ≠ Kraus-rank; Zolo-pd/QDWH is Hermitian-only. **Candidate D
+(Kraus-rank fixed-point-algebra) under-covered, likely the more natural r-scaling route → follow-up `aic-f9a`.**
+
+**LANDED — first Pareto audition `aic-09a` CLOSED (sgn iteration-order, NEGATIVE result, recorded).** Built a
+cubic order-3 Newton-Schulz candidate (`src/aic_funcalc_sgn3.c`, `aic_sgn_newton_schulz3`); benchmarked vs
+quadratic NS + Denman-Beavers across clean/small-gap × n=8..64 @ prec=256. **No candidate dominates; quadratic
+NS stays default** (best large-n wall + tightest balls). **Deeper finding: per-iteration-order tuning is a WASH**
+— NS already converges in ~8-12 iters, so the bottleneck is matmul SIZE O(N³), not iteration count (retires the
+order lever + deprioritizes Chen-Chow `aic-68c`; refocuses on aic-xsv matrix-free + aic-h41 parallel). Cubic NS
+kept as a 3rd cross-check oracle (test_funcalc 3-way agreement, mutation-proven 15→14→RED). Hostile review SHIP
+(polynomial verified symbolically; valgrind clean).
+
+**BEADS registered.** Epics: **`aic-xv4`** (perf campaign) → `aic-h41`/`aic-yf4` (L1 parallel), `aic-09a`✓/`aic-8jn`
+(L2), `aic-03h` (L3). **`aic-dsj`** (fast practically-useful route) → `aic-o6l`/`aic-1lx`/`aic-ea2`.
+**`aic-g0z`** (sparsity/low-rank) → `aic-3hz`/`aic-xsv`/`aic-d7a`/`aic-nly`/`aic-f9a`(research). Plus `aic-nsb`
+(test failure), `aic-tg8`✓/`aic-09a`✓ closed. Memory: `perf-campaign-profiling`, `channel-size-limits-and-densification`.
+
+**▶ NEXT picks (ranked).** (1) **`aic-h41`** — parallelize the HOPM/opspace (#2 hot path, biggest MEASURED
+payoff 3-6x, clearest independent loops; "dispatch" = serial-vs-parallel by size). (2) **`aic-o6l`** — the
+pure-double fast structural pipeline the user wants (d≈48-64). (3) **`aic-f9a`** — deep-research candidate D
+(Kraus-rank fixed-point-algebra), likely the real r-scaling win. (4) **`aic-nsb`** — the opspace_o2 red test.
+(5) `aic-8jn` (eig route audition), `aic-03h` (adaptive precision). The sgn audition machinery (probe harness +
+Pareto table + cross-check/mutation pattern) is proven and reusable.
+
+---
+
+## ▶▶ PRIOR (2026-06-03b): docs made GitHub-navigable + `docs/` tidied + README wired + screenshots (follow-up to aic-6k6)
 
 **Driver.** User: "wire docs into README; the docs folder is a mess with non-docs in it; give docs its own
 README; sample a fresh agent's confusion and fix the frictions; add screenshots" + "links are broken on
