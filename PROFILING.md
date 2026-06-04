@@ -308,15 +308,110 @@ HOPM, the assoc Gelfand/sgn on the superoperator. **[est 25–45%]** — measure
 (A first callgrind+DHAT pass on a 1-sgn/1-eig/1-opnorm driver is in
 `build-perf/cg_top.txt` / `dhat.out` — see §8 once it lands.)
 
-## 8. Status / open beads
+## 8. Practical size limits (measured 2026-06-04)
 
-- Epic **`aic-xv4`** (this campaign). Children to file: per-lever beads (L1
-  OpenMP task-parallel opspace/factorize/cstar; L2 sgn scaled-NS audition =
-  `aic-68c`; L2 eig vdHM/Rump verify; L2 approx+certify-once; L3 adaptive
-  precision; the shared bench corpus `aic-f9u.1` + Pareto metrics `aic-f9u.2`).
+Size variable: **d = dim H** (the channel Φ acts on B(C^d)); the pipeline builds
+and decomposes the **d²×d² superoperator** S_Φ. Cost scales **O(d⁶) time,
+O(d⁴) memory**. One arb op ≈ **100–150×** a double op (and widening with d).
+
+Single certified-eig / sgn on the N=d² superoperator, prec=256 (measured; `*`=N³
+extrapolation, the fit is tight — d8→12 is 13.7× for 2.25× size = N³·⁰):
+
+| d | N=d² | arb herm-eig | arb sgn | double zheev (ref BLAS) |
+|---|---|---|---|---|
+| 4 | 16 | 0.03 s | 0.07 s | <1 ms |
+| 8 | 64 | 1.4 s | 4.4 s | 7 ms |
+| 12 | 144 | 19 s | 47 s | ~50 ms |
+| 16 | 256 | ~100 s* | ~260 s* | 0.24 s |
+| 20 | 400 | ~6.5 min* | ~16 min* | ~0.9 s |
+| 32 | 1024 | — | — | 6.7 s ref / **6.6 s OpenBLAS-8** |
+| 64 | 4096 | — | — | ~7 min* ref |
+
+**(1) Fast route (double/LAPACK, no arb cert).** Structural primitives (eig, SVD,
+opnorm, θ(2Φ−1), the algebra block-split) on S_Φ via LAPACK. **Comfortable to
+d≈32** (N=1024, one eig ~7 s, 17 MB); **pushable to d≈48–64** (minutes, hundreds
+of MB). *This is where OpenBLAS earns its keep*: at N=1024 it is ~1.6× faster than
+reference (the §3g verdict FLIPS at large N — small-n was a loss, large-n is a
+win). Binding constraint: **memory** beyond d≈64–100 (16·d⁴ bytes → d=64 = 268 MB,
+d=100 = 1.6 GB) + O(d⁶) time.
+
+**(2) Arb-certified route.** One certified eig/sgn alone is ~100 s / ~260 s at
+d=16; the full pipeline calls them many times. **Practical full-certified channel:
+d≈8–12** (minutes→tens of min); **d≈16 is today's ceiling** — and the code hits
+hard walls there: `dim_A>20` does-not-finish at prec=256, `factorize` xpow SIGABRT
+(`aic-exa.13`). **d≥20 impractical/blocked today.** Binding constraint: **time**
+(memory is not the limit). prec 256→128 buys ~2× (still rigorous, looser balls).
+
+**Caveat (honest):** there is no *separate* hand-optimized pure-double full
+pipeline — the headline pipeline is arb with a `prec` knob. The "fast BLAS route"
+today = defect + double-precision structural analysis (Φ̃, algebra, block
+structure via LAPACK); the certified isomorphism/factorization is arb-only. A
+pure-double full pipeline would push the fast-route *structural* coverage to
+d≈48–64 — see the fast-path epic in §10.
+
+How the levers move these ceilings: L1 parallel + L3 precision + L2 scaled-NS →
+plausibly **certified d≈12–16 → d≈20–24**; OpenBLAS-at-large-N + parallel
+structural passes → **fast d≈32–48 → d≈64+**. **The sparsity path (§9) could move
+the asymptotics themselves**, not just the constant.
+
+## 9. Sparsity / low-Kraus-rank — the open research path (could change the asymptotics)
+
+**The finding** (confirmed in code 2026-06-04): a channel is *stored* in Kraus
+form — `aic_ucp_kraus {dim_K, dim_H, r, K[r]}`, each K_a a d×d matrix, r = Kraus
+rank ≤ d² — and `aic_ucp_apply` (src/aic_ucp_core.c:63) computes Φ(X)=Σ_a K_a†XK_a
+**matrix-free in O(r·d³)**. But `aic_assoc_superop_from_ucp` (src/aic_assoc_superop.c:36)
+**eagerly densifies** to the d²×d² superoperator by applying Φ to all d² matrix
+units, after which every downstream op (Gelfand-ρ, θ(2Φ−1) sgn, eig) is dense
+**O(d⁶)** — *burning* the low-rank structure. The densification sits in
+`assoc` / `factorize` / `opspace` — 3 of the top-4 hot paths (§2).
+
+**The structure being thrown away:**
+- The **Choi matrix J_Φ = Σ_a vec(K_a)vec(K_a)† has rank exactly r** (the Kraus
+  rank). Low Kraus rank ⇒ low-rank Choi.
+- The superoperator **S_Φ = Σ_a K̄_a ⊗ K_a is a sum of r Kronecker products** —
+  applied to a d×d matrix in O(r·d³), never needing the dense d²×d² form.
+- The regularization Φ̃ = θ(2Φ−1) is the spectral projector onto Φ's
+  **near-fixed-point subspace** (eigenvalue ≈ 1) — the dominant invariant
+  subspace, reachable by a few matrix-free applications of Φ.
+
+**Candidate wins (research, not yet auditioned — could be O(d⁶) → O(r·d³·poly)):**
+1. **Never densify**: thread `aic_ucp_apply` (matrix-free, O(r·d³)) through the
+   pipeline instead of forming S_Φ.
+2. **Krylov / matrix-free dominant-invariant-subspace** for Φ̃ (Lanczos/Arnoldi
+   applying Φ, O(r·d³·k) for k Krylov vectors) instead of dense sgn(2S−1) on the
+   d²×d² superoperator — directly attacks the single most expensive primitive
+   (sgn, 260 s at d=16).
+3. **Exploit Choi rank r** in the carrier / idempotency-defect / associated-algebra
+   constructions (the η=0 idemp_structure path already works in Kraus/Choi; extend
+   to η>0).
+4. **Low-rank / matrix-free Newton–Schulz** for the functional calculus.
+5. **Tensor structure in opspace cb-norm**: the ampliated map 1_{M_n}⊗Φ has
+   explicit tensor structure currently densified by the HOPM — exploit it.
+6. **Sparse/structured Kraus** (stabilizer, dephasing, graph channels): extra
+   speedups when K_a themselves are sparse.
+
+This is the highest-ceiling direction but also the highest-risk/effort: each
+matrix-free or low-rank route must STILL produce the paper's certified O(ε) bound
+(the arb certification must survive the reformulation — a Rule-2/Law-3 obligation),
+and the spectral fragility callouts (CLAUDE.md "Spectra are perturbation-sensitive")
+apply doubly to Krylov methods. Warrants a deep-research sweep + careful auditions.
+Epic in §10.
+
+## 10. Status / open beads
+
+- **`aic-xv4`** (this campaign epic). Lever beads filed: `aic-h41` (L1 opspace
+  HOPM), `aic-yf4` (L1 cstar/factorize), `aic-09a` (L2 scaled-NS sgn), `aic-8jn`
+  (L2 eig vdHM/Rump + approx-certify-once), `aic-03h` (L3 adaptive precision).
+- **`aic-dsj`** (EPIC) — the **fast practically-useful route** (§8): `aic-o6l`
+  pure-double structural pipeline, `aic-1lx` size-adaptive BLAS backend, `aic-ea2`
+  `certify=false` API.
+- **`aic-g0z`** (EPIC) — **sparsity / low-Kraus-rank** (§9): `aic-3hz` matrix-free
+  pipeline, `aic-xsv` Krylov Φ̃, `aic-d7a` Choi-rank exploitation, `aic-nly`
+  opspace tensor structure, `aic-tg8` deep-research sweep.
 - **`aic-nsb`** — the `test_opspace_o2` full-suite failure (P1, surfaced here).
-- Existing relevant: `aic-68c` (Kenney–Laub sgn), `aic-f9u.1/.2` (bench corpus +
-  Pareto reporter), `aic-erz`/`aic-rcm` (cut canary wall cost).
+- Existing relevant: `aic-68c` (Kenney–Laub sgn, folded into `aic-09a`),
+  `aic-f9u.1/.2` (bench corpus + Pareto reporter), `aic-erz`/`aic-rcm` (cut canary
+  wall cost), `aic-exa.13` (factorize xpow SIGABRT — caps certified d at ~16).
 
 > The headline: this is an **arb-path, certified-numerics** performance problem,
 > not a BLAS-or-threads problem. The wins are task-level parallelism over
