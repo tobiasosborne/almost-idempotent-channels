@@ -166,28 +166,37 @@ static void test_identities(void)
     acb_mat_clear(S2); acb_mat_clear(S); acb_mat_clear(X);
 }
 
-/* --- 2. candidate agreement: Newton-Schulz vs Denman-Beavers --- */
+/* --- 2. candidate agreement: quadratic NS vs cubic NS vs Denman-Beavers ---
+ * THREE independent sgn algorithms must agree within tol on the same in-domain X
+ * (bead aic-09a Pareto audition): an algorithmic error in any one route shows up
+ * as disagreement. The cubic NS (aic_sgn_newton_schulz3) is a Pareto candidate the
+ * bench did NOT promote to default (quadratic NS wins on large-n wall time AND
+ * tighter balls — see bench_funcalc.c), but it is kept as a third cross-check
+ * oracle: its independent step polynomial catches errors the NS2/DB pair share. */
 static void test_candidate_agreement(void)
 {
     const slong prec = 256;
     const slong n = 5;
     int signs[5] = {1, 1, -1, 1, -1};
-    acb_mat_t X, Sns, Sdb;
+    acb_mat_t X, Sns, Sns3, Sdb;
     acb_mat_init(X, n, n);
     acb_mat_init(Sns, n, n);
+    acb_mat_init(Sns3, n, n);
     acb_mat_init(Sdb, n, n);
     build_perturbed_sign(X, n, signs, 0.08, prec);
 
     aic_sgn_newton_schulz(Sns, X, prec);
+    aic_sgn_newton_schulz3(Sns3, X, prec);
     aic_sgn_denman_beavers(Sdb, X, prec);
 
     arb_t tol;
     arb_init(tol);
     set_tol(tol, 1e-40);
-    AIC_CHECK_ACB_MAT_CLOSE(Sns, Sdb, tol);
+    AIC_CHECK_ACB_MAT_CLOSE(Sns, Sdb, tol);   /* quadratic NS vs Denman-Beavers */
+    AIC_CHECK_ACB_MAT_CLOSE(Sns, Sns3, tol);  /* quadratic NS vs cubic NS */
     arb_clear(tol);
 
-    acb_mat_clear(Sdb); acb_mat_clear(Sns); acb_mat_clear(X);
+    acb_mat_clear(Sdb); acb_mat_clear(Sns3); acb_mat_clear(Sns); acb_mat_clear(X);
 }
 
 /* --- 3. prop_P: idempotent, commutation, O(delta) bound --- */

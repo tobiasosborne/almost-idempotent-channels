@@ -61,12 +61,18 @@ static void bench_size(slong n, long iters)
     acb_mat_init(S, n, n);
     build_perturbed_projector_sign(X, n, prec);
 
-    /* Warm up both candidates (page-in, converge once) outside the timers. */
+    /* Warm up all candidates (page-in, converge once) outside the timers. */
     aic_sgn_newton_schulz(S, X, prec);
+    aic_sgn_newton_schulz3(S, X, prec);
     aic_sgn_denman_beavers(S, X, prec);
 
     snprintf(name, sizeof name, "sgn_newton_schulz_n%ld_p53", (long) n);
     AIC_BENCH(name, iters, aic_sgn_newton_schulz(S, X, prec));
+
+    /* aic-09a cubic NS candidate: cubic conv, 3 matmuls/step. Auditioned, NOT
+     * promoted (quadratic NS wins on large-n wall time + tighter balls). */
+    snprintf(name, sizeof name, "sgn_newton_schulz3_n%ld_p53", (long) n);
+    AIC_BENCH(name, iters, aic_sgn_newton_schulz3(S, X, prec));
 
     snprintf(name, sizeof name, "sgn_denman_beavers_n%ld_p53", (long) n);
     AIC_BENCH(name, iters, aic_sgn_denman_beavers(S, X, prec));

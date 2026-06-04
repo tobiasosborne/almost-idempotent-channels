@@ -236,12 +236,22 @@ are the highest-ceiling arb-path changes; each is a Law-4 audition:
    `acb_mat_approx_*` (drops radius, ~2× faster at p≤128, avoids per-iteration
    radius blow-up), then ONE ball residual to certify. The sgn loop currently runs
    fully in ball arithmetic. **[est ~2× on sgn + tighter balls].**
-3. **scaled Newton–Schulz for sgn** (Chen–Chow, [PDF](https://faculty.cc.gatech.edu/~echow/pubs/chen-chow-2014.pdf)):
-   `X_{k+1}=½α_k X_k(3I−α_k²X_k²)`, α from a scalar recurrence (one initial
-   smallest-eigenvalue estimate, no per-step eigensolve) → **~2× fewer iterations**
-   near a small gap. **MUST use the §4 stabilized α** (raw optimal is numerically
-   unstable — a Rule-3 trap). This is bead **`aic-68c`** (Kenney–Laub), now
-   confirmed as a real lever.
+3. **sgn iteration-order audition (`aic-09a`, DONE 2026-06-04) — NEGATIVE result,
+   recorded.** Built a cubic (order-3) Newton–Schulz candidate
+   (`aic_sgn_newton_schulz3`, `Y(15I−10Y²+3Y⁴)/8`, cubic conv, 3 matmuls/step) and
+   benchmarked it against quadratic NS and Denman–Beavers across regimes (clean vs
+   near-zero-eigenvalue small-gap) × sizes n=8..64 @ prec=256. **No candidate
+   dominates** (wall-time spread ±15% everywhere); **quadratic NS stays the default**
+   — it wins large-n wall time *and* has the tightest certified balls (8e-75 vs
+   cubic's 8e-74). **The deeper finding: per-iteration-order tuning is a wash for
+   this workload** — quadratic NS already converges in ~8–12 iters, so trading
+   iteration count for per-step matmuls nets ~zero. *The bottleneck is matmul size
+   O(N³), not iteration count* — which retires the iteration-order lever (and by
+   extension Chen–Chow scaled-NS, `aic-68c`, for the well-converged case) and
+   refocuses on the matmul-size levers (matrix-free Krylov `aic-xsv`, parallelism
+   `aic-h41`). Cubic NS is kept as a named candidate + a 3rd independent cross-check
+   oracle (mutation-proven). Scaled-NS (Chen–Chow stabilized, `aic-68c`) may still
+   help only in a genuinely slow small-gap regime; deprioritized by this result.
 4. **ρ/opnorm need only a spectral bound, not full eig.** `aic_mat_herm_max_eig`
    already uses `acb_mat_eig_global_enclosure` (Miyajima, one O(n³) pass) — good —
    but still pays for a full `acb_mat_approx_eig_qr`. For *just* λ_max a verified

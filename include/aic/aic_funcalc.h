@@ -52,6 +52,17 @@ extern "C" {
  * cap is hit (the cap is a fail-loud abort: non-convergence is a bug). */
 void aic_sgn_newton_schulz(acb_mat_t out, const acb_mat_t X, slong prec);
 
+/* sgn(X) via the CUBIC (order-3) inverse-free Newton-Schulz iteration — the next
+ * member of the NS / Pade-of-(I-t)^{-1/2} family (t = I - Y^2):
+ *   Y_0 = X,   Y_{k+1} = (1/8) Y_k (15 I - 10 Y_k^2 + 3 Y_k^4).
+ * CUBIC convergence (vs quadratic for aic_sgn_newton_schulz) when ||I - X^2|| < 1
+ * (tex:521, same asserted precondition), at the cost of 3 matmuls/step (Y^2, Y^4,
+ * Y*poly) vs 2. Auditioned against the quadratic NS and Denman-Beavers (Law 4):
+ * cubic trades fewer iterations for more work/iter, a Pareto candidate whose win
+ * regime is decided by bench/bench_funcalc.c. Inverse-free. Same midpoint-iterate
+ * + a-posteriori sign certificate as the quadratic NS (bead aic-1vp). out != X. */
+void aic_sgn_newton_schulz3(acb_mat_t out, const acb_mat_t X, slong prec);
+
 /* sgn(X) via the Denman-Beavers / Newton sign iteration (shard-B L50, single-
  * variable form):
  *   Y_0 = X,   Y_{k+1} = 1/2 (Y_k + Y_k^{-1}).
