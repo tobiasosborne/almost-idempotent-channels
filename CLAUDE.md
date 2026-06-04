@@ -40,19 +40,32 @@ The deliverable is a package:
 
 This is the project's reason to exist; everything else serves it.
 
-**Many proofs in the paper are non-constructive and phrased for possibly
-infinite-dimensional spaces. But every *theorem* applies to finite-dimensional
-matrices, and in finite dimensions the objects those proofs merely assert to
-exist are computable. Our goal is a constructive algorithm for *every* result.**
+**Many proofs in the paper are *non-explicit*: they show an object exists —
+via a topological fixed-point count, a Haar average, or an abstract functional
+calculus — without exhibiting it or giving a procedure, and they are often
+phrased for possibly infinite-dimensional spaces. (The non-constructive
+ingredient is indirect / pure-existence reasoning and infinite-dimensional
+generality, *not* the axiom of choice — "non-constructive" here means
+non-explicit, not choice-dependent.) But every *theorem* applies to
+finite-dimensional matrices, and in finite dimensions the objects those proofs
+merely assert to exist are computable. Our goal is a constructive algorithm —
+an explicit, terminating, error-certified procedure — for *every* result.**
 
 Concretely, for each result you must separate two things:
 
-1. **The paper's proof technique** — and whether it is constructive. The paper
-   leans on non-constructive tools: the Lefschetz–Hopf fixed-point theorem and
-   H-space homotopy (existence of a nontrivial projection, §6); holomorphic
-   functional calculus via contour integrals (§3); Haar-measure diagonals /
-   Hochschild cohomology (error reduction, §2/§9); existence statements with no
-   procedure attached.
+1. **The paper's proof technique** — and whether it yields the object. The paper
+   leans on *non-explicit existence* and infinite-dimensional tools of three
+   distinct kinds, often lumped together as "non-constructive": (a) genuine
+   pure-existence arguments that produce no witness — the Lefschetz–Hopf
+   fixed-point theorem and H-space homotopy (a nontrivial projection, §6), and
+   Carathéodory-style "a finite combination exists" steps; (b) objects that are
+   *explicit but infinite-dimensional / analytically phrased* — holomorphic
+   functional calculus via contour integrals (§3), the Haar-measure diagonal /
+   Hochschild cohomology (error reduction, §2/§9); (c) plain existence statements
+   with no procedure attached. Only (a) is non-constructive in any foundational
+   sense (and even there the operative principle is excluded-middle / indirect
+   existence, not choice); (b) is a finiteness / numerical-conditioning problem,
+   not a constructivity one.
 
 2. **The constructive finite-dim algorithm we implement** — which need not
    follow the proof. Examples of the move:

@@ -12,7 +12,7 @@ bound — a proof of an inequality, not a floating-point guess — on how lossy 
 round trip is. It is a Julia surface over the `libaic` C/arb cores, implementing
 Kitaev, _Almost-idempotent quantum channels and approximate C\*-algebras_
 ([arXiv:2405.02434](https://arxiv.org/abs/2405.02434), 2025) as finite-dimensional
-algorithms for *every* result the paper proves non-constructively.
+algorithms for *every* result the paper establishes non-explicitly.
 
 ![The pipeline: certified_defect, associated_algebra, main_isomorphism, factorize](assets/demo.svg)
 
@@ -27,8 +27,8 @@ theorem says every finite-dimensional ``\varepsilon``-``C^*``-algebra is
 ``B = \bigoplus_l M_{d_l}``, with a **universal, dimension-independent constant** —
 and when the algebra comes from a finite-dimensional ``\Phi``, that isomorphism is
 realised by quantum channels, factoring ``\Phi \approx \Delta\Upsilon`` through
-``B``. This package turns each of those non-constructive proofs into a finite
-algorithm and certifies every bound it produces with a FLINT/arb error ball.
+``B``. This package turns each of those non-explicit existence proofs into a
+finite algorithm and certifies every bound it produces with a FLINT/arb error ball.
 
 ## The five verbs
 
@@ -58,7 +58,7 @@ Three routes through the documentation, by what you want:
   → [The five-verb pipeline](tutorials/pipeline.md). Five minutes to a certified bound.
 - **"I read the paper and want the constructive story."** → [The mathematics](explanation/math_story.md)
   → [The constructive mandate](explanation/constructive.md) → [Dimension-independence](explanation/dim_independence.md). The
-  non-constructive proofs, made finite.
+  non-explicit existence proofs, made finite.
 - **"I care whether the numbers are trustworthy."** →
   [Certified arithmetic](explanation/certified_arithmetic.md) (the four-rung cross-check ladder) →
   [The η = 0 oracle](tutorials/eta0_oracle.md) (the cleanest ground truth in the paper).

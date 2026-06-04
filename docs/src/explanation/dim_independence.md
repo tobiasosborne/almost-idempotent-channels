@@ -40,7 +40,7 @@ theorem asserts. The paper escapes this by proving the existence of the triviali
 structure with the Lefschetz–Hopf fixed-point theorem and improving the inclusion
 with `cor_improvement` (`tex:1317`), whose reduced defect ``\delta_0 =
 O(\varepsilon)`` is *independent of the starting ``\delta``* and of ``n``. The
-package replaces those non-constructive ingredients with finite-dimensional
+package replaces those non-explicit ingredients with finite-dimensional
 algorithms (see [The constructive mandate](constructive.md)) — but it must then *check* that the
 constant it actually produces does not grow with ``n``.
 

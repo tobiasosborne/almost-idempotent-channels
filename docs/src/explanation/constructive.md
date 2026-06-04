@@ -1,13 +1,24 @@
 # The constructive mandate
 
 After this page you will understand what "constructive" means in this package,
-which non-constructive steps of the paper it replaces, and why that replacement
+which non-explicit steps of the paper it replaces, and why that replacement
 is what makes the output checkable.
 
-This page explains why the package replaces the paper's non-constructive proofs
-with finite-dimensional algorithms; for the mathematics those algorithms compute,
-see [The mathematics](math_story.md). For the claim that the resulting constant does not
-grow with the matrix size, see [Dimension-independence](dim_independence.md).
+This page explains why the package replaces the paper's non-explicit existence
+proofs with finite-dimensional algorithms; for the mathematics those algorithms
+compute, see [The mathematics](math_story.md). For the claim that the resulting
+constant does not grow with the matrix size, see [Dimension-independence](dim_independence.md).
+
+!!! note "A note on the word"
+    "Non-constructive" is used here in the everyday sense — *the proof shows the
+    object exists but does not exhibit it* — not the foundational one. None of
+    these arguments turns on the axiom of choice. The one genuine pure-existence
+    step is the Lefschetz–Hopf fixed-point count (§6), which produces no witness;
+    the other tools (a contour-integral functional calculus, a Haar-measure
+    diagonal) are *explicit but infinite-dimensional / analytically phrased*, and
+    the package replaces them as much for numerical conditioning as for
+    explicitness. In finite dimensions every one of these objects is computable,
+    so the obstruction is the proof technique, not foundations.
 
 ## The mandate
 
@@ -16,10 +27,15 @@ The package exists to answer one question: where the paper proves that an object
 dimensions the answer is yes, and that is the whole point (`CLAUDE.md:39-79`,
 verbatim):
 
-> **Many proofs in the paper are non-constructive and phrased for possibly
-> infinite-dimensional spaces. But every *theorem* applies to finite-dimensional
-> matrices, and in finite dimensions the objects those proofs merely assert to
-> exist are computable. Our goal is a constructive algorithm for *every* result.**
+> **Many proofs in the paper are *non-explicit*: they show an object exists — via
+> a topological fixed-point count, a Haar average, or an abstract functional
+> calculus — without exhibiting it or giving a procedure, and they are often
+> phrased for possibly infinite-dimensional spaces. (The non-constructive
+> ingredient is indirect / pure-existence reasoning and infinite-dimensional
+> generality, *not* the axiom of choice.) But every *theorem* applies to
+> finite-dimensional matrices, and in finite dimensions the objects those proofs
+> merely assert to exist are computable. Our goal is a constructive algorithm —
+> an explicit, terminating, error-certified procedure — for *every* result.**
 
 So for each result two things are kept strictly separate: the paper's proof
 *technique*, and the finite-dimensional algorithm the package *implements*. The
@@ -45,11 +61,15 @@ its own constants; a bound you can certify can. The cleanest instance is the
 
 ## The four canonical moves
 
-The paper's non-constructive tools fall into four families. For each, the package
-takes a finite-dimensional route that produces the same object
-(`CLAUDE.md:58-72`).
+The paper's existence arguments fall into four families — three non-explicit or
+infinite-dimensional, one already constructive. For each, the package takes a
+finite-dimensional route that produces the same object (`CLAUDE.md:58-72`). Only
+the first is non-constructive in any foundational sense (a pure-existence
+fixed-point count, no witness); the calculus and the Haar diagonal are explicit
+but infinite-dimensional, replaced for numerical conditioning as much as for
+explicitness; and the implicit-function step is already a convergent iteration.
 
-| Paper's non-constructive tool | Constructive finite-dim route | Anchor |
+| Paper's non-explicit / infinite-dim step | Explicit finite-dim route | Anchor |
 |---|---|---|
 | **Nontrivial projection** via the Lefschetz–Hopf fixed-point theorem and H-space homotopy (§6): build the approximate unitary group as a manifold and count fixed points of inversion | Spectral split of a Hermitian element of the ambient ``M_n``: pick a non-scalar Hermitian ``H`` with the largest interior eigenvalue gap, form ``X = \operatorname{sgn}(s(H - tI))``, set ``P_{\mathrm{amb}} = \tfrac12(I + X)``, then project into ``\mathcal{A}`` with ``\tilde\Phi`` | `FINDINGS §B1`, `tex:931` |
 | **Holomorphic functional calculus** via a contour integral ``f(X)=\tfrac1{2\pi i}\oint_C (zI-X)^{-1}f(z)\,dz`` (§3) | Eigendecomposition; or a Newton / Denman–Beavers sign iteration for ``\operatorname{sgn}(X)``; or a Zolotarev rational approximation, each with a certified arb error | `tex:535`, `tex:548` |
